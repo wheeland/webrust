@@ -1,0 +1,4 @@
+[package]
+name = "webutil"
+version = "0.1.0"
+authors = ["Wieland Hagen <wieland.hagen@kdab.com>"]
