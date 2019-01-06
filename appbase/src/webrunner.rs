@@ -126,10 +126,7 @@ impl<T: WebApp> AppRunner<T> {
 
         for event in self.events.poll_iter() {
             // Update keymod
-            if let sdl2::event::Event::KeyDown{keymod, keycode, scancode,..} = &event {
-//                let kc = keycode.map(|kc| kc.to_string()).unwrap_or("NIL".to_string());
-//                let sc = scancode.map(|kc| kc.to_string()).unwrap_or("NIL".to_string());
-//                println!("PRESS {} {} {:?}", kc, sc, keymod);
+            if let sdl2::event::Event::KeyDown{keymod,..} = &event {
                 self.keymod = *keymod;
             }
             if let sdl2::event::Event::KeyUp{keymod,..} = &event {

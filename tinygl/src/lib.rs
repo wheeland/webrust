@@ -1,4 +1,5 @@
 extern crate gl;
+extern crate cgmath;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -7,7 +8,6 @@ use cgmath::prelude::*;
 
 struct BufferBase {
     target: GLenum,
-    usage: GLenum,
     buffer: GLuint
 }
 
@@ -27,7 +27,6 @@ impl BufferBase {
 
         BufferBase {
             target,
-            usage,
             buffer
         }
     }

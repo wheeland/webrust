@@ -2,32 +2,18 @@ extern crate gl;
 extern crate sdl2;
 extern crate imgui;
 extern crate cgmath;
+extern crate appbase;
+extern crate tetris;
 extern crate rand;
-extern crate chrono;
-
-extern crate num;
-#[macro_use] extern crate num_derive;
-
-extern crate webhelper;
-extern crate serde;
-extern crate serde_json;
-extern crate bincode;
-#[macro_use] extern crate serde_derive;
 
 use imgui::*;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::keyboard::Mod;
-use cgmath::prelude::*;
-use cgmath::{Vector2, Vector3};
+use appbase::webrunner;
 
-use webhelper::util;
-use webhelper::tinygl;
-use webhelper::webrunner;
-use webhelper::imgui_renderer;
-use webhelper::imgui_helper::staticwindow;
-
-mod tetris;
+mod renderer;
+mod util;
 
 enum State {
     MainMenu,
@@ -57,7 +43,7 @@ struct TetrisApp {
     config: tetris::Config,
     playername: String,
 
-    renderer: tetris::renderer::Renderer,
+    renderer: renderer::Renderer,
 
     rotl: bool,
     rotr: bool,
@@ -93,11 +79,11 @@ impl webrunner::WebApp for TetrisApp {
             savegame: tetris::Savegame::load("tetris.bin"),
             config: tetris::Config::new(),
             playername: String::from("Wheelie :)"),
-            renderer: tetris::renderer::Renderer::new(
-                tetris::renderer::Rectangle::new(-150.0, -300.0, 300.0, 600.0),
-                tetris::renderer::Rectangle::new(220.0, -300.0, 120.0, 120.0),
-                tetris::renderer::Rectangle::new(220.0, -120.0, 180.0, 200.0),
-                tetris::renderer::Rectangle::new(-400.0, -300.0, 300.0, 400.0),
+            renderer: renderer::Renderer::new(
+                renderer::Rectangle::new(-150.0, -300.0, 300.0, 600.0),
+                renderer::Rectangle::new(220.0, -300.0, 120.0, 120.0),
+                renderer::Rectangle::new(220.0, -120.0, 180.0, 200.0),
+                renderer::Rectangle::new(-400.0, -300.0, 300.0, 400.0),
             ),
             rotl: false,
             rotr: false,

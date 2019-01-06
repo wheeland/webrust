@@ -1,18 +1,18 @@
 extern crate gl;
+extern crate tinygl;
 extern crate sdl2;
 extern crate imgui;
 extern crate cgmath;
 extern crate lru_cache;
-extern crate webhelper;
+extern crate appbase;
+extern crate array2d;
 
 extern crate serde;
 extern crate serde_json;
 #[macro_use] extern crate serde_derive;
 
-use webhelper::util;
-use webhelper::tinygl;
-use webhelper::webrunner;
-use webhelper::imgui_renderer;
+use appbase::webrunner;
+use appbase::imgui_renderer;
 
 mod earth;
 mod culling;
@@ -25,7 +25,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
 use sdl2::event::{Event};
 use imgui::*;
-use util::ValueHistory;
+use guiutil::ValueHistory;
 
 struct MyApp {
     windowsize: (u32, u32),

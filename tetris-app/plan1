@@ -1,0 +1,14 @@
+online play
+    - optimize replay size
+
+API
+    client-to-server:
+        - encode with server's public key
+
+    register 
+        -> send user-name + password
+    replay 
+        -> send user-name + password + replay
+        - check at server if the score etc. is correct
+
+

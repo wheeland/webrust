@@ -1,14 +1,11 @@
 use imgui::*;
-use cgmath::prelude::*;
 use cgmath::{Vector2, Vector3};
-use webhelper::imgui_helper::staticwindow;
-use super::super::tinygl;
+use appbase::imgui_helper::staticwindow;
+use rand::{Rng,SeedableRng};
 
-use rand::prelude::*;
-
-use super::piece;
-use super::stack;
-use super::state::*;
+use super::util;
+use tetris::piece;
+use tetris::state::*;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Rectangle {
@@ -24,9 +21,6 @@ impl Rectangle {
     }
     fn bottom(&self) -> f32 {
         self.y + self.h
-    }
-    fn right(&self) -> f32 {
-        self.x + self.w
     }
 }
 
@@ -117,19 +111,6 @@ impl Renderer {
         unsafe { gl::DrawArrays(gl::TRIANGLES, 0, 6) }
     }
 
-    fn piece_color(tp: piece::Type) -> Vector3<f32> {
-        match tp {
-            piece::Type::I => Vector3::new(0.0, 0.0, 1.0),
-            piece::Type::T => Vector3::new(0.0, 0.5, 1.0),
-            piece::Type::O => Vector3::new(1.0, 1.0, 1.0),
-            piece::Type::S => Vector3::new(0.0, 1.0, 0.0),
-            piece::Type::Z => Vector3::new(0.0, 1.0, 0.5),
-            piece::Type::J => Vector3::new(1.0, 0.0, 0.0),
-            piece::Type::L => Vector3::new(1.0, 1.0, 0.0),
-            _ => Vector3::new(0.0, 0.0, 0.0)
-        }
-    }
-
     fn draw_block(&self, buffers: &mut BlockBuffers, piece: piece::Type, x: i32, y: i32, alpha: f32) {
         buffers.block(piece,
                       (self.pos_field.x + self.tile_size * x as f32 + 1.0, self.pos_field.bottom() - self.tile_size * (y + 1) as f32 + 1.0),
@@ -139,12 +120,12 @@ impl Renderer {
 
     pub fn new(pos_field: Rectangle, pos_next: Rectangle, pos_info: Rectangle, pos_stats: Rectangle) -> Self {
         let rng = std::cell::RefCell::new(rand::rngs::SmallRng::from_seed([0,1,2,3,4,5,6,7,8,9,9,8,7,6,5,4]));
-        let mut rnd = |min: f32, max: f32| { min + (max-min) * rng.borrow_mut().gen::<f32>() };
+        let rnd = |min: f32, max: f32| { min + (max-min) * rng.borrow_mut().gen::<f32>() };
 
         let mut piece_colors = Vec::new();
-        for i in 0..30 {
+        for _i in 0..30 {
             let base = rnd(0.0, 360.0);
-            let base = webhelper::util::hsv(base, 0.7, 0.7);
+            let base = util::hsv(base, 0.7, 0.7);
 
             let a = 0.5 * base + 0.5 * cgmath::Vector3::new(rnd(0.0, 1.0), rnd(0.0, 1.0), rnd(0.0, 1.0));
             let b = 0.5 * base + 0.5 * cgmath::Vector3::new(rnd(0.0, 1.0), rnd(0.0, 1.0), rnd(0.0, 1.0));

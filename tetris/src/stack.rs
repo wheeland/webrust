@@ -1,5 +1,5 @@
 use super::piece;
-use super::super::util::Array2D;
+use array2d::Array2D;
 
 #[derive(Clone)]
 pub struct Stack {
@@ -55,9 +55,9 @@ impl Stack {
 
         // merge tile into existing blocks
         for i in 0..4 {
-            let x = (x + i as i32);
+            let x = x + i as i32;
             for j in 0..4 {
-                let y = (y + j as i32);
+                let y = y + j as i32;
                 if piece_blocks[4 * j + i] {
                     if x >= 0 && x < self.width && y >= 0 && y < self.height {
                         blocks.set(x as usize, y as usize, piece.get_type());

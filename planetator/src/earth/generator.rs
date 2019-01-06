@@ -1,5 +1,5 @@
-use super::super::tinygl::*;
-use super::super::util::*;
+use tinygl::*;
+use array2d::Array2D;
 
 use super::plate;
 use super::plateoptimizer;

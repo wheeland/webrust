@@ -4,7 +4,6 @@ use std::cell::RefCell;
 use cgmath::prelude::*;
 use cgmath::*;
 use super::super::culling;
-use super::super::tinygl;
 use super::generator;
 use super::plate;
 

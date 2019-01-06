@@ -1,4 +1,4 @@
-use super::super::util::*;
+use array2d::Array2D;
 
 type Idx = u16;
 

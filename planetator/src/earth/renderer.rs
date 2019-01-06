@@ -1,5 +1,4 @@
 use cgmath::prelude::*;
-use super::super::tinygl;
 use super::super::culling;
 
 use super::Channels;

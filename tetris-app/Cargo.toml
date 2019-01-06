@@ -1,5 +1,5 @@
 [package]
-name = "planetator"
+name = "tetris-app"
 version = "0.1.0"
 authors = ["Wieland Hagen <wieland.hagen@kdab.com>"]
 
@@ -14,21 +14,14 @@ ncremental = false
 overflow-checks = false
 
 [dependencies]
-array2d = { version = "^0", path = "../array2d" }
 appbase = { version = "^0", path = "../appbase" }
-base64 = "0.10.0"
-cgmath = "0.16.1"
-gl = "0.10.0"
-imgui = { version = "0.0.20", path = "../../imgui-rs" }
-imgui-sdl2 = { version = "0.2.3", path = "../../imgui-sdl2" }
-lru-cache = "0.1.1"
+tetris = { version = "^0", path = "../tetris" }
+tinygl = { version = "^0", path = "../tinygl" }
 rand = "^0.6"
 sdl2 = "^0"
-serde = "1.0"
-serde_json = "1.0"
-serde_derive = "1.0"
-tinygl = { version = "^0", path = "../tinygl" }
-webhelper = { version = "0.1.0", path = "../webhelper" }
+gl = "0.10.0"
+cgmath = "0.16.1"
+imgui = { version = "0.0.20", path = "../../imgui-rs" }
 
 [build-dependencies]
 cc = "1.0"

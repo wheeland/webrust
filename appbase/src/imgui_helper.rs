@@ -1,6 +1,3 @@
-extern crate imgui;
-use imgui::{ImGui,Ui};
-
 pub fn staticwindow<'ui, 'p, F: FnOnce(), C: Into<imgui::ImVec4>+Copy>(
     ui: &'ui imgui::Ui,
     name: &'p imgui::ImStr,

@@ -185,7 +185,7 @@ impl Game {
 
             // merge piece
             self.replay.add_merge(self.timestamp, self.down, next_piece);
-            let ret = self.state.merge(self.timestamp, next_piece, self.down);
+            self.state.merge(self.timestamp, next_piece, self.down);
 
             // adjust timers
             self.timer -= self.state.snapshot().are_duration().unwrap() as f32 / 60.0;

@@ -1,25 +1,15 @@
 [package]
-name = "webhelper"
+name = "appbase"
 version = "0.1.0"
 authors = ["Wieland Hagen <wieland.hagen@kdab.com>"]
-edition = "2018"
-
-[profile.release]
-opt-level = "z"
-debug = false
-rpath = false
-lto = true
-debug-assertions = false
-panic = 'abort'
-ncremental = false
-overflow-checks = false
 
 [dependencies]
 sdl2 = "^0"
-gl = "^0"
+gl = "0.10.0"
 cgmath = "^0"
 imgui = { version = "0.0.20", path = "../../imgui-rs" }
 imgui-sdl2 = { version = "0.2.3", path = "../../imgui-sdl2" }
+tinygl = { version = "^0", path = "../tinygl" }
 
 [build-dependencies]
 cc = "1.0"

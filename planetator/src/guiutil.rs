@@ -1,6 +1,45 @@
 use imgui::*;
-use util::ValueHistory;
 use std::ffi::{CStr, CString};
+
+pub struct ValueHistory {
+    count: usize,
+    values: Vec<f32>
+}
+
+impl ValueHistory {
+    pub fn new(count: usize) -> ValueHistory {
+        ValueHistory {
+            count,
+            values: Vec::new()
+        }
+    }
+
+    pub fn push(&mut self, value: f32) {
+        self.values.push(value);
+        while self.values.len() > self.count {
+            self.values.remove(0);
+        }
+    }
+
+    pub fn average(&self, last: usize) -> f32 {
+        let mut sum = 0.0;
+        let mut cnt = 0;
+        for value in self.values.iter() {
+            sum += value;
+            cnt += 1;
+            if cnt >= last {
+                break;
+            }
+        }
+        sum / cnt as f32
+    }
+
+    pub fn values(&self, last: usize) -> &[f32] {
+        let count = std::cmp::min(self.count, self.values.len());
+        let lower = std::cmp::max(0, count as i32 - last as i32) as usize;
+        &self.values[lower..count]
+    }
+}
 
 pub fn format_number(n: i32) -> String {
     if n < 1000000 {

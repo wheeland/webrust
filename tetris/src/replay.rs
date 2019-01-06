@@ -1,5 +1,3 @@
-use super::piece;
-use super::stack;
 use super::state::*;
 
 pub struct Replayer {

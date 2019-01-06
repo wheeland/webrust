@@ -1,9 +1,21 @@
+extern crate rand;
+extern crate chrono;
+
+extern crate num;
+#[macro_use] extern crate num_derive;
+
+extern crate serde;
+extern crate serde_json;
+extern crate bincode;
+#[macro_use] extern crate serde_derive;
+
+extern crate array2d;
+
 pub mod piece;
 pub mod stack;
 pub mod game;
 pub mod state;
 pub mod replay;
-pub mod renderer;
 
 use chrono::{DateTime, Utc, Local, Timelike, Datelike};
 
