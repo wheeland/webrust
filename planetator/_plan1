@@ -1,0 +1,58 @@
+use wasm-bindgen and the examples to build some basic shit
+    - get key and mouse events
+    - make view fullscreen
+    - extend opengl renderer
+
+there we go. next up:
+    - add dear imgui, try to render this shit
+        - either: implement custom renderer for imgui-rs
+        - or: try to find glium backend for webgl
+            -> would automatically have nice GL abstractions in place
+            -> apparently they only support glutin now?
+    - need to differentiate between mouse, keyboard events that target IMGUI,
+      and those that target the actual GL scene
+
+imgui plan
+    - integrate imgui-sys into my app as workspace member
+    - add imgui, too
+
+what are my requirements
+    - opengl
+    - input
+    - c++ files
+
+so what are the different ways I failed
+    wasm32-unknown-unknown (js-hello-world)
+        - accessing the HTML5 elements via web-sys works fine
+        - opengl rendering works fine
+        - mouse and keyboard input work fine
+        - but linking a C++ library is fucked
+            -> this apparently is impossible with wasm32, as C bindings don't exist yet.
+                https://rustwasm.github.io/book/reference/which-crates-work-with-wasm.html
+                - interoperating C/C++ libraries and wasm32 is not there yet. shit.
+        - using wasm-bindgen
+            - this is a bridge between wasm and JS calls
+            -> so the rust/wasm functions are exported to JS, and can be called from HTML
+            -> and the JS functions are imported into rust/wasm
+            -> this is the web-sys like WebGlRenderingContext
+    asm.js with emscripten-sys (rust-webgl2-example)
+        - many of the API doens't seem to exist.
+        - in emscripten-sys the function isn't there, when we add it by hand, we get a runtime error
+          that it's not found
+        - applies to both wasm32-unknown-emscripten and asmjs-unknown-emscripten
+        - this is kinda the same size as the C++ asm.js-enscripten imgui/SDL example
+    SDL (rust_to_js)
+        - this works fine as a C++ application
+        - kinda the same app in rust yields an exception: invalid renderer
+        - the C++ native version supports imgui out of the box <3
+
+what are the ways to reduce size, while being able to use imgui?
+    - try the simplest SDL + webGL thing possible
+    - try asm.js without SDL, but calling web-sys
+        - https://stackoverflow.com/questions/40904053/using-webassembly-to-call-web-api-methods
+    - 
+
+other possibility: drop imgui.
+    - could add another 'backend' for WebRunner on wasm32
+    - can add personal gl:: module that takes a static WebGLRenderingContext and provides
+      proper GL-ish functions and exposes them

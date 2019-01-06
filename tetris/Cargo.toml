@@ -1,0 +1,36 @@
+[package]
+name = "tetris"
+version = "0.1.0"
+authors = ["Wieland Hagen <wieland.hagen@kdab.com>"]
+
+[profile.release]
+opt-level = "z"
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+panic = 'abort'
+ncremental = false
+overflow-checks = false
+
+[dependencies]
+rand = "^0"
+num = "^0"
+num-traits = "^0"
+num-derive = "^0"
+sdl2 = "^0"
+gl = "0.10.0"
+cgmath = "0.16.1"
+chrono = { version = "0.4.0", features = ["serde"] }
+imgui = { version = "0.0.20", path = "../../imgui-rs" }
+webhelper = { version = "0.1.0", path = "../webhelper" }
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+bincode = "1.0"
+
+[build-dependencies]
+cc = "1.0"
+
+[target.'cfg(target_os = "emscripten")'.dependencies]
+emscripten-sys = "0.3.2"

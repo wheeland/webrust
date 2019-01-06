@@ -1,0 +1,85 @@
+add a 'runner' class that 
+    - creates the webgl context, initializes SDL, sets up the main loop
+    - takes a type T that implements 'WebApp' trait with the usual stuff:
+        fn initialize()
+        fn render()
+        fn event()
+    -> this can be used to add shit
+
+how to tree
+    1. add simple refinement based on position (all visible)
+    2. add frustum culling
+    3. add caching
+    - done.
+
+planetator, generator, und fragment-kolorator
+
+next up
+    - user-defined textures to be generated from the VS generator
+    - normals texture fuckup
+        - is this an accuracy problem in the normals shader?
+        - if so: will this also affect the roughness map?
+        -> we can change the way normals are calculated
+            - calculate tile-local normal based on height-diffs
+            - then transform that normal via mat3 into global space, based on tile vertex normal
+            -> this way, there are no small numbers being subtracted
+
+now that we have a solid planet rendering engine with all the technical features, it's time to build a product:
+    - 3-4 shader windows:
+        - height generator
+        - additional texture generator (user-defined textures)
+        - kolorator
+        - (shiftator)
+        - with a seperate small header pane: inputs and outputs
+    - load/save to file, to/from cookie
+    - window to add/remove user defined textures
+    - hotkeys to toggle between these
+    - add external textures (from URL or HDD)
+    - "live versioning", i.e. save current work under name (with screenshot!!)
+
+    actual nice rendering
+        - athmosphere, color+height+density adjustable
+        - stars
+        - sun with lens-flare
+        - load external textures
+
+UI concept
+    - render stats unten links: FPS, triangles, plates
+    - render options oben rechts: boxes + detail
+    - eigenes window: planet configuration
+        - platesize, radius, textures
+    - just leave the shader generators free-floating? let everybody have the workspace that they want!
+    - can close the windows, open them again in the planet configurator
+    - introduction go-through popups. the is the planetator! okay.... / shut up!
+
+moving sun + glUniform only on change
+
+wireframe
+    - wireframe mode entirely in the fragment shader
+        - per-tile: interpolate from tileCoords
+        - per-triangle: interpolate from fract(tileCoords * texSize)
+        - in both cases: make dependent on distance from camera -> different thickness + alpha
+    - this shit doesn't work, as it doesn't render the optimization correctly!!
+
+load/save
+    - save generators + channels to base64 string
+    - load: show button, poll for loaded
+        - need to crete a FileReader, install an event handler callback
+        - from that handler we can 
+    - save:
+
+HTLM todo
+    - overlay invisible HTML load-button on top of imgui
+    - copy/paste
+
+ideas
+    waves
+        - add vertex shader (shiftator) to UI
+        - make sure that underwater heights are always converging towards the shore in the generator
+        - in the shiftator, limit to max(0.0, height)
+        - based on the normal we get the direction to the nearest shore
+        - apply texture motion based on that (time uniform)
+    overlapping cliffs
+        - along a cliffline, in the generator, calculate a per-vertex offset where the cliff faces
+        - in the shiftator, shift towards that direction -> cliff will go over the underlying vertex
+    

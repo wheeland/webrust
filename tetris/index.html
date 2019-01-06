@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8"/>
+        <title></title>
+        <style>
+            canvas { width: 100vw; height: 100vh; border: 0px none; background-color: black; }
+            body {    
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            html {
+               overflow-y: hidden;
+            }
+        </style>
+    </head>
+    <body>
+        <input type="file" id="state"/>
+        <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+        <script>
+            var Module = {
+            canvas: document.querySelector('canvas')
+            }
+        </script>
+        <script type="text/javascript" src="target/asmjs-unknown-emscripten/release/tetris.js"></script>
+    </body>
+</html>
