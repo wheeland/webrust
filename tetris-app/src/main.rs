@@ -3,8 +3,14 @@ extern crate sdl2;
 extern crate imgui;
 extern crate cgmath;
 extern crate appbase;
+extern crate webutil;
 extern crate tetris;
 extern crate rand;
+
+extern crate serde;
+extern crate base64;
+extern crate bincode;
+#[macro_use] extern crate serde_derive;
 
 use imgui::*;
 use sdl2::event::Event;
@@ -14,6 +20,7 @@ use appbase::webrunner;
 
 mod renderer;
 mod util;
+mod client;
 
 enum State {
     MainMenu,

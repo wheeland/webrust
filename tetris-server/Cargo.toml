@@ -1,17 +1,13 @@
 [package]
-name = "tetris"
+name = "tetris-server"
 version = "0.1.0"
 authors = ["Wieland Hagen <wieland.hagen@kdab.com>"]
 
 [dependencies]
-array2d = { version = "^0", path = "../array2d" }
 base64 = "0.10.0"
 bincode = "1.0"
-chrono = { version = "0.4.0", features = ["serde"] }
-num = "^0"
-num-traits = "^0"
-num-derive = "^0"
-rand = "^0.6"
 serde = "1.0"
 serde_json = "1.0"
 serde_derive = "1.0"
+tetris = { version = "^0", path = "../tetris" }
+webutil = { version = "^0", path = "../webutil" }

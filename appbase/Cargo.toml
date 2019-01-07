@@ -11,9 +11,5 @@ imgui = { version = "0.0.20", path = "../../imgui-rs" }
 imgui-sdl2 = { version = "0.2.3", path = "../../imgui-sdl2" }
 tinygl = { version = "^0", path = "../tinygl" }
 
-[build-dependencies]
-cc = "1.0"
-
 [target.'cfg(target_os = "emscripten")'.dependencies]
 emscripten-sys = "0.3.2"
-

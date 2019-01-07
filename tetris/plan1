@@ -11,4 +11,11 @@ API
         -> send user-name + password + replay
         - check at server if the score etc. is correct
 
+steps
+    - wrapper around HTTP send/post
+        - test
+    - user+database management
+        in libtetris
 
+wtf curl / emscripten
+    emscripten:

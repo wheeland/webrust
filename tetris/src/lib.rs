@@ -4,6 +4,7 @@ extern crate chrono;
 extern crate num;
 #[macro_use] extern crate num_derive;
 
+extern crate base64;
 extern crate serde;
 extern crate serde_json;
 extern crate bincode;
@@ -16,6 +17,7 @@ pub mod stack;
 pub mod game;
 pub mod state;
 pub mod replay;
+pub mod networking;
 
 use chrono::{DateTime, Utc, Local, Timelike, Datelike};
 

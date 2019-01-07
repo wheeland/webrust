@@ -15,13 +15,19 @@ overflow-checks = false
 
 [dependencies]
 appbase = { version = "^0", path = "../appbase" }
-tetris = { version = "^0", path = "../tetris" }
-tinygl = { version = "^0", path = "../tinygl" }
+base64 = "0.10.0"
+bincode = "1.0"
+cgmath = "0.16.1"
+gl = "0.10.0"
+imgui = { version = "0.0.20", path = "../../imgui-rs" }
 rand = "^0.6"
 sdl2 = "^0"
-gl = "0.10.0"
-cgmath = "0.16.1"
-imgui = { version = "0.0.20", path = "../../imgui-rs" }
+serde = "1.0"
+serde_json = "1.0"
+serde_derive = "1.0"
+tetris = { version = "^0", path = "../tetris" }
+tinygl = { version = "^0", path = "../tinygl" }
+webutil = { version = "^0", path = "../webutil" }
 
 [build-dependencies]
 cc = "1.0"
