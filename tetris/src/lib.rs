@@ -71,6 +71,11 @@ impl Config {
     }
 }
 
+// TODO: reduce Replay size:
+// - replace timestamp with "u8 delta timestamp to last entry"
+// - enumerate all actions: move { -x, +x, -y, +y, rotl, rotr, merge{drop 0..20}, next, nextpiece }
+// -> 12 byte per entry
+
 #[derive(PartialEq, Clone, Debug)]
 #[derive(Serialize, Deserialize)]
 enum ReplayEntry {
