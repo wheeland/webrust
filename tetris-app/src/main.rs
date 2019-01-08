@@ -54,6 +54,8 @@ struct TetrisApp {
 
     rotl: bool,
     rotr: bool,
+
+    requests: Vec<client::Request>,
 }
 
 impl TetrisApp {
@@ -61,6 +63,9 @@ impl TetrisApp {
         let last_breath = game.snapshot();
         self.savegame.add(game.replay().clone(), self.playername.clone(), last_breath.score(), last_breath.level());
         self.savegame.save("tetris.bin");
+
+        let server = client::ServerConfig::new();
+        self.requests.push(server.upload_replay(&self.playername, game.replay()));
     }
 
     fn window<'ui,'p>(&self, ui: &'ui imgui::Ui, name: &'p ImStr, pos: (f32, f32), size: (f32, f32), font_scale: f32) -> Window<'ui, 'p> {
@@ -94,6 +99,7 @@ impl webrunner::WebApp for TetrisApp {
             ),
             rotl: false,
             rotr: false,
+            requests: Vec::new(),
         }
     }
 
@@ -112,6 +118,21 @@ impl webrunner::WebApp for TetrisApp {
         }
 
         self.renderer.clear();
+
+        self.requests.retain(|request| {
+            match request.response() {
+                client::Response::Waiting => true,
+                client::Response::HttpError(err) => false,
+                client::Response::ParseError(err) => {
+                    println!("ParseError: {}", err);
+                    false
+                }
+                client::Response::Success(msg) => {
+                    println!("Message: {:?}", msg);
+                    false
+                }
+            }
+        });
 
         // Advance running game?
         let mut bg = false;

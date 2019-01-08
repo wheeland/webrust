@@ -10,6 +10,7 @@ $descriptors = array(
 
 $proc = proc_open("./tetris-server", $descriptors, $pipes);
 fwrite($pipes[0], "$msg");
+fwrite($pipes[0], file_get_contents('php://input'));
 fclose($pipes[0]);
 
 $stdout = stream_get_contents($pipes[1]);

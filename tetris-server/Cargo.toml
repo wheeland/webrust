@@ -6,6 +6,8 @@ authors = ["Wieland Hagen <wieland.hagen@kdab.com>"]
 [dependencies]
 base64 = "0.10.0"
 bincode = "1.0"
+chrono = { version = "0.4.0", features = ["serde"] }
+rusqlite = "0.16.0"
 serde = "1.0"
 serde_json = "1.0"
 serde_derive = "1.0"

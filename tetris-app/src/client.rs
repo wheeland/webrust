@@ -96,6 +96,13 @@ impl ServerConfig {
         }
     }
 
+    pub fn upload_replay(&self, name: &str, replay: &tetris::Replay) -> Request {
+        self.post(ServerMessage::UploadReplay {
+            name: name.to_string(),
+            replay: replay.clone(),
+        })
+    }
+
     pub fn create_account(&self, user: &str, pass: &str) -> Request {
         self.get(ServerMessage::CreateAccount {
             namepass: self.encode(&(user, pass))

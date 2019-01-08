@@ -29,11 +29,16 @@ pub enum ServerMessage {
     Login {
         namesalthashpass: Vec<u8>,
     },
+    UploadReplay {
+        name: String,
+        replay: super::Replay,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerAnswer {
     InvalidMessage(String),
+    ServerError(String),
     CreateAccountResult {
         error: Option<String>,
     },
@@ -42,5 +47,6 @@ pub enum ServerAnswer {
     },
     LoginResult {
         error: Option<String>,
-    }
+    },
+    UploadResult(bool)
 }
