@@ -146,6 +146,14 @@ impl Replay {
     }
 }
 
+impl std::fmt::Debug for Replay {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Replay{{entries={}, time={}s}}", 
+                self.data.len(), 
+                self.data.last().map(|e| e.time()).unwrap_or(0) as f32 / 1000.0)
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct PlayedGame {
     // TODO: optimize data buffering, don't use replay, but custom Vec<u32> format
@@ -157,6 +165,16 @@ pub struct PlayedGame {
 }
 
 impl PlayedGame {
+    pub fn new(replay: Replay, name: String, score: i32, level: i32) -> Self {
+        PlayedGame {
+            replay,
+            name,
+            utc: Utc::now(),
+            score,
+            level
+        }
+    }
+
     pub fn replay(&self) -> &Replay { &self.replay }
     pub fn name(&self) -> String { self.name.clone() }
     pub fn score(&self) -> i32 { self.score }
@@ -197,13 +215,7 @@ impl Savegame {
     }
 
     pub fn add(&mut self, replay: Replay, name: String, score: i32, level: i32) {
-        self.games.push(PlayedGame {
-            replay,
-            name,
-            utc: Utc::now(),
-            score,
-            level
-        });
+        self.games.push(PlayedGame::new(replay, name, score, level));
     }
 
     pub fn by_score(&self) -> Vec<&PlayedGame> {
