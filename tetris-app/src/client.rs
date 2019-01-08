@@ -54,6 +54,8 @@ impl Request {
             return Response::Waiting;
         }
 
+        // TODO: timeout?
+
         if *data.last().unwrap() != 0 {
             data.push(0);
         }
@@ -88,7 +90,6 @@ impl ServerConfig {
     fn get(&self, message: ServerMessage) -> Request {
         let message = encode(&message);
         let check = decode::<ServerMessage>(&message).unwrap();
-        println!("'{}'", message);
 
         Request {
             fetch: httpclient::Fetch::get(&format!("action.php?msg={}", message))
