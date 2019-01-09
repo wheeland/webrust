@@ -123,34 +123,6 @@ impl Piece {
                     false, false, false, false,
                     false, false, false, false,
                     false, true , true , true ,
-                    false, false, false, true ,
-                ],
-                1 => [
-                    false, false, false, false,
-                    false, false, true , false,
-                    false, false, true , false,
-                    false, true , true , false,
-                ],
-                2 => [
-                    false, false, false, false,
-                    false, true , false, false,
-                    false, true , true , true ,
-                    false, false, false, false,
-                ],
-                3 => [
-                    false, false, false, false,
-                    false, false, true , true ,
-                    false, false, true , false,
-                    false, false, true , false,
-                ],
-                _ => unreachable!("Piece Orientation does not compute")
-            }
-
-            Type::L => match self.orientation % 4 {
-                0 => [
-                    false, false, false, false,
-                    false, false, false, false,
-                    false, true , true , true ,
                     false, true , false, false,
                 ],
                 1 => [
@@ -170,6 +142,34 @@ impl Piece {
                     false, false, true , false,
                     false, false, true , false,
                     false, false, true , true ,
+                ],
+                _ => unreachable!("Piece Orientation does not compute")
+            }
+
+            Type::L => match self.orientation % 4 {
+                0 => [
+                    false, false, false, false,
+                    false, false, false, false,
+                    false, true , true , true ,
+                    false, false, false, true ,
+                ],
+                1 => [
+                    false, false, false, false,
+                    false, false, true , false,
+                    false, false, true , false,
+                    false, true , true , false,
+                ],
+                2 => [
+                    false, false, false, false,
+                    false, true , false, false,
+                    false, true , true , true ,
+                    false, false, false, false,
+                ],
+                3 => [
+                    false, false, false, false,
+                    false, false, true , true ,
+                    false, false, true , false,
+                    false, false, true , false,
                 ],
                 _ => unreachable!("Piece Orientation does not compute")
             }
