@@ -118,22 +118,43 @@ impl Renderer {
         );
     }
 
-    pub fn new(pos_field: Rectangle, pos_next: Rectangle, pos_info: Rectangle, pos_stats: Rectangle) -> Self {
+    fn gen_level_colors() -> Vec<[Vector3<f32>; 7]> {
         let rng = std::cell::RefCell::new(rand::rngs::SmallRng::from_seed([0,1,2,3,4,5,6,7,8,9,9,8,7,6,5,4]));
+        let rng = std::cell::RefCell::new(rand::rngs::OsRng::new().unwrap());
         let rnd = |min: f32, max: f32| { min + (max-min) * rng.borrow_mut().gen::<f32>() };
 
+        // level 0 base colors
+        let base = [
+            Vector3::new(1.0, 1.0, 0.0),
+            Vector3::new(0.0, 1.0, 1.0),
+            Vector3::new(1.0, 0.0, 1.0),
+            Vector3::new(1.0, 0.5, 0.0),
+            Vector3::new(0.0, 0.0, 1.0),
+            Vector3::new(0.0, 1.0, 0.0),
+            Vector3::new(1.0, 0.0, 0.0),
+        ];
+
         let mut piece_colors = Vec::new();
-        for _i in 0..30 {
-            let base = rnd(0.0, 360.0);
-            let base = util::hsv(base, 0.7, 0.7);
 
-            let a = 0.5 * base + 0.5 * cgmath::Vector3::new(rnd(0.0, 1.0), rnd(0.0, 1.0), rnd(0.0, 1.0));
-            let b = 0.5 * base + 0.5 * cgmath::Vector3::new(rnd(0.0, 1.0), rnd(0.0, 1.0), rnd(0.0, 1.0));
-            let c = 0.5 * base + 0.5 * cgmath::Vector3::new(rnd(0.0, 1.0), rnd(0.0, 1.0), rnd(0.0, 1.0));
+        for lvl in 0..100 {
+            let col = util::hsv(rnd(0.0, 360.0), rnd(0.4, 0.8), 1.0);
+            let ratio = (1.0 - 0.1 * lvl as f32).max(0.17);
+            let fac = 0.7;
+            piece_colors.push([
+                fac * (ratio * base[0] + (1.0 - ratio) * col),
+                fac * (ratio * base[1] + (1.0 - ratio) * col),
+                fac * (ratio * base[2] + (1.0 - ratio) * col),
+                fac * (ratio * base[3] + (1.0 - ratio) * col),
+                fac * (ratio * base[4] + (1.0 - ratio) * col),
+                fac * (ratio * base[5] + (1.0 - ratio) * col),
+                fac * (ratio * base[6] + (1.0 - ratio) * col),
+            ]);
+        };
 
-            piece_colors.push([a, a, a, b, c, c, b]);
-        }
+        piece_colors
+    }
 
+    pub fn new(pos_field: Rectangle, pos_next: Rectangle, pos_info: Rectangle, pos_stats: Rectangle) -> Self {
         Renderer {
             timestamp: 0,
             state: None,
@@ -207,7 +228,7 @@ impl Renderer {
                 1, 7, 3,    1, 5, 7     // +z
             )),
 
-            piece_colors,
+            piece_colors: Self::gen_level_colors(),
         }
     }
 
@@ -218,6 +239,10 @@ impl Renderer {
 
     pub fn clear(&mut self) {
         self.state = None;
+    }
+
+    pub fn gen_new_colors(&mut self) {
+        self.piece_colors = Self::gen_level_colors();
     }
 
     fn collect_blocks(&self) -> BlockBuffers {

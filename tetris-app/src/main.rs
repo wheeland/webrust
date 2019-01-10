@@ -270,6 +270,7 @@ impl webrunner::WebApp for TetrisApp {
                 self.window(ui, im_str!("pregame_start"), (mb1x, mby), (mbw, mbh), 2.0).build(|| {
                     ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
                     if ui.button(im_str!("Start"), ((mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
+                        self.renderer.gen_new_colors();
                         ret = Some(State::Game {
                             game: tetris::game::Game::new(&self.config),
                             paused: false,
