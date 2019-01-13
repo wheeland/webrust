@@ -94,7 +94,7 @@ impl Replay {
         &self.config
     }
 
-    fn frames(&self) -> usize {
+    pub fn frames(&self) -> usize {
         self.time
     }
 }

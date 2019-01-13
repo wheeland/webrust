@@ -4,6 +4,7 @@ use webutil::curve25519;
 use tetris::networking::*;
 
 pub struct ServerConfig {
+    idtag: String,
     publickey: [u8; 32],
 }
 
@@ -15,7 +16,8 @@ impl ServerConfig {
                 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0,
-            ]
+            ],
+            idtag: String::new(),
         }
     }
 }
@@ -82,36 +84,41 @@ impl ServerConfig {
     }
 
     fn post(&self, message: ServerMessage) -> Request {
+        let message = encode(&message);
         Request {
-            fetch: httpclient::Fetch::post("action.php", &encode(&message))
+            fetch: httpclient::Fetch::post("action.php", &message)
         }
     }
 
     fn get(&self, message: ServerMessage) -> Request {
         let message = encode(&message);
-        let check = decode::<ServerMessage>(&message).unwrap();
-
+        let request = format!("action.php?msg={}", message);
         Request {
-            fetch: httpclient::Fetch::get(&format!("action.php?msg={}", message))
+            fetch: httpclient::Fetch::get(&request)
         }
+    }
+
+    pub fn request_scores(&self, by_score: bool, local: bool) -> Request {
+        let idtag = if local { Some(self.idtag.clone()) } else { None };
+        self.post(ServerMessage::RequestHighscores {
+            by_score,
+            idtag,
+            from: 0,
+            to: 0,
+        })
     }
 
     pub fn upload_replay(&self, name: &str, replay: &tetris::replay::Replay) -> Request {
         self.post(ServerMessage::UploadReplay {
             name: name.to_string(),
+            idtag: self.idtag.clone(),
             replay: replay.clone(),
         })
     }
 
-    pub fn create_account(&self, user: &str, pass: &str) -> Request {
-        self.get(ServerMessage::CreateAccount {
-            namepass: self.encode(&(user, pass))
-        })
-    }
-
-    pub fn request_salt(&self, user: &str) -> Request {
-        self.get(ServerMessage::SaltRequest {
-            name: self.encode(&user)
+    pub fn request_replay(&self, id: usize) -> Request {
+        self.post(ServerMessage::RequestReplays {
+            ids: vec!(id)
         })
     }
 }

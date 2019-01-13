@@ -9,14 +9,14 @@ extern crate bincode;
 extern crate rusqlite;
 extern crate chrono;
 
-mod server;
-
 use tetris::networking::*;
 use std::io::Read;
 use std::error::Error;
 
 use rusqlite::types::ToSql;
 use rusqlite::{Connection, NO_PARAMS};
+
+use chrono::TimeZone;
 
 fn open_database(path: &str) -> Result<Connection, String> {
     let exists = std::path::Path::new(path).exists();
@@ -30,12 +30,12 @@ fn open_database(path: &str) -> Result<Connection, String> {
             "CREATE TABLE replay (
                 id          INTEGER PRIMARY KEY,
                 name        TEXT NOT NULL,
+                idtag       TEXT NOT NULL,
                 timestamp   INTEGER,
-                startLevel  INTEGER,
                 score       INTEGER,
                 endLevel    INTEGER,
                 game        BLOB
-            )", 
+            )",
             NO_PARAMS
         ).map_err(|err| String::from("Creation failed: ") + err.description())?;
     }
@@ -48,22 +48,7 @@ fn process(message: ServerMessage) -> Result<ServerAnswer, String> {
     let db = open_database("tetris.sqlite")?;
 
     let ret = match message {
-        ServerMessage::CreateAccount { namepass } => {
-            ServerAnswer::CreateAccountResult {
-                error: None,
-            }
-        },
-        ServerMessage::SaltRequest { name } => {
-            ServerAnswer::Salt {
-                salt: Vec::new(),
-            }
-        },
-        ServerMessage::Login { namesalthashpass } => {
-            ServerAnswer::LoginResult {
-                error: None,
-            }
-        },
-        ServerMessage::UploadReplay { name, replay } => {
+        ServerMessage::UploadReplay { name, idtag, replay } => {
             // re-play to find out score and final level
             let mut replayer = tetris::replay::Replayer::new(&replay);
             let len = replayer.length();
@@ -73,18 +58,83 @@ fn process(message: ServerMessage) -> Result<ServerAnswer, String> {
             let now = chrono::Utc::now().timestamp();
             let game = bincode::serialize(&replay).unwrap();
 
+            // get new ID
+            let id: i32 = db.query_row_and_then(
+                "SELECT MAX(id) FROM replay",
+                NO_PARAMS,
+                |row| row.get_checked(0)
+            ).unwrap_or(0) + 1;
+
             db.execute(
-                "INSERT INTO replay (name, timestamp, startLevel, endLevel, score, game) 
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO replay (id, name, idtag, timestamp, endLevel, score, game)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                  &[
-                     &name as &ToSql, &now, &replay.config().level, &state.level(), &state.score(), &game
+                     &id, &name as &ToSql, &idtag as &ToSql, &now, &state.level(), &state.score(), &game
                  ]
             ).map_err(|err| String::from("INSERT failed: ") + &err.description())?;
 
             let close = db.close().map_err(|err| err.1.description().to_string())?;
 
-            ServerAnswer::UploadResult(true)
-        }
+            let game = tetris::PlayedGame::new(id as usize, chrono::Utc::now(), name, state.score(), replay.config().level, state.level(), len);
+            ServerAnswer::UploadResult(Some(game))
+        },
+
+        ServerMessage::RequestHighscores { by_score, idtag, from, to } => {
+            let query = format!(
+                "SELECT id, name, timestamp, endLevel, score, game
+                FROM replay
+                ORDER BY {} DESC", if by_score { "score" } else { "timestamp" });
+
+            let mut stmt = db
+                .prepare(&query)
+                .map_err(|err| String::from("SELECT failed: ") + &err.description())?;
+
+            let iter = stmt
+                .query_map(NO_PARAMS, |row| {
+                    let id: i32 = row.get(0);
+                    let ts = chrono::Utc.timestamp(row.get(2), 0);
+                    let replay: Vec<u8> = row.get(5);
+                    let replay = bincode::deserialize::<tetris::replay::Replay>(&replay).unwrap();
+
+                    tetris::PlayedGame::new(
+                        id as usize,
+                        ts,
+                        row.get(1),
+                        row.get(4),
+                        replay.config().level,
+                        row.get(3),
+                        replay.frames() as f32 / 1000.0
+                    )
+                })
+                .map_err(|err| String::from("query_map failed: ") + &err.description())?;
+
+            let mut ret = Vec::new();
+            for game in iter {
+                ret.push(game.unwrap());
+            }
+
+            ServerAnswer::HighscoreList {
+                by_score,
+                idtagged: false,
+                from,
+                to,
+                data: ret
+            }
+        },
+
+        ServerMessage::RequestReplays { ids } => {
+            let id = ids[0] as i32;
+
+            let replay: Vec<u8> = db
+                .query_row_and_then("SELECT game FROM replay WHERE id = ?1", &[&id], |row| row.get_checked(0))
+                .map_err(|err| String::from("SELECT failed: ") + &err.description())?;
+
+            let replay = bincode::deserialize::<tetris::replay::Replay>(&replay).unwrap();
+
+            ServerAnswer::ReplayList {
+                data: vec!((id as usize, replay))
+            }
+        },
     };
 
     Ok(ret)
@@ -100,7 +150,7 @@ fn main() {
         None => ServerAnswer::InvalidMessage(format!("Couldn't parse {} bytes", data.len())),
         Some(request) => {
             match process(request) {
-                Err(err) => ServerAnswer::ServerError(String::new()),
+                Err(err) => ServerAnswer::ServerError(String::from(err)),
                 Ok(ret) => ret,
             }
         }

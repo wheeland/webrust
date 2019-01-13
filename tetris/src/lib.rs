@@ -71,30 +71,36 @@ impl Config {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayedGame {
-    replay: replay::Replay,
     name: String,
-    utc: DateTime<Utc>,
+    utc: chrono::DateTime<chrono::Utc>,
     score: i32,
-    level: i32,
+    start_level: i32,
+    end_level: i32,
+    duration: f32,
+    replay_id: usize,
 }
 
 impl PlayedGame {
-    pub fn new(replay: replay::Replay, name: String, score: i32, level: i32) -> Self {
+    pub fn new(replay_id: usize, utc: DateTime<Utc>, name: String, score: i32, start_level: i32, end_level: i32, duration: f32) -> Self {
         PlayedGame {
-            replay,
             name,
-            utc: Utc::now(),
+            utc,
             score,
-            level
+            start_level,
+            end_level,
+            replay_id,
+            duration
         }
     }
 
-    pub fn replay(&self) -> &replay::Replay { &self.replay }
+    pub fn replay(&self) -> &usize { &self.replay_id }
     pub fn name(&self) -> String { self.name.clone() }
     pub fn score(&self) -> i32 { self.score }
-    pub fn level(&self) -> i32 { self.level }
+    pub fn start_level(&self) -> i32 { self.start_level }
+    pub fn end_level(&self) -> i32 { self.end_level }
+    pub fn duration(&self) -> f32 { self.duration }
     pub fn utc(&self) -> DateTime<Utc> { self.utc }
     pub fn time_str(&self) -> String {
         let now = Local::now();
@@ -104,45 +110,5 @@ impl PlayedGame {
         } else {
             format!("{}-{:02}-{:02}", t.date().year(), t.date().month(), t.date().day())
         }
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Savegame {
-    games: Vec<PlayedGame>,
-}
-
-impl Savegame {
-    pub fn load(path: &str) -> Self {
-        if let Ok(data) = std::fs::read(path) {
-            if let Ok(game) = bincode::deserialize(&data) {
-                return game;
-            }
-        }
-        Savegame {
-            games: Vec::new()
-        }
-    }
-
-    pub fn save(&self, path: &str) {
-        if let Ok(data) = bincode::serialize(self) {
-            std::fs::write(path, data);
-        }
-    }
-
-    pub fn add(&mut self, replay: replay::Replay, name: String, score: i32, level: i32) {
-        self.games.push(PlayedGame::new(replay, name, score, level));
-    }
-
-    pub fn by_score(&self) -> Vec<&PlayedGame> {
-        let mut ret: Vec<&PlayedGame> = self.games.iter().collect();
-        ret.sort_by(|a, b| b.score.cmp(&a.score));
-        ret
-    }
-
-    pub fn by_date(&self) -> Vec<&PlayedGame> {
-        let mut ret: Vec<&PlayedGame> = self.games.iter().collect();
-        ret.sort_by(|a, b| b.utc.cmp(&a.utc));
-        ret
     }
 }

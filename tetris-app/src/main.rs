@@ -17,6 +17,7 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::keyboard::Mod;
 use appbase::webrunner;
+use std::collections::HashMap;
 
 mod renderer;
 mod util;
@@ -36,6 +37,7 @@ enum State {
     Highscores {
         selected: Option<usize>,
         sort_by_score: bool,
+        global: bool,
     }
 }
 
@@ -46,7 +48,6 @@ struct TetrisApp {
     ui_scale: f32,
 
     ui: Option<State>,
-    savegame: tetris::Savegame,
     config: tetris::Config,
     playername: String,
 
@@ -55,17 +56,20 @@ struct TetrisApp {
     rotl: bool,
     rotr: bool,
 
+    server: client::ServerConfig,
     requests: Vec<client::Request>,
+
+    scores_global: Vec<tetris::PlayedGame>,
+    scores_local: Vec<tetris::PlayedGame>,
+    last_global: Vec<tetris::PlayedGame>,
+    last_local: Vec<tetris::PlayedGame>,
+
+    replays: HashMap<usize, tetris::replay::Replay>
 }
 
 impl TetrisApp {
     fn save(&mut self, game: &tetris::game::Game) {
-        let last_breath = game.snapshot();
-        self.savegame.add(game.replay().clone(), self.playername.clone(), last_breath.score(), last_breath.level());
-        self.savegame.save("tetris.bin");
-
-        let server = client::ServerConfig::new();
-        self.requests.push(server.upload_replay(&self.playername, game.replay()));
+        self.requests.push(self.server.upload_replay(&self.playername, game.replay()));
     }
 
     fn window<'ui,'p>(&self, ui: &'ui imgui::Ui, name: &'p ImStr, pos: (f32, f32), size: (f32, f32), font_scale: f32) -> Window<'ui, 'p> {
@@ -78,17 +82,61 @@ impl TetrisApp {
             .collapsible(false)
             .font_scale(font_scale * self.ui_scale)
     }
+
+    fn process_finished_requests(&mut self) {
+        let mut answers = Vec::new();
+
+        self.requests.retain(|request| {
+            match request.response() {
+                client::Response::Waiting => true,
+                client::Response::HttpError(err) => {
+                    println!("HttpError: {}", err);
+                    false
+                }
+                client::Response::ParseError(err) => {
+                    println!("ParseError: {}", err);
+                    false
+                }
+                client::Response::Success(msg) => {
+                    answers.push(msg);
+                    false
+                }
+            }
+        });
+
+        for msg in answers {
+            match msg {
+                tetris::networking::ServerAnswer::InvalidMessage(err) => println!("{:?}", err),
+                tetris::networking::ServerAnswer::ServerError(err) => println!("{:?}", err),
+                tetris::networking::ServerAnswer::HighscoreList { by_score, idtagged, from, to, data } => {
+                    let mut dst = if idtagged {
+                        if by_score { &mut self.scores_local } else { &mut self.last_local }
+                    } else {
+                        if by_score { &mut self.scores_global } else { &mut self.last_global }
+                    };
+                    dst.clone_from(&data);
+                    println!("{} {} {}", by_score, idtagged, dst.len());
+                },
+                tetris::networking::ServerAnswer::ReplayList { data } => {
+                    for r in data {
+                        self.replays.insert(r.0, r.1);
+                    }
+                }
+                tetris::networking::ServerAnswer::UploadResult(result) => {
+                }
+            };
+        }
+    }
 }
 
 impl webrunner::WebApp for TetrisApp {
     fn new(windowsize: (u32, u32)) -> Self {
-        TetrisApp {
+        let mut ret = TetrisApp {
             windowsize: (windowsize.0 as f32, windowsize.1 as f32),
             fixedsize: (710.0, 650.0),
             ui_scale: 1.0,
             ui_center: (0.5 * windowsize.0 as f32, 0.5 * windowsize.1 as f32),
             ui: Some(State::MainMenu),
-            savegame: tetris::Savegame::load("tetris.bin"),
             config: tetris::Config::new(),
             playername: String::from("Wheelie :)"),
             renderer: renderer::Renderer::new(
@@ -99,8 +147,21 @@ impl webrunner::WebApp for TetrisApp {
             ),
             rotl: false,
             rotr: false,
+            server: client::ServerConfig::new(),
             requests: Vec::new(),
-        }
+            scores_global: Vec::new(),
+            scores_local: Vec::new(),
+            last_global: Vec::new(),
+            last_local: Vec::new(),
+            replays: HashMap::new(),
+        };
+
+        ret.requests.push(ret.server.request_scores(false, false));
+        ret.requests.push(ret.server.request_scores(false, true));
+        ret.requests.push(ret.server.request_scores(true, false));
+        ret.requests.push(ret.server.request_scores(true, true));
+
+        ret
     }
 
     fn resize(&mut self, size: (u32, u32)) {
@@ -119,20 +180,8 @@ impl webrunner::WebApp for TetrisApp {
 
         self.renderer.clear();
 
-        self.requests.retain(|request| {
-            match request.response() {
-                client::Response::Waiting => true,
-                client::Response::HttpError(err) => false,
-                client::Response::ParseError(err) => {
-                    println!("ParseError: {}", err);
-                    false
-                }
-                client::Response::Success(msg) => {
-                    println!("Message: {:?}", msg);
-                    false
-                }
-            }
-        });
+        // go through server responses
+        self.process_finished_requests();
 
         // Advance running game?
         let mut bg = false;
@@ -154,7 +203,7 @@ impl webrunner::WebApp for TetrisApp {
                 self.renderer.set_state(replayer.timestamp(), replayer.snapshot());
                 State::Replay{replayer}
             },
-            State::Highscores{selected, sort_by_score} => { bg = true; State::Highscores{selected, sort_by_score} },
+            State::Highscores{selected, sort_by_score, global} => { bg = true; State::Highscores{selected, sort_by_score, global} },
             State::MainMenu => { bg = true; State::MainMenu },
             State::PreGame => { bg = true; State::PreGame },
         });
@@ -196,13 +245,13 @@ impl webrunner::WebApp for TetrisApp {
                 self.window(ui, im_str!("mainmenu_highscores"), (mb2x, mby), (mbw, mbh), 2.0).build(|| {
                     ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
                     if ui.button(im_str!("Highscores"), ((mbw - 40.0) * self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
-                        ret = State::Highscores{selected: None, sort_by_score: true};
+                        ret = State::Highscores{selected: None, sort_by_score: true, global: true};
                     }
                 });
                 ret
             },
 
-            State::Highscores{mut selected, mut sort_by_score} => {
+            State::Highscores{mut selected, mut sort_by_score, mut global} => {
                 let mut ret = None;
 
                 self.window(ui, im_str!("highscores_back"), (mb2x, mby), (mbw, mbh), 2.0).build(|| {
@@ -213,25 +262,42 @@ impl webrunner::WebApp for TetrisApp {
                 });
 
                 self.window(ui, im_str!("highscores_list"), (mb1x, mby - 150.0), (mb2x - mb1x, mbh + 300.0), 1.2).build(|| {
-                    let scores = if sort_by_score { self.savegame.by_score() } else { self.savegame.by_date() };
+                    // get high-score list
+                    let scores = if global {
+                        if sort_by_score { &self.scores_global } else { &self.last_global }
+                    } else {
+                        if sort_by_score { &self.scores_local } else { &self.last_local }
+                    };
 
                     ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
-                    if ui.button(im_str!("By Score##highscores"), (100.0 * self.ui_scale, 30.0 * self.ui_scale)) {
-                        sort_by_score = true;
+                    let btn = if sort_by_score { "By Score##highscores" } else { "By Date##highscores" };
+                    if ui.button(im_str!("{}", btn), (100.0 * self.ui_scale, 30.0 * self.ui_scale)) {
+                        sort_by_score = !sort_by_score;
                     }
 
                     if let Some(idx) = selected {
                         ui.same_line(0.5 * (mb2x - mb1x - 100.0) * self.ui_scale);
-                        if ui.button(im_str!("Replay##highscores"), (100.0 * self.ui_scale, 30.0 * self.ui_scale)) {
-                            ret = Some(State::Replay {
-                                replayer: tetris::replay::Replayer::new(scores[idx].replay())
-                            });
+                        let replay_id = *scores[idx].replay();
+                        let replay = self.replays.get(&replay_id);
+                        let btn = if replay.is_some() { "Watch Replay##highscores" } else { "Download Replay##nighscores" };
+                        if ui.button(im_str!("{}", btn), (100.0 * self.ui_scale, 30.0 * self.ui_scale)) {
+                            match replay {
+                                None => {
+                                    self.requests.push(self.server.request_replay(replay_id));
+                                }
+                                Some(replay) => {
+                                    ret = Some(State::Replay {
+                                        replayer: tetris::replay::Replayer::new(replay)
+                                    });
+                                }
+                            }
                         }
                     }
 
                     ui.same_line((mb2x - mb1x - 120.0) * self.ui_scale);
-                    if ui.button(im_str!("By Date##highscores"), (100.0 * self.ui_scale, 30.0 * self.ui_scale)) {
-                        sort_by_score = false;
+                    let btn = if global { "Global##highscores" } else { "Local##highscores" };
+                    if ui.button(im_str!("{}", btn), (100.0 * self.ui_scale, 30.0 * self.ui_scale)) {
+                        global = !global;
                     }
 
                     ui.columns(5, im_str!("High-Scores List"), true);
@@ -252,15 +318,15 @@ impl webrunner::WebApp for TetrisApp {
                             selected = Some(score.0);
                         }
                         ui.next_column();
-                        ui.text(score.1.replay().config().level.to_string()); ui.next_column();
-                        ui.text(score.1.level().to_string()); ui.next_column();
+                        ui.text(score.1.start_level().to_string()); ui.next_column();
+                        ui.text(score.1.end_level().to_string()); ui.next_column();
                         ui.text(score.1.name().to_string()); ui.next_column();
                         ui.text(score.1.time_str()); ui.next_column();
                         ui.separator();
                     }
                 });
 
-                ret.unwrap_or(State::Highscores{selected, sort_by_score})
+                ret.unwrap_or(State::Highscores{selected, sort_by_score, global})
             }
             State::PreGame => {
                 let mut ret = None;

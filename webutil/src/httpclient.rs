@@ -84,7 +84,8 @@ impl Fetch {
 
             attr.attributes = attributes;
 
-            let fetch = unsafe { emscripten_fetch(&mut attr, CString::new(path).unwrap().as_ptr()) };
+            let path = CString::new(path).unwrap();
+            let fetch = unsafe { emscripten_fetch(&mut attr, path.as_ptr()) };
 
             Fetch {
                 request_data,
@@ -106,7 +107,7 @@ impl Fetch {
             }
             let success = {
                 let mut transfer = handle.transfer();
-                
+
                 transfer.write_function(|new_data| {
                     data.extend_from_slice(new_data);
                     Ok(new_data.len())

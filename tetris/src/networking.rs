@@ -20,33 +20,37 @@ pub fn decode<T: serde::de::DeserializeOwned>(message: &str) -> Option<T> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMessage {
-    CreateAccount {
-        namepass: Vec<u8>,
-    },
-    SaltRequest {
-        name: Vec<u8>,
-    },
-    Login {
-        namesalthashpass: Vec<u8>,
-    },
     UploadReplay {
         name: String,
+        idtag: String,
         replay: super::replay::Replay,
     },
+    RequestHighscores {
+        by_score: bool, // else by time
+        idtag: Option<String>,
+        from: usize,
+        to: usize,
+    },
+    RequestReplays {
+        ids: Vec<usize>,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerAnswer {
     InvalidMessage(String),
     ServerError(String),
-    CreateAccountResult {
-        error: Option<String>,
+    HighscoreList {
+        by_score: bool, // else by time
+        idtagged: bool,
+        from: usize,
+        to: usize,
+        data: Vec<super::PlayedGame>,
     },
-    Salt {
-        salt: Vec<u8>,
+    ReplayList {
+        data: Vec<(usize, super::replay::Replay)>,
     },
-    LoginResult {
-        error: Option<String>,
-    },
-    UploadResult(bool)
+    UploadResult(
+        Option<super::PlayedGame>
+    )
 }
