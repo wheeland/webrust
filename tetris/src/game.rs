@@ -45,7 +45,7 @@ pub struct Game {
     down: i32,
     down_das: f32,
 
-    replay: super::Replay,
+    replay: super::replay::Replay,
 }
 
 impl Game {
@@ -66,13 +66,7 @@ impl Game {
         let second = Self::gen_piece(first.get_type());
 
         let state = GameHistory::new(config, first, second);
-
-        let replay = super::Replay {
-            config: config.clone(),
-            first,
-            second,
-            data: Vec::new(),
-        };
+        let replay = super::replay::Replay::new(config, first.get_type(), second.get_type());
 
         Game {
             config: config.clone(),
@@ -109,7 +103,7 @@ impl Game {
 
             let ret = self.state.try_move(self.timestamp, piece.0, piece.1 + dx, piece.2 + dy);
             if ret {
-                self.replay.add_move(self.timestamp, rotate, piece.1 + dx, piece.2 + dy);
+                self.replay.add_move(self.timestamp, rotate, dx, dy);
             }
             ret
         } else {
@@ -274,7 +268,7 @@ impl Game {
         self.timestamp
     }
 
-    pub fn replay(&self) -> &super::Replay {
+    pub fn replay(&self) -> &super::replay::Replay {
         &self.replay
     }
 }

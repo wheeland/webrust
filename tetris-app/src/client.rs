@@ -96,7 +96,7 @@ impl ServerConfig {
         }
     }
 
-    pub fn upload_replay(&self, name: &str, replay: &tetris::Replay) -> Request {
+    pub fn upload_replay(&self, name: &str, replay: &tetris::replay::Replay) -> Request {
         self.post(ServerMessage::UploadReplay {
             name: name.to_string(),
             replay: replay.clone(),

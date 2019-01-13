@@ -71,93 +71,9 @@ impl Config {
     }
 }
 
-// TODO: reduce Replay size:
-// - replace timestamp with "u8 delta timestamp to last entry"
-// - enumerate all actions: move { -x, +x, -y, +y, rotl, rotr, merge{drop 0..20}, next, nextpiece }
-// -> 12 byte per entry
-
-#[derive(PartialEq, Clone, Debug)]
-#[derive(Serialize, Deserialize)]
-enum ReplayEntry {
-    Move {
-        time: usize,
-        rotate: i8,
-        x: i8,
-        y: i8,
-    },
-    Merge {
-        time: usize,
-        drop: i8,
-        next: piece::Piece
-    },
-    NewPiece {
-        time: usize,
-    }
-}
-
-impl ReplayEntry {
-    fn time(&self) -> usize {
-        match self {
-            ReplayEntry::Move{time, ..} => *time,
-            ReplayEntry::Merge{time, ..} => *time,
-            ReplayEntry::NewPiece{time, ..} => *time,
-        }
-    }
-}
-
-#[derive(PartialEq,Clone)]
-#[derive(Serialize, Deserialize)]
-pub struct Replay {
-    config: Config,
-    first: piece::Piece,
-    second: piece::Piece,
-
-    data: Vec<ReplayEntry>,
-}
-
-impl Replay {
-    fn add_move(&mut self, time: usize, rotate: Option<bool>, x: i32, y: i32) {
-        self.data.push(ReplayEntry::Move {
-            time,
-            rotate: rotate.map(|b| if b { 1 } else { -1 }).unwrap_or(0),
-            x: x as i8,
-            y: y as i8,
-        });
-    }
-
-    fn add_merge(&mut self, time: usize, drop: i32, next: piece::Piece) {
-        self.data.push(ReplayEntry::Merge {
-            time,
-            drop: drop as i8,
-            next,
-        })
-    }
-
-    fn add_new_piece(&mut self, time: usize) {
-        self.data.push(ReplayEntry::NewPiece {
-            time,
-        })
-    }
-
-    pub fn config(&self) -> &Config { &self.config }
-
-    fn frames(&self) -> usize {
-        self.data.last().map(|entry| entry.time()).unwrap_or(0)
-    }
-}
-
-impl std::fmt::Debug for Replay {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Replay{{entries={}, time={}s}}", 
-                self.data.len(), 
-                self.data.last().map(|e| e.time()).unwrap_or(0) as f32 / 1000.0)
-    }
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct PlayedGame {
-    // TODO: optimize data buffering, don't use replay, but custom Vec<u32> format
-    replay: Replay,
+    replay: replay::Replay,
     name: String,
     utc: DateTime<Utc>,
     score: i32,
@@ -165,7 +81,7 @@ pub struct PlayedGame {
 }
 
 impl PlayedGame {
-    pub fn new(replay: Replay, name: String, score: i32, level: i32) -> Self {
+    pub fn new(replay: replay::Replay, name: String, score: i32, level: i32) -> Self {
         PlayedGame {
             replay,
             name,
@@ -175,7 +91,7 @@ impl PlayedGame {
         }
     }
 
-    pub fn replay(&self) -> &Replay { &self.replay }
+    pub fn replay(&self) -> &replay::Replay { &self.replay }
     pub fn name(&self) -> String { self.name.clone() }
     pub fn score(&self) -> i32 { self.score }
     pub fn level(&self) -> i32 { self.level }
@@ -214,7 +130,7 @@ impl Savegame {
         }
     }
 
-    pub fn add(&mut self, replay: Replay, name: String, score: i32, level: i32) {
+    pub fn add(&mut self, replay: replay::Replay, name: String, score: i32, level: i32) {
         self.games.push(PlayedGame::new(replay, name, score, level));
     }
 

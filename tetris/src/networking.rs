@@ -31,7 +31,7 @@ pub enum ServerMessage {
     },
     UploadReplay {
         name: String,
-        replay: super::Replay,
+        replay: super::replay::Replay,
     },
 }
 
