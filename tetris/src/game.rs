@@ -78,7 +78,7 @@ impl Game {
             config: config.clone(),
 
             state,
-            timer: 0.0,
+            timer: -1.5,
             timestamp: 0,
             lost: None,
 
@@ -153,6 +153,7 @@ impl Game {
     pub fn down(&mut self, pressed: bool) {
         if !self.down_pressed && pressed {
             self.try_move(None, 0, -1);
+            self.timer = self.timer.max(0.0);
             self.down = 1;
             self.down_das = self.config.das_down;
         }
@@ -236,6 +237,7 @@ impl Game {
         // update soft drop
         let mut move_down = false;
         if self.down > 0 && self.down_das <= 0.0 {
+            self.timer = self.timer.max(0.0);
             self.down_das += self.config.das_down;
             self.down += 1;
             move_down = true;
