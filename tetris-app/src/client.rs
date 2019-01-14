@@ -1,7 +1,15 @@
 use webutil::httpclient;
 use webutil::curve25519;
 
+use rand::RngCore;
+
 use tetris::networking::*;
+
+pub fn gen_idtag() -> String {
+    let mut bytes = [0u8; 24];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    base64::encode(&bytes)
+}
 
 pub struct ServerConfig {
     idtag: String,
@@ -78,6 +86,10 @@ impl Request {
 }
 
 impl ServerConfig {
+    pub fn set_idtag(&mut self, tag: &str) {
+        self.idtag = tag.to_string();
+    }
+
     fn encode<T: serde::Serialize>(&self, v: &T) -> Vec<u8> {
         let encoded = bincode::serialize(v).unwrap();
         curve25519::encrypt(&self.publickey, &encoded).ok().unwrap()

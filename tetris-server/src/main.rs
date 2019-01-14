@@ -80,10 +80,19 @@ fn process(message: ServerMessage) -> Result<ServerAnswer, String> {
         },
 
         ServerMessage::RequestHighscores { by_score, idtag, from, to } => {
-            let query = format!(
-                "SELECT id, name, timestamp, endLevel, score, game
-                FROM replay
-                ORDER BY {} DESC", if by_score { "score" } else { "timestamp" });
+            let query = if let Some(idtag) = idtag.as_ref() {
+                let idtag = idtag.replace("'", "''");
+                format!(
+                    "SELECT id, name, timestamp, endLevel, score, game
+                    FROM replay
+                    WHERE idtag = '{}'
+                    ORDER BY {} DESC", idtag, if by_score { "score" } else { "timestamp" })
+            } else {
+                format!(
+                    "SELECT id, name, timestamp, endLevel, score, game
+                    FROM replay
+                    ORDER BY {} DESC", if by_score { "score" } else { "timestamp" })
+            };
 
             let mut stmt = db
                 .prepare(&query)
@@ -115,7 +124,7 @@ fn process(message: ServerMessage) -> Result<ServerAnswer, String> {
 
             ServerAnswer::HighscoreList {
                 by_score,
-                idtagged: false,
+                idtagged: idtag.is_some(),
                 from,
                 to,
                 data: ret

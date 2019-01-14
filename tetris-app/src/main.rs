@@ -58,6 +58,7 @@ struct TetrisApp {
 
     server: client::ServerConfig,
     requests: Vec<client::Request>,
+    storage_load: Option<appbase::localstorage::StorageLoad>,
 
     scores_global: Vec<tetris::PlayedGame>,
     scores_local: Vec<tetris::PlayedGame>,
@@ -115,7 +116,6 @@ impl TetrisApp {
                         if by_score { &mut self.scores_global } else { &mut self.last_global }
                     };
                     dst.clone_from(&data);
-                    println!("{} {} {}", by_score, idtagged, dst.len());
                 },
                 tetris::networking::ServerAnswer::ReplayList { data } => {
                     for r in data {
@@ -123,8 +123,47 @@ impl TetrisApp {
                     }
                 }
                 tetris::networking::ServerAnswer::UploadResult(result) => {
+                    self.request_highscores();
                 }
             };
+        }
+    }
+
+    fn request_highscores(&mut self) {
+        self.requests.push(self.server.request_scores(false, false));
+        self.requests.push(self.server.request_scores(false, true));
+        self.requests.push(self.server.request_scores(true, false));
+        self.requests.push(self.server.request_scores(true, true));
+    }
+
+    fn check_idtag(&mut self) {
+        let mut new_idtag = None;
+
+        self.storage_load = match self.storage_load.take() {
+            None => None,
+            Some(load) => {
+                if let Some(data) = load.get() {
+                    let mut idtag = String::from_utf8(data).unwrap_or(client::gen_idtag());
+                    if idtag.len() != 32 {
+                        idtag = client::gen_idtag();
+                    }
+                    new_idtag = Some(idtag);
+                    None
+                }
+                else if load.is_err() {
+                    new_idtag = Some(client::gen_idtag());
+                    None
+                }
+                else {
+                    Some(load)
+                }
+            }
+        };
+
+        if let Some(idtag) = new_idtag {
+            appbase::localstorage::store("TETRIS", "idtag", &idtag.clone().into_bytes());
+            self.server.set_idtag(&idtag);
+            self.request_highscores();
         }
     }
 }
@@ -149,6 +188,7 @@ impl webrunner::WebApp for TetrisApp {
             rotr: false,
             server: client::ServerConfig::new(),
             requests: Vec::new(),
+            storage_load: Some(appbase::localstorage::load("TETRIS", "idtag")),
             scores_global: Vec::new(),
             scores_local: Vec::new(),
             last_global: Vec::new(),
@@ -156,10 +196,7 @@ impl webrunner::WebApp for TetrisApp {
             replays: HashMap::new(),
         };
 
-        ret.requests.push(ret.server.request_scores(false, false));
-        ret.requests.push(ret.server.request_scores(false, true));
-        ret.requests.push(ret.server.request_scores(true, false));
-        ret.requests.push(ret.server.request_scores(true, true));
+        ret.request_highscores();
 
         ret
     }
@@ -182,6 +219,7 @@ impl webrunner::WebApp for TetrisApp {
 
         // go through server responses
         self.process_finished_requests();
+        self.check_idtag();
 
         // Advance running game?
         let mut bg = false;
