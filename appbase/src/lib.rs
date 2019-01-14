@@ -10,3 +10,4 @@ extern crate emscripten_sys;
 pub mod webrunner;
 pub mod imgui_renderer;
 pub mod imgui_helper;
+pub mod localstorage;
