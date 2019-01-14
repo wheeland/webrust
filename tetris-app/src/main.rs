@@ -543,5 +543,5 @@ impl webrunner::WebApp for TetrisApp {
 }
 
 fn main() {
-    webrunner::AppRunner::<TetrisApp>::start("foo bar");
+    webrunner::AppRunner::<TetrisApp>::start("Tetris!");
 }
