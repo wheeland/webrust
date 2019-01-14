@@ -477,7 +477,7 @@ impl webrunner::WebApp for TetrisApp {
                 });
 
                 if replayer.paused {
-                    self.window(ui, im_str!("pausedplayinggame"), (280.0, 250.0), (180.0, 120.0), 2.5).build(|| {
+                    self.window(ui, im_str!("pausedplayinggame"), (-100.0, -50.0), (200.0, 100.0), 2.5).build(|| {
                         ui.new_line(); ui.text("  Paused")
                     });
                 }
