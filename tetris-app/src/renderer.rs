@@ -1,5 +1,5 @@
 use imgui::*;
-use cgmath::{Vector2, Vector3};
+use cgmath::{Vector2, Vector3, Vector4};
 use appbase::imgui_helper::staticwindow;
 use rand::{Rng,SeedableRng};
 
@@ -21,6 +21,9 @@ impl Rectangle {
     }
     fn bottom(&self) -> f32 {
         self.y + self.h
+    }
+    fn expanded(&self, border: f32) -> Self {
+        Rectangle { x: self.x - border, y: self.y - border, w: self.w + 2.0 * border, h: self.h + 2.0 * border}
     }
 }
 
@@ -104,10 +107,10 @@ impl BlockBuffers {
 }
 
 impl Renderer {
-    fn draw_square(&self, pos: Rectangle, color: Vector3<f32>) {
-        self.program.uniform("pos", tinygl::Uniform::Vec3(Vector3::new(pos.x, pos.y, self.z)));
+    fn draw_square(&self, pos: Rectangle, z: f32, color: Vector4<f32>) {
+        self.program.uniform("pos", tinygl::Uniform::Vec3(Vector3::new(pos.x, pos.y, z)));
         self.program.uniform("size", tinygl::Uniform::Vec2(Vector2::new(pos.w, pos.h)));
-        self.program.uniform("color", tinygl::Uniform::Vec3(color));
+        self.program.uniform("color", tinygl::Uniform::Vec4(color));
         unsafe { gl::DrawArrays(gl::TRIANGLES, 0, 6) }
     }
 
@@ -180,10 +183,10 @@ impl Renderer {
                     gl_Position = mvp * vec4(pos.xy + vertex * size, -pos.z, 1.0);
                 }
                 ", "
-                uniform vec3 color;
+                uniform vec4 color;
                 out vec4 outColor;
                 void main() {
-                    outColor = vec4(color, 1.0);
+                    outColor = color;
                 }
                 "),
 
@@ -197,7 +200,9 @@ impl Renderer {
                 out float v_alpha;
                 void main() {
                     v_alpha = alpha;
-                    gl_Position = mvp * vec4(vec3(position.xy, -z) + 0.5 * size * vertex, 1.0);
+                    vec3 pos = vec3(position.xy, 0.0) + 0.5 * size * vertex;
+                    pos += vec3(0.0, 0.0, -z);
+                    gl_Position = mvp * vec4(pos, 1.0);
                 }
                 ", "
                 uniform vec3 color;
@@ -325,7 +330,6 @@ impl Renderer {
 
         unsafe {
             gl::Enable(gl::BLEND);
-            gl::Enable(gl::DEPTH_TEST);
             gl::Disable(gl::CULL_FACE);
         }
 
@@ -357,15 +361,21 @@ impl Renderer {
             return;
         }
 
+        unsafe { gl::Enable(gl::DEPTH_TEST) }
+        unsafe { gl::Enable(gl::BLEND) }
+
         // draw squares for stack / next piece
         self.program.bind();
         self.program.uniform("mvp", tinygl::Uniform::Mat4(*mvp));
         self.program.vertex_attrib_divisor("vertex", 0);
         self.program.vertex_attrib_buffer("vertex", &self.square, 2, gl::FLOAT, false, 8, 0);
-        self.draw_square(self.pos_next, Vector3::new(0.0, 0.0, 0.0));
-        self.draw_square(self.pos_field, Vector3::new(0.0, 0.0, 0.0));
+        unsafe { gl::DepthFunc(gl::ALWAYS) }
+        self.draw_square(self.pos_field.expanded(50.0), self.z - 100.0, Vector4::new(0.2, 0.0, 0.0, 0.0));
+        self.draw_square(self.pos_next, self.z, Vector4::new(0.0, 0.0, 0.0, 1.0));
+        self.draw_square(self.pos_field, self.z, Vector4::new(0.0, 0.0, 0.0, 1.0));
 
         let buffers = self.collect_blocks();
+        unsafe { gl::DepthFunc(gl::LEQUAL) }
         self.render_blocks(mvp, buffers, self.state.as_ref().unwrap().level() as usize);
     }
 
