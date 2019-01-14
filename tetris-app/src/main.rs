@@ -315,19 +315,14 @@ impl webrunner::WebApp for TetrisApp {
 
                     if let Some(idx) = selected {
                         ui.same_line(0.5 * (mb2x - mb1x - 100.0) * self.ui_scale);
-                        let replay_id = *scores[idx].replay();
+                        let replay_id = scores[idx].replay();
                         let replay = self.replays.get(&replay_id);
-                        let btn = if replay.is_some() { "Watch Replay##highscores" } else { "Download Replay##nighscores" };
+                        let btn = if replay.is_some() { "Replay##highscores" } else { "Downloading...##nighscores" };
                         if ui.button(im_str!("{}", btn), (100.0 * self.ui_scale, 30.0 * self.ui_scale)) {
-                            match replay {
-                                None => {
-                                    self.requests.push(self.server.request_replay(replay_id));
-                                }
-                                Some(replay) => {
-                                    ret = Some(State::Replay {
-                                        replayer: tetris::replay::Replayer::new(replay)
-                                    });
-                                }
+                            if let Some(replay) = replay {
+                                ret = Some(State::Replay {
+                                    replayer: tetris::replay::Replayer::new(replay)
+                                });
                             }
                         }
                     }
@@ -342,9 +337,9 @@ impl webrunner::WebApp for TetrisApp {
                     ui.separator();
 
                     ui.text("Score"); ui.next_column();
-                    ui.text("Start Level"); ui.next_column();
-                    ui.text("End Level"); ui.next_column();
                     ui.text("Name"); ui.next_column();
+                    ui.text("Lv Start"); ui.next_column();
+                    ui.text("Lv End"); ui.next_column();
                     ui.text("Date"); ui.next_column();
                     ui.separator();
 
@@ -354,11 +349,17 @@ impl webrunner::WebApp for TetrisApp {
                                          imgui::ImGuiSelectableFlags::SpanAllColumns,
                                          (0.0, 0.0)) {
                             selected = Some(score.0);
+
+                            // start to download replay, if it isn't available yet
+                            let replay = self.replays.get(&score.1.replay());
+                            if replay.is_none() {
+                                self.requests.push(self.server.request_replay(score.1.replay()));
+                            }
                         }
                         ui.next_column();
+                        ui.text(score.1.name().to_string()); ui.next_column();
                         ui.text(score.1.start_level().to_string()); ui.next_column();
                         ui.text(score.1.end_level().to_string()); ui.next_column();
-                        ui.text(score.1.name().to_string()); ui.next_column();
                         ui.text(score.1.time_str()); ui.next_column();
                         ui.separator();
                     }

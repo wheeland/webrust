@@ -95,7 +95,7 @@ impl PlayedGame {
         }
     }
 
-    pub fn replay(&self) -> &usize { &self.replay_id }
+    pub fn replay(&self) -> usize { self.replay_id }
     pub fn name(&self) -> String { self.name.clone() }
     pub fn score(&self) -> i32 { self.score }
     pub fn start_level(&self) -> i32 { self.start_level }
