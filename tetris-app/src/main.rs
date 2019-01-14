@@ -457,7 +457,7 @@ impl webrunner::WebApp for TetrisApp {
 
                 self.window(ui, im_str!("Replayer UI#window"), (200.0, 100.0), (200.0, 200.0), 1.2).build(|| {
                     ui.text("Speed");
-                    ui.slider_float(im_str!("##replayspeedslider"), &mut replayer.speed, -10.0, 10.0)
+                    ui.slider_float(im_str!("##replayspeedslider"), &mut replayer.speed, -20.0, 20.0)
                         .power(2.0)
                         .build();
 
@@ -493,8 +493,8 @@ impl webrunner::WebApp for TetrisApp {
                 let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
 
                 fn adjust_speed(value: &mut f32, delta: f32) {
-                    let v = value.signum() * value.abs().sqrt() + delta;
-                    *value = v.abs() * v;
+                    let v = (value.signum() * value.abs().sqrt() + delta);
+                    *value = v.signum() * v.powi(2).min(20.0);
                 }
 
                 match &mut self.ui.as_mut().unwrap() {
