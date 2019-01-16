@@ -12,6 +12,7 @@ pub enum StorageData {
     Loading,
     Success(Vec<u8>),
     Error,
+    Done,
 }
 
 impl StorageData {
@@ -20,6 +21,7 @@ impl StorageData {
             StorageData::Loading => false,
             StorageData::Success(data) => false,
             StorageData::Error => true,
+            StorageData::Done => false,
         }
     }
 
@@ -28,12 +30,36 @@ impl StorageData {
             StorageData::Loading => None,
             StorageData::Success(data) => Some(data.clone()),
             StorageData::Error => None,
+            StorageData::Done => None,
         }
+    }
+
+    fn consume<T, FS: FnOnce(Vec<u8>) -> T, FE: FnOnce() -> T>(&mut self, success: FS, error: FE) -> Option<T> {
+        let ret = match self {
+            StorageData::Loading | StorageData::Done => None,
+            StorageData::Success(data) => {
+                Some(success(data.clone()))
+            }
+            StorageData::Error => {
+                Some(error())
+            }
+        };
+
+        if ret.is_some() {
+            *self = StorageData::Done;
+        }
+        ret
     }
 }
 
 pub struct StorageLoad {
     pub data: Rc<RefCell<StorageData>>,
+}
+
+impl StorageLoad {
+    pub fn consume<T, FS: FnOnce(Vec<u8>) -> T, FE: FnOnce() -> T>(&mut self, success: FS, error: FE) -> Option<T> {
+        self.data.borrow_mut().consume(success, error)
+    }
 }
 
 extern "C" fn storage_load_callback(user_data: *mut c_void, buf: *mut c_void, len: c_int) {
