@@ -49,6 +49,7 @@ pub struct Renderer {
 
     square: tinygl::VertexBuffer,
     cube_vertices: tinygl::VertexBuffer,
+    cube_normals: tinygl::VertexBuffer,
     cube_indices: tinygl::IndexBuffer,
     program: tinygl::Program,
     block_program: tinygl::Program,
@@ -158,6 +159,8 @@ impl Renderer {
     }
 
     pub fn new(pos_field: Rectangle, pos_next: Rectangle, pos_info: Rectangle, pos_stats: Rectangle) -> Self {
+        let cube = tinygl::shapes::Cube::new(1);
+
         Renderer {
             timestamp: 0,
             state: None,
@@ -200,7 +203,7 @@ impl Renderer {
                 out float v_alpha;
                 void main() {
                     v_alpha = alpha;
-                    vec3 pos = vec3(position.xy, 0.0) + 0.5 * size * vertex;
+                    vec3 pos = vec3(position.xy, 0.0) + 0.5 * size * (vertex + vec3(1.0));
                     pos += vec3(0.0, 0.0, -z);
                     gl_Position = mvp * vec4(pos, 1.0);
                 }
@@ -214,24 +217,10 @@ impl Renderer {
                 "),
 
             square: tinygl::VertexBuffer::from::<f32>(&vec!(0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0)),
-            cube_vertices: tinygl::VertexBuffer::from::<f32>(&vec!(
-                0.0, 0.0, 0.0,   // 0
-                0.0, 0.0, 2.0,   // 1
-                0.0, 2.0, 0.0,   // 2
-                0.0, 2.0, 2.0,   // 3
-                2.0, 0.0, 0.0,   // 4
-                2.0, 0.0, 2.0,   // 5
-                2.0, 2.0, 0.0,   // 6
-                2.0, 2.0, 2.0,   // 7
-            )),
-            cube_indices: tinygl::IndexBuffer::from16(&vec!(
-                0, 3, 1,    0, 2, 3,    // -x
-                4, 7, 5,    4, 6, 7,    // +x
-                0, 5, 1,    0, 4, 5,    // -y
-                2, 7, 3,    2, 6, 7,    // +y
-                0, 6, 2,    0, 4, 6,    // -z
-                1, 7, 3,    1, 5, 7     // +z
-            )),
+
+            cube_vertices: cube.vertices(),
+            cube_normals: cube.normals(),
+            cube_indices: cube.indices(),
 
             piece_colors: Self::gen_level_colors(),
         }

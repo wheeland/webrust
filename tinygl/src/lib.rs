@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use gl::types::*;
 use cgmath::prelude::*;
 
+pub mod shapes;
+
 struct BufferBase {
     target: GLenum,
     buffer: GLuint
