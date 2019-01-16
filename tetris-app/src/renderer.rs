@@ -31,6 +31,7 @@ struct FallingPiece {
     piece: piece::Piece,
     size: f32,
     pos: (f32, f32),
+    depth: f32,
     speed: f32,
 }
 
@@ -71,24 +72,25 @@ impl BlockBuffers {
         }
     }
 
-    fn vertex_size() -> i32 { 4 }
+    fn vertex_size() -> i32 { 5 }
 
-    fn block(&mut self, block: piece::Type, pos: (f32, f32), sz: f32, alpha: f32) {
+    fn block(&mut self, block: piece::Type, pos: (f32, f32, f32), sz: f32, alpha: f32) {
         let idx = block as usize;
         self.data[idx].push(pos.0);
         self.data[idx].push(pos.1);
+        self.data[idx].push(-pos.2);
         self.data[idx].push(sz);
         self.data[idx].push(alpha);
     }
 
-    fn piece(&mut self, piece: piece::Piece, x: f32, y: f32, sz: f32, ymax: f32, alpha: f32) {
+    fn piece(&mut self, piece: piece::Piece, x: f32, y: f32, z: f32, sz: f32, ymax: f32, alpha: f32) {
         let blocks = piece.blocks();
         for i in 0..4 {
             for j in 0..4 {
                 let y = y - j as f32 * sz;
                 if y < ymax && blocks[4*j + i] {
                     self.block(piece.get_type(),
-                               (x + i as f32 * sz + 1.0, y + 1.0),
+                               (x + i as f32 * sz + 1.0, y + 1.0, z),
                                sz - 2.0,
                                 alpha
                     );
@@ -115,9 +117,10 @@ impl Renderer {
         unsafe { gl::DrawArrays(gl::TRIANGLES, 0, 6) }
     }
 
-    fn draw_block(&self, buffers: &mut BlockBuffers, piece: piece::Type, x: i32, y: i32, alpha: f32) {
+    fn draw_block(&self, buffers: &mut BlockBuffers, piece: piece::Type, x: i32, y: i32, z: f32, alpha: f32) {
         buffers.block(piece,
-                      (self.pos_field.x + self.tile_size * x as f32 + 1.0, self.pos_field.bottom() - self.tile_size * (y + 1) as f32 + 1.0),
+                      (self.pos_field.x + self.tile_size * x as f32 + 1.0,
+                      self.pos_field.bottom() - self.tile_size * (y + 1) as f32 + 1.0, z),
                       self.tile_size - 2.0, alpha
         );
     }
@@ -195,24 +198,35 @@ impl Renderer {
 
             block_program: tinygl::Program::new("
                 in vec3 vertex;
-                in vec2 position;
+                in vec3 normal;
+                in vec3 position;
                 in float size;
                 in float alpha;
                 uniform mat4 mvp;
-                uniform float z;
+
                 out float v_alpha;
+                out vec3 v_normal;
+                out vec3 v_position;
+
                 void main() {
                     v_alpha = alpha;
-                    vec3 pos = vec3(position.xy, 0.0) + 0.5 * size * (vertex + vec3(1.0));
-                    pos += vec3(0.0, 0.0, -z);
+                    vec3 pos = position + 0.5 * size * (vertex + vec3(1.0, 1.0, -1.0));
+                    v_normal = normal;
+                    v_position = pos;
                     gl_Position = mvp * vec4(pos, 1.0);
                 }
                 ", "
                 uniform vec3 color;
+
                 in float v_alpha;
+                in vec3 v_normal;
+                in vec3 v_position;
+
                 out vec4 outColor;
+
                 void main() {
-                    outColor = vec4(color, v_alpha);
+                    float light = max(dot(-v_normal, normalize(v_position)), 0.1);
+                    outColor = vec4(light * color, v_alpha);
                 }
                 "),
 
@@ -262,7 +276,7 @@ impl Renderer {
                     }
                 };
                 if render_block {
-                    self.draw_block(&mut buffers, *piece, x, y, 1.0);
+                    self.draw_block(&mut buffers, *piece, x, y, self.z, 1.0);
                 }
             }
         });
@@ -271,7 +285,7 @@ impl Renderer {
         if let Some(piece) = state.piece() {
             buffers.piece(piece.0,
                           self.pos_field.x + self.tile_size * piece.1 as f32,
-                          self.pos_field.bottom() - self.tile_size * (piece.2 + 1) as f32,
+                          self.pos_field.bottom() - self.tile_size * (piece.2 + 1) as f32, self.z,
                           self.tile_size, self.pos_field.bottom(), 1.0);
         }
 
@@ -280,7 +294,7 @@ impl Renderer {
             if let Some(piece) = state.ghost_piece() {
                 buffers.piece(piece.0,
                               self.pos_field.x + self.tile_size * piece.1 as f32,
-                              self.pos_field.bottom() - self.tile_size * (piece.2 + 1) as f32,
+                              self.pos_field.bottom() - self.tile_size * (piece.2 + 1) as f32, self.z,
                               self.tile_size, self.pos_field.bottom(), 0.4);
             }
         }
@@ -289,7 +303,7 @@ impl Renderer {
         let ofs = state.next_piece().get_type().offset();
         buffers.piece(state.next_piece(),
                       self.pos_next.x + ofs.0 * self.tile_size,
-                      self.pos_next.bottom() + (ofs.1 - 1.0) * self.tile_size,
+                      self.pos_next.bottom() + (ofs.1 - 1.0) * self.tile_size, self.z,
                       self.tile_size, 0.0, 1.0);
 
         // add stats pieces
@@ -299,7 +313,7 @@ impl Renderer {
             let ofs = pc.get_type().offset();
             buffers.piece(pc,
                           self.pos_stats.x + 40.0 + ofs.0 * 20.0,
-                          y + (ofs.1 + 3.0) * 20.0,
+                          y + (ofs.1 + 3.0) * 20.0, self.z,
                           20.0, 10000.0, 1.0);
         }
 
@@ -313,6 +327,8 @@ impl Renderer {
         self.block_program.uniform("z", tinygl::Uniform::Float(self.z));
         self.block_program.vertex_attrib_buffer("vertex", &self.cube_vertices, 3, gl::FLOAT, false, 12, 0);
         self.block_program.vertex_attrib_divisor("vertex", 0);
+        self.block_program.vertex_attrib_buffer("normal", &self.cube_normals, 3, gl::FLOAT, false, 12, 0);
+        self.block_program.vertex_attrib_divisor("normal", 0);
         self.block_program.vertex_attrib_divisor("position", 1);
         self.block_program.vertex_attrib_divisor("size", 1);
         self.block_program.vertex_attrib_divisor("alpha", 1);
@@ -328,9 +344,9 @@ impl Renderer {
         for i in 0..7 {
             if let Some(vbo) = buffers.vbo(i) {
                 self.block_program.uniform("color", tinygl::Uniform::Vec3(colors[i]));
-                self.block_program.vertex_attrib_buffer("position", &vbo.0, 2, gl::FLOAT, false, 4 * BlockBuffers::vertex_size(), 0);
-                self.block_program.vertex_attrib_buffer("size", &vbo.0, 1, gl::FLOAT, false, 4 * BlockBuffers::vertex_size(), 8);
-                self.block_program.vertex_attrib_buffer("alpha", &vbo.0, 1, gl::FLOAT, false, 4 * BlockBuffers::vertex_size(), 12);
+                self.block_program.vertex_attrib_buffer("position", &vbo.0, 3, gl::FLOAT, false, 4 * BlockBuffers::vertex_size(), 0);
+                self.block_program.vertex_attrib_buffer("size", &vbo.0, 1, gl::FLOAT, false, 4 * BlockBuffers::vertex_size(), 12);
+                self.block_program.vertex_attrib_buffer("alpha", &vbo.0, 1, gl::FLOAT, false, 4 * BlockBuffers::vertex_size(), 16);
                 unsafe { gl::DrawElementsInstanced(gl::TRIANGLES, self.cube_indices.count() as i32, gl::UNSIGNED_SHORT, std::ptr::null(), vbo.1 as i32) }
             }
         }
@@ -377,26 +393,32 @@ impl Renderer {
             self.background_timer -= 0.2;
             let size = 10.0 + 30.0 * rand::random::<f32>();
             let x = -600.0 + 1200.0 * rand::random::<f32>();
+            let depth = 0.5 + 1.0 * rand::random::<f32>();
 
             self.background.push(FallingPiece {
                 piece: piece::Piece::new(piece::Type::from_int(rand::random::<u32>() % 7), rand::random::<u8>() % 4),
                 size,
-                pos: (x, -400.0),
+                pos: (x, -500.0 * depth),
+                depth,
                 speed: 40.0 + 200.0 * rand::random::<f32>(),
             });
         }
 
         // purge blocks that are below the horizon
-        self.background.retain(|block| block.pos.1 < 500.0);
+        self.background.retain(|block| block.pos.1 < 600.0 * (block.depth + 0.3));
 
         // advance and render blocks
         for block in &mut self.background {
             block.pos.1 += block.speed * dt;
-            buffers.piece(block.piece, block.pos.0, block.pos.1, block.size, 9999.0, 1.0);
+            buffers.piece(block.piece, block.pos.0, block.pos.1, block.depth * self.z, block.size, 9999.0, 1.0);
         }
 
         let unixtime = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
         let palette = (unixtime / 20) % 30;
+
+        unsafe { gl::Enable(gl::DEPTH_TEST) }
+        unsafe { gl::Enable(gl::BLEND) }
+        unsafe { gl::DepthFunc(gl::LEQUAL) }
         self.render_blocks(mvp, buffers, palette as usize);
     }
 
