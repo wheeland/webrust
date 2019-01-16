@@ -314,15 +314,17 @@ impl webrunner::WebApp for TetrisApp {
                     }
 
                     if let Some(idx) = selected {
-                        ui.same_line(0.5 * (mb2x - mb1x - 100.0) * self.ui_scale);
-                        let replay_id = scores[idx].replay();
-                        let replay = self.replays.get(&replay_id);
-                        let btn = if replay.is_some() { "Replay##highscores" } else { "Downloading...##nighscores" };
-                        if ui.button(im_str!("{}", btn), (100.0 * self.ui_scale, 30.0 * self.ui_scale)) {
-                            if let Some(replay) = replay {
-                                ret = Some(State::Replay {
-                                    replayer: tetris::replay::Replayer::new(replay)
-                                });
+                        if idx < scores.len() {
+                            ui.same_line(0.5 * (mb2x - mb1x - 100.0) * self.ui_scale);
+                            let replay_id = scores[idx].replay();
+                            let replay = self.replays.get(&replay_id);
+                            let btn = if replay.is_some() { "Replay##highscores" } else { "Downloading...##nighscores" };
+                            if ui.button(im_str!("{}", btn), (100.0 * self.ui_scale, 30.0 * self.ui_scale)) {
+                                if let Some(replay) = replay {
+                                    ret = Some(State::Replay {
+                                        replayer: tetris::replay::Replayer::new(replay)
+                                    });
+                                }
                             }
                         }
                     }
