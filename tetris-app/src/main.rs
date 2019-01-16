@@ -58,7 +58,8 @@ struct TetrisApp {
 
     server: client::ServerConfig,
     requests: Vec<client::Request>,
-    storage_load: Option<appbase::localstorage::StorageLoad>,
+    load_idtag: appbase::localstorage::StorageLoad,
+    load_name: appbase::localstorage::StorageLoad,
 
     scores_global: Vec<tetris::PlayedGame>,
     scores_local: Vec<tetris::PlayedGame>,
@@ -137,33 +138,26 @@ impl TetrisApp {
     }
 
     fn check_idtag(&mut self) {
-        let mut new_idtag = None;
-
-        self.storage_load = match self.storage_load.take() {
-            None => None,
-            Some(load) => {
-                if let Some(data) = load.get() {
-                    let mut idtag = String::from_utf8(data).unwrap_or(client::gen_idtag());
-                    if idtag.len() != 32 {
-                        idtag = client::gen_idtag();
-                    }
-                    new_idtag = Some(idtag);
-                    None
-                }
-                else if load.is_err() {
-                    new_idtag = Some(client::gen_idtag());
-                    None
-                }
-                else {
-                    Some(load)
-                }
+        if let Some(new_idtag) = self.load_idtag.consume(|data| {
+            let mut idtag = String::from_utf8(data).unwrap_or(client::gen_idtag());
+            if idtag.len() != 32 {
+                idtag = client::gen_idtag();
             }
-        };
-
-        if let Some(idtag) = new_idtag {
-            appbase::localstorage::store("TETRIS", "idtag", &idtag.clone().into_bytes());
-            self.server.set_idtag(&idtag);
+            idtag
+        }, || {
+            client::gen_idtag()
+        }) {
+            appbase::localstorage::store("TETRIS", "idtag", &new_idtag.clone().into_bytes());
+            self.server.set_idtag(&new_idtag);
             self.request_highscores();
+        }
+    }
+
+    fn check_player_name(&mut self) {
+        if let Some(name) = self.load_name.consume(|data| { String::from_utf8(data).ok() }, || { None }) {
+            if let Some(name) = name {
+                self.playername = name;
+            }
         }
     }
 }
@@ -177,7 +171,7 @@ impl webrunner::WebApp for TetrisApp {
             ui_center: (0.5 * windowsize.0 as f32, 0.5 * windowsize.1 as f32),
             ui: Some(State::MainMenu),
             config: tetris::Config::new(),
-            playername: String::from("Wheelie :)"),
+            playername: String::from("Your name please?"),
             renderer: renderer::Renderer::new(
                 renderer::Rectangle::new(-150.0, -300.0, 300.0, 600.0),
                 renderer::Rectangle::new(220.0, -300.0, 120.0, 120.0),
@@ -188,7 +182,8 @@ impl webrunner::WebApp for TetrisApp {
             rotr: false,
             server: client::ServerConfig::new(),
             requests: Vec::new(),
-            storage_load: Some(appbase::localstorage::load("TETRIS", "idtag")),
+            load_idtag: appbase::localstorage::load("TETRIS", "idtag"),
+            load_name: appbase::localstorage::load("TETRIS", "playername"),
             scores_global: Vec::new(),
             scores_local: Vec::new(),
             last_global: Vec::new(),
@@ -277,6 +272,7 @@ impl webrunner::WebApp for TetrisApp {
                 self.window(ui, im_str!("mainmenu_start"), (mb1x, mby), (mbw, mbh), 2.0).build(|| {
                     ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
                     if ui.button(im_str!("Start Game"), ((mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
+                        self.check_player_name();
                         ret = State::PreGame;
                     }
                 });
@@ -378,6 +374,7 @@ impl webrunner::WebApp for TetrisApp {
                     ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
                     if ui.button(im_str!("Start"), ((mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
                         self.renderer.gen_new_colors();
+                        appbase::localstorage::store("TETRIS", "playername", self.playername.as_bytes());
                         ret = Some(State::Game {
                             game: tetris::game::Game::new(&self.config),
                             paused: false,
