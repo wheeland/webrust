@@ -23,7 +23,7 @@ mod renderer;
 mod util;
 mod client;
 
-const ZFAR: f32 = 800.0;
+const ZFAR: f32 = 700.0;
 
 enum State {
     MainMenu,
@@ -371,8 +371,6 @@ impl webrunner::WebApp for TetrisApp {
             State::PreGame => {
                 let mut ret = None;
 
-                // TODO: enter name, check 'Wall Kick',
-
                 self.window(ui, im_str!("pregame_start"), (mb1x, mby), (mbw, mbh), 2.0).build(|| {
                     ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
                     if ui.button(im_str!("Start"), ((mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
@@ -414,6 +412,9 @@ impl webrunner::WebApp for TetrisApp {
 
                     ui.set_cursor_pos((20.0 * self.ui_scale, 180.0 * self.ui_scale));
                     ui.checkbox(im_str!("Ghost Piece"), &mut self.renderer.ghost_piece);
+
+                    ui.set_cursor_pos((20.0 * self.ui_scale, 230.0 * self.ui_scale));
+                    ui.checkbox(im_str!("3D Pieces"), &mut self.renderer.threed);
                 });
 
                 ret.unwrap_or(State::PreGame)

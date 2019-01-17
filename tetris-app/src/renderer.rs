@@ -49,6 +49,7 @@ pub struct Renderer {
     z: f32,
 
     pub ghost_piece: bool,
+    pub threed: bool,
     tile_size: f32,
 
     square: tinygl::VertexBuffer,
@@ -92,11 +93,7 @@ impl BlockBuffers {
             for j in 0..4 {
                 let y = y - j as f32 * sz;
                 if y < ymax && blocks[4*j + i] {
-                    self.block(piece.get_type(),
-                               (x + i as f32 * sz + 1.0, y + 1.0, z),
-                               sz - 2.0,
-                                alpha
-                    );
+                    self.block(piece.get_type(), (x + i as f32 * sz, y, z), sz, alpha);
                 }
             }
         }
@@ -122,9 +119,9 @@ impl Renderer {
 
     fn draw_block(&self, buffers: &mut BlockBuffers, piece: piece::Type, x: i32, y: i32, z: f32, alpha: f32) {
         buffers.block(piece,
-                      (self.pos_field.x + self.tile_size * x as f32 + 1.0,
-                      self.pos_field.bottom() - self.tile_size * (y + 1) as f32 + 1.0, z),
-                      self.tile_size - 2.0, alpha
+                      (self.pos_field.x + self.tile_size * x as f32,
+                      self.pos_field.bottom() - self.tile_size * (y + 1) as f32, z),
+                      self.tile_size, alpha
         );
     }
 
@@ -177,6 +174,7 @@ impl Renderer {
             pos_stats,
 
             ghost_piece: false,
+            threed: true,
             tile_size: pos_field.w / 10.0,
             z,
 
@@ -187,9 +185,9 @@ impl Renderer {
                 in vec2 vertex;
                 uniform vec3 pos;
                 uniform vec2 size;
-                uniform mat4 mvp;
+                uniform mat4 view;
                 void main() {
-                    gl_Position = mvp * vec4(pos.xy + vertex * size, -pos.z, 1.0);
+                    gl_Position = view * vec4(pos.xy + vertex * size, -pos.z, 1.0);
                 }
                 ", "
                 uniform vec4 color;
@@ -205,7 +203,8 @@ impl Renderer {
                 in vec3 position;
                 in float size;
                 in float alpha;
-                uniform mat4 mvp;
+                uniform mat4 model;
+                uniform mat4 view;
 
                 out float v_alpha;
                 out vec3 v_normal;
@@ -213,10 +212,11 @@ impl Renderer {
 
                 void main() {
                     v_alpha = alpha;
-                    vec3 pos = position + 0.5 * size * (vertex + vec3(1.0, 1.0, -1.0));
+                    vec3 v = (model * vec4(vertex, 1.0)).xyz;
+                    vec3 pos = position + 0.5 * size * (v + vec3(1.0, 1.0, -1.0));
                     v_normal = normal;
                     v_position = pos;
-                    gl_Position = mvp * vec4(pos, 1.0);
+                    gl_Position = view * vec4(pos, 1.0);
                 }
                 ", "
                 uniform vec3 color;
@@ -323,11 +323,16 @@ impl Renderer {
         buffers
     }
 
-    fn render_blocks(&self, mvp: &cgmath::Matrix4<f32>, buffers: BlockBuffers, palette: usize) {
+    fn render_blocks(&self, view: &cgmath::Matrix4<f32>, buffers: BlockBuffers, palette: usize) {
+        let threed = if self.threed { 1.0 } else { 0.0 };
+        let scale = if self.threed { 0.9 } else { 0.95 };
+        let model = cgmath::Matrix4::from_nonuniform_scale(scale, scale, threed * scale);
+        let model = cgmath::Matrix4::from_translation(cgmath::Vector3::new(0.0, 0.0, (1.0 - threed) * scale)) * model;
+
         self.cube_indices.bind();
         self.block_program.bind();
-        self.block_program.uniform("mvp", tinygl::Uniform::Mat4(*mvp));
-        self.block_program.uniform("z", tinygl::Uniform::Float(self.z));
+        self.block_program.uniform("model", tinygl::Uniform::Mat4(model));
+        self.block_program.uniform("view", tinygl::Uniform::Mat4(*view));
         self.block_program.vertex_attrib_buffer("vertex", &self.cube_vertices, 3, gl::FLOAT, false, 12, 0);
         self.block_program.vertex_attrib_divisor("vertex", 0);
         self.block_program.vertex_attrib_buffer("normal", &self.cube_normals, 3, gl::FLOAT, false, 12, 0);
@@ -338,7 +343,7 @@ impl Renderer {
 
         unsafe {
             gl::Enable(gl::BLEND);
-            gl::Disable(gl::CULL_FACE);
+            gl::Enable(gl::CULL_FACE);
         }
 
         let palette = palette.min(self.piece_colors.len() - 1);
@@ -364,7 +369,7 @@ impl Renderer {
         self.block_program.disable_vertex_attrib("alpha");
     }
 
-    pub fn render(&mut self, mvp: &cgmath::Matrix4<f32>) {
+    pub fn render(&mut self, view: &cgmath::Matrix4<f32>) {
         if self.state.is_none() {
             return;
         }
@@ -374,7 +379,7 @@ impl Renderer {
 
         // draw squares for stack / next piece
         self.program.bind();
-        self.program.uniform("mvp", tinygl::Uniform::Mat4(*mvp));
+        self.program.uniform("view", tinygl::Uniform::Mat4(*view));
         self.program.vertex_attrib_divisor("vertex", 0);
         self.program.vertex_attrib_buffer("vertex", &self.square, 2, gl::FLOAT, false, 8, 0);
         unsafe { gl::DepthFunc(gl::ALWAYS) }
@@ -384,10 +389,10 @@ impl Renderer {
 
         let buffers = self.collect_blocks();
         unsafe { gl::DepthFunc(gl::LEQUAL) }
-        self.render_blocks(mvp, buffers, self.state.as_ref().unwrap().level() as usize);
+        self.render_blocks(view, buffers, self.state.as_ref().unwrap().level() as usize);
     }
 
-    pub fn render_background(&mut self, dt: f32, mvp: &cgmath::Matrix4<f32>) {
+    pub fn render_background(&mut self, dt: f32, view: &cgmath::Matrix4<f32>) {
         let mut buffers = BlockBuffers::new();
 
         // add new block every N secs
@@ -422,7 +427,7 @@ impl Renderer {
         unsafe { gl::Enable(gl::DEPTH_TEST) }
         unsafe { gl::Enable(gl::BLEND) }
         unsafe { gl::DepthFunc(gl::LEQUAL) }
-        self.render_blocks(mvp, buffers, palette as usize);
+        self.render_blocks(view, buffers, palette as usize);
     }
 
     pub fn do_ui(&mut self, ui: &imgui::Ui, offset: (f32, f32), scale: f32) {
