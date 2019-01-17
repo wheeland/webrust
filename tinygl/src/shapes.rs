@@ -47,12 +47,21 @@ impl Cube {
                     normals.push(norm);
                     normals.push(norm);
 
-                    indices.push(base);
-                    indices.push(base + 3);
-                    indices.push(base + 1);
-                    indices.push(base);
-                    indices.push(base + 2);
-                    indices.push(base + 3);
+                    if an == norm {
+                        indices.push(base);
+                        indices.push(base + 3);
+                        indices.push(base + 1);
+                        indices.push(base);
+                        indices.push(base + 2);
+                        indices.push(base + 3);
+                    } else {
+                        indices.push(base);
+                        indices.push(base + 1);
+                        indices.push(base + 3);
+                        indices.push(base);
+                        indices.push(base + 3);
+                        indices.push(base + 2);
+                    }
                 }
             }
         }
