@@ -19,11 +19,11 @@ impl Renderer {
     pub fn new(imgui: &mut ImGui) -> Self {
         let vert_source = "
             uniform mat4 ProjMtx;
-            in vec2 Position;
-            in vec2 UV;
-            in vec4 Color;
-            out vec2 Frag_UV;
-            out vec4 Frag_Color;
+            attribute vec2 Position;
+            attribute vec2 UV;
+            attribute vec4 Color;
+            varying vec2 Frag_UV;
+            varying vec4 Frag_Color;
             void main()
             {
                 Frag_UV = UV;
@@ -33,15 +33,14 @@ impl Renderer {
 
         let frag_source = "
             uniform sampler2D Texture;
-            in vec2 Frag_UV;
-            in vec4 Frag_Color;
-            out vec4 color;
+            varying vec2 Frag_UV;
+            varying vec4 Frag_Color;
             void main()
             {
-                color = Frag_Color * texture( Texture, Frag_UV.st);
+                gl_FragColor = Frag_Color * texture2D(Texture, Frag_UV.st);
             }";
 
-        let prog1 = Program::new(vert_source, frag_source);
+        let prog1 = Program::new_versioned(vert_source, frag_source, 100);
 
         unsafe {
             let vbo = return_param(|x| gl::GenBuffers(1, x) );

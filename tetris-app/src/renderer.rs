@@ -181,8 +181,8 @@ impl Renderer {
             background: Vec::new(),
             background_timer: 0.0,
 
-            program: tinygl::Program::new("
-                in vec2 vertex;
+            program: tinygl::Program::new_versioned("
+                attribute vec2 vertex;
                 uniform vec3 pos;
                 uniform vec2 size;
                 uniform mat4 view;
@@ -191,24 +191,23 @@ impl Renderer {
                 }
                 ", "
                 uniform vec4 color;
-                out vec4 outColor;
                 void main() {
-                    outColor = color;
+                    gl_FragColor = color;
                 }
-                "),
+                ", 100),
 
-            block_program: tinygl::Program::new("
-                in vec3 vertex;
-                in vec3 normal;
-                in vec3 position;
-                in float size;
-                in float alpha;
+            block_program: tinygl::Program::new_versioned("
+                attribute vec3 vertex;
+                attribute vec3 normal;
+                attribute vec3 position;
+                attribute float size;
+                attribute float alpha;
                 uniform mat4 model;
                 uniform mat4 view;
 
-                out float v_alpha;
-                out vec3 v_normal;
-                out vec3 v_position;
+                varying float v_alpha;
+                varying vec3 v_normal;
+                varying vec3 v_position;
 
                 void main() {
                     v_alpha = alpha;
@@ -221,17 +220,15 @@ impl Renderer {
                 ", "
                 uniform vec3 color;
 
-                in float v_alpha;
-                in vec3 v_normal;
-                in vec3 v_position;
-
-                out vec4 outColor;
+                varying float v_alpha;
+                varying vec3 v_normal;
+                varying vec3 v_position;
 
                 void main() {
                     float light = max(dot(-v_normal, normalize(v_position)), 0.1);
-                    outColor = vec4(light * color, v_alpha);
+                    gl_FragColor = vec4(light * color, v_alpha);
                 }
-                "),
+                ", 100),
 
             square: tinygl::VertexBuffer::from::<f32>(&vec!(0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0)),
 

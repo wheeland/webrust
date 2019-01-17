@@ -137,12 +137,17 @@ pub struct Program {
 }
 
 impl Program {
-    fn compile_shader(src: &str, shader_type: GLuint) -> (bool, GLuint, String) {
-        let src = String::from("#version 300 es
+    fn compile_shader(src: &str, shader_type: GLuint, version: i32) -> (bool, GLuint, String) {
+        let glsl = match version {
+            100 => "100",
+            300 => "300 es",
+            _ => "100"
+        };
+        let src = format!("#version {}
             precision highp float;
             precision highp int;
             precision highp sampler2D;
-        ") + src;
+        ", glsl) + src;
 
         let csrc = std::ffi::CString::new(src.as_bytes()).expect("Invalid string");
 
@@ -211,8 +216,12 @@ impl Program {
     }
 
     pub fn new(vsrc: &str, fsrc: &str) -> Self {
-        let vs = Self::compile_shader(vsrc, gl::VERTEX_SHADER);
-        let fs = Self::compile_shader(fsrc, gl::FRAGMENT_SHADER);
+        Self::new_versioned(vsrc, fsrc, 300)
+    }
+
+    pub fn new_versioned(vsrc: &str, fsrc: &str, version: i32) -> Self {
+        let vs = Self::compile_shader(vsrc, gl::VERTEX_SHADER, version);
+        let fs = Self::compile_shader(fsrc, gl::FRAGMENT_SHADER, version);
         let mut prog = None;
         let mut prog_log = None;
         let mut attrs = HashMap::new();

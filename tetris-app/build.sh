@@ -4,10 +4,9 @@ embuilder.py build sdl2
 
 export EMMAKEN_CFLAGS="\
     -s USE_SDL=2 \
-    -s USE_WEBGL2=1 \
     -s FETCH=1 \
     -Os \
-    -s TOTAL_MEMORY=1073741824 \
+    -s TOTAL_MEMORY=33554432 \
     -s EXTRA_EXPORTED_RUNTIME_METHODS='[\"ccall\", \"cwrap\"]' \
 "
 
