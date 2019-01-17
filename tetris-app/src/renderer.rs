@@ -161,7 +161,7 @@ impl Renderer {
         piece_colors
     }
 
-    pub fn new(pos_field: Rectangle, pos_next: Rectangle, pos_info: Rectangle, pos_stats: Rectangle) -> Self {
+    pub fn new(pos_field: Rectangle, pos_next: Rectangle, pos_info: Rectangle, pos_stats: Rectangle, z: f32) -> Self {
         let cube = tinygl::shapes::Cube::new(1);
 
         Renderer {
@@ -175,7 +175,7 @@ impl Renderer {
 
             ghost_piece: false,
             tile_size: pos_field.w / 10.0,
-            z: 10000.0,
+            z,
 
             background: Vec::new(),
             background_timer: 0.0,

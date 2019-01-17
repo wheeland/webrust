@@ -23,6 +23,8 @@ mod renderer;
 mod util;
 mod client;
 
+const ZFAR: f32 = 800.0;
+
 enum State {
     MainMenu,
     PreGame,
@@ -177,6 +179,7 @@ impl webrunner::WebApp for TetrisApp {
                 renderer::Rectangle::new(220.0, -300.0, 120.0, 120.0),
                 renderer::Rectangle::new(220.0, -120.0, 180.0, 200.0),
                 renderer::Rectangle::new(-400.0, -300.0, 300.0, 400.0),
+                ZFAR
             ),
             rotl: false,
             rotr: false,
@@ -243,7 +246,7 @@ impl webrunner::WebApp for TetrisApp {
 
         // Update Burn animation
         let nearfac = 0.1;
-        let far = 10000.0;
+        let far = ZFAR;
         let proj = cgmath::frustum(
             -0.5 * nearfac * self.windowsize.0,
             0.5 * nearfac * self.windowsize.0,
