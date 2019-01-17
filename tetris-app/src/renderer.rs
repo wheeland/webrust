@@ -25,6 +25,9 @@ impl Rectangle {
     fn expanded(&self, border: f32) -> Self {
         Rectangle { x: self.x - border, y: self.y - border, w: self.w + 2.0 * border, h: self.h + 2.0 * border}
     }
+    fn scaled(&self, rel: f32) -> Self {
+        Rectangle { x: self.x * rel, y: self.y * rel, w: self.w * rel, h: self.h * rel }
+    }
 }
 
 struct FallingPiece {
@@ -376,8 +379,8 @@ impl Renderer {
         self.program.vertex_attrib_buffer("vertex", &self.square, 2, gl::FLOAT, false, 8, 0);
         unsafe { gl::DepthFunc(gl::ALWAYS) }
         self.draw_square(self.pos_field.expanded(50.0), self.z - 100.0, Vector4::new(0.2, 0.0, 0.0, 0.0));
-        self.draw_square(self.pos_next, self.z, Vector4::new(0.0, 0.0, 0.0, 1.0));
-        self.draw_square(self.pos_field, self.z, Vector4::new(0.0, 0.0, 0.0, 1.0));
+        self.draw_square(self.pos_next.scaled(1.3), 1.3 * self.z, Vector4::new(0.0, 0.0, 0.0, 1.0));
+        self.draw_square(self.pos_field.scaled(1.3), 1.3 * self.z, Vector4::new(0.0, 0.0, 0.0, 1.0));
 
         let buffers = self.collect_blocks();
         unsafe { gl::DepthFunc(gl::LEQUAL) }
