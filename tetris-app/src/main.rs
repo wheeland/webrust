@@ -424,7 +424,7 @@ impl webrunner::WebApp for TetrisApp {
                 let mut ret = None;
 
                 ui.with_color_var(imgui::ImGuiCol::WindowBg, (0.0, 0.0, 0.0, 0.0), || {
-                    self.window(ui, im_str!("Playing Game UI#window"), (220.0, 200.0), (200.0, 200.0), 1.5).build(|| {
+                    self.window(ui, im_str!("Playing Game UI#window"), (200.0, 150.0), (200.0, 200.0), 1.5).build(|| {
                         if !finished {
                             if ui.button(im_str!("Give up!##playing"), (140.0 * self.ui_scale, 40.0 * self.ui_scale)) && !paused {
                                 self.save(&game);
