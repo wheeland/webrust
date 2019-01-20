@@ -20,7 +20,6 @@ base64 = "0.10.0"
 cgmath = "0.16.1"
 gl = "0.10.0"
 imgui = { version = "0.0.20", path = "../../imgui-rs" }
-imgui-sdl2 = { version = "0.2.3", path = "../../imgui-sdl2" }
 lru-cache = "0.1.1"
 rand = "^0.6"
 sdl2 = "^0"
@@ -28,7 +27,7 @@ serde = "1.0"
 serde_json = "1.0"
 serde_derive = "1.0"
 tinygl = { version = "^0", path = "../tinygl" }
-webhelper = { version = "0.1.0", path = "../webhelper" }
+webutil = { version = "0.1.0", path = "../webutil" }
 
 [build-dependencies]
 cc = "1.0"
