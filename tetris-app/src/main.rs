@@ -502,14 +502,14 @@ impl webrunner::WebApp for TetrisApp {
 
                 match &mut self.ui.as_mut().unwrap() {
                     State::Game{ref mut game, ref mut paused, ..} => match keycode.unwrap() {
-                        Keycode::Left => game.left(true),
-                        Keycode::Right => game.right(true),
-                        Keycode::Down => game.down(true),
-                        Keycode::Z => if !self.rotl {
+                        Keycode::Left => if !*paused { game.left(true) },
+                        Keycode::Right => if !*paused { game.right(true) },
+                        Keycode::Down => if !*paused { game.down(true) },
+                        Keycode::Z => if !self.rotl && !*paused{
                             self.rotl = true;
                             game.rotate(false);
                         },
-                        Keycode::X => if !self.rotr {
+                        Keycode::X => if !self.rotr && !*paused {
                             self.rotr = true;
                             game.rotate(true);
                         },
