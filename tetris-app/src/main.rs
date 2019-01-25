@@ -25,6 +25,20 @@ mod client;
 
 const ZFAR: f32 = 700.0;
 
+#[derive(Clone, Serialize, Deserialize)]
+struct PlayerOptions {
+    name: String,
+    left: i32,
+    right: i32,
+    drop: i32,
+    rotl: i32,
+    rotr: i32,
+    pause: i32,
+    level: i32,
+    ghost: bool,
+    render3d: bool,
+}
+
 enum State {
     MainMenu,
     PreGame,
@@ -51,7 +65,8 @@ struct TetrisApp {
 
     ui: Option<State>,
     config: tetris::Config,
-    playername: String,
+
+    player: PlayerOptions,
 
     renderer: renderer::Renderer,
 
@@ -61,7 +76,7 @@ struct TetrisApp {
     server: client::ServerConfig,
     requests: Vec<client::Request>,
     load_idtag: appbase::localstorage::StorageLoad,
-    load_name: appbase::localstorage::StorageLoad,
+    load_player: appbase::localstorage::StorageLoad,
 
     scores_global: Vec<tetris::PlayedGame>,
     scores_local: Vec<tetris::PlayedGame>,
@@ -73,7 +88,7 @@ struct TetrisApp {
 
 impl TetrisApp {
     fn save(&mut self, game: &tetris::game::Game) {
-        self.requests.push(self.server.upload_replay(&self.playername, game.replay()));
+        self.requests.push(self.server.upload_replay(&self.player.name, game.replay()));
     }
 
     fn window<'ui,'p>(&self, ui: &'ui imgui::Ui, name: &'p ImStr, pos: (f32, f32), size: (f32, f32), font_scale: f32) -> Window<'ui, 'p> {
@@ -155,12 +170,21 @@ impl TetrisApp {
         }
     }
 
-    fn check_player_name(&mut self) {
-        if let Some(name) = self.load_name.consume(|data| { String::from_utf8(data).ok() }, || { None }) {
-            if let Some(name) = name {
-                self.playername = name;
+    fn check_player_data(&mut self) {
+        if let Some(data) = self.load_player.consume(|data| {
+            String::from_utf8(data).ok().and_then(|data| tetris::networking::decode(&data))
+        }, || { None }) {
+            if let Some(data) = data {
+                self.player = data;
+                self.config.level = self.player.level;
+                self.renderer.ghost_piece = self.player.ghost;
+                self.renderer.threed = self.player.render3d;
             }
         }
+    }
+
+    fn save_player_data(&mut self) {
+        appbase::localstorage::store("TETRIS", "player", tetris::networking::encode(&self.player).as_bytes());
     }
 }
 
@@ -173,7 +197,18 @@ impl webrunner::WebApp for TetrisApp {
             ui_center: (0.5 * windowsize.0 as f32, 0.5 * windowsize.1 as f32),
             ui: Some(State::MainMenu),
             config: tetris::Config::new(),
-            playername: String::from("Your name please?"),
+            player: PlayerOptions {
+                left: Keycode::Left as i32,
+                right: Keycode::Right as i32,
+                drop: Keycode::Down as i32,
+                rotl: Keycode::Y as i32,
+                rotr: Keycode::X as i32,
+                pause: Keycode::Return as i32,
+                level: 0,
+                name: String::from("Your name please?"),
+                ghost: true,
+                render3d: true,
+            },
             renderer: renderer::Renderer::new(
                 renderer::Rectangle::new(-150.0, -300.0, 300.0, 600.0),
                 renderer::Rectangle::new(220.0, -300.0, 120.0, 120.0),
@@ -186,7 +221,7 @@ impl webrunner::WebApp for TetrisApp {
             server: client::ServerConfig::new(),
             requests: Vec::new(),
             load_idtag: appbase::localstorage::load("TETRIS", "idtag"),
-            load_name: appbase::localstorage::load("TETRIS", "playername"),
+            load_player: appbase::localstorage::load("TETRIS", "player"),
             scores_global: Vec::new(),
             scores_local: Vec::new(),
             last_global: Vec::new(),
@@ -244,7 +279,6 @@ impl webrunner::WebApp for TetrisApp {
             State::PreGame => { bg = true; State::PreGame },
         });
 
-        // Update Burn animation
         let nearfac = 0.1;
         let far = ZFAR;
         let proj = cgmath::frustum(
@@ -275,7 +309,7 @@ impl webrunner::WebApp for TetrisApp {
                 self.window(ui, im_str!("mainmenu_start"), (mb1x, mby), (mbw, mbh), 2.0).build(|| {
                     ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
                     if ui.button(im_str!("Start Game"), ((mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
-                        self.check_player_name();
+                        self.check_player_data();
                         ret = State::PreGame;
                     }
                 });
@@ -375,7 +409,7 @@ impl webrunner::WebApp for TetrisApp {
                     ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
                     if ui.button(im_str!("Start"), ((mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
                         self.renderer.gen_new_colors();
-                        appbase::localstorage::store("TETRIS", "playername", self.playername.as_bytes());
+                        self.save_player_data();
                         ret = Some(State::Game {
                             game: tetris::game::Game::new(&self.config),
                             paused: false,
@@ -387,6 +421,7 @@ impl webrunner::WebApp for TetrisApp {
                 self.window(ui, im_str!("pregame_back"), (mb2x, mby), (mbw, mbh), 2.0).build(|| {
                     ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
                     if ui.button(im_str!("Back"), ((mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
+                        self.save_player_data();
                         ret = Some(State::MainMenu);
                     }
                 });
@@ -399,6 +434,7 @@ impl webrunner::WebApp for TetrisApp {
                     ui.push_item_width(mb2x - mb1x - mbw);
                     ui.slider_int(im_str!("##pregamestartlevel"), &mut self.config.level, 0, 20)
                         .build();
+                    self.player.level = self.config.level;
 
                     ui.set_cursor_pos((20.0 * self.ui_scale, 100.0 * self.ui_scale));
                     ui.text("Player Name");
@@ -406,15 +442,17 @@ impl webrunner::WebApp for TetrisApp {
                     ui.set_cursor_pos((20.0 * self.ui_scale, 125.0 * self.ui_scale));
                     ui.push_item_width(mb2x - mb1x - mbw);
                     let mut pname = ImString::with_capacity(1024);
-                    pname.push_str(&self.playername);
+                    pname.push_str(&self.player.name);
                     ui.input_text(im_str!("##pregame_playername"), &mut pname).build();
-                    self.playername = pname.to_str().to_string();
+                    self.player.name = pname.to_str().to_string();
 
                     ui.set_cursor_pos((20.0 * self.ui_scale, 180.0 * self.ui_scale));
                     ui.checkbox(im_str!("Ghost Piece"), &mut self.renderer.ghost_piece);
+                    self.player.ghost = self.renderer.ghost_piece;
 
                     ui.set_cursor_pos((20.0 * self.ui_scale, 230.0 * self.ui_scale));
                     ui.checkbox(im_str!("3D Pieces"), &mut self.renderer.threed);
+                    self.player.render3d = self.renderer.threed;
                 });
 
                 ret.unwrap_or(State::PreGame)
@@ -501,20 +539,22 @@ impl webrunner::WebApp for TetrisApp {
                 }
 
                 match &mut self.ui.as_mut().unwrap() {
-                    State::Game{ref mut game, ref mut paused, ..} => match keycode.unwrap() {
-                        Keycode::Left => if !*paused { game.left(true) },
-                        Keycode::Right => if !*paused { game.right(true) },
-                        Keycode::Down => if !*paused { game.down(true) },
-                        Keycode::Z => if !self.rotl && !*paused{
-                            self.rotl = true;
-                            game.rotate(false);
-                        },
-                        Keycode::X => if !self.rotr && !*paused {
-                            self.rotr = true;
-                            game.rotate(true);
-                        },
-                        Keycode::Return => *paused = !*paused,
-                        _ => {}
+                    State::Game{ref mut game, ref mut paused, ..} => {
+                        let key =  keycode.unwrap() as i32;
+                        if !*paused {
+                            if key == self.player.left { game.left(true) }
+                            if key == self.player.right { game.right(true) }
+                            if key == self.player.drop { game.down(true) }
+                            if key == self.player.rotl && !self.rotl {
+                                self.rotl = true;
+                                game.rotate(false);
+                            }
+                            if key == self.player.rotr && !self.rotr {
+                                self.rotr = true;
+                                game.rotate(true);
+                            }
+                        }
+                        if key == self.player.pause { *paused = !*paused }
                     }
                     State::Replay { ref mut replayer } => match keycode.unwrap() {
                         Keycode::Left => replayer.advance(if ctrl { -10.0 } else { -1.0 }),
@@ -529,13 +569,13 @@ impl webrunner::WebApp for TetrisApp {
             },
             Event::KeyUp{keycode, .. } => {
                 match &mut self.ui.as_mut().unwrap() {
-                    State::Game { ref mut game, .. } => match keycode.unwrap() {
-                        Keycode::Left => game.left(false),
-                        Keycode::Right => game.right(false),
-                        Keycode::Down => game.down(false),
-                        Keycode::Z => self.rotl = false,
-                        Keycode::X => self.rotr = false,
-                        _ => {}
+                    State::Game { ref mut game, .. } => {
+                        let key =  keycode.unwrap() as i32;
+                        if key == self.player.left { game.left(false) }
+                        if key == self.player.right { game.right(false) }
+                        if key == self.player.drop { game.down(false) }
+                        if key == self.player.rotl { self.rotl = false; }
+                        if key == self.player.rotr { self.rotr = false; }
                     },
                     _ => {}
                 }
