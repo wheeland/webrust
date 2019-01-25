@@ -41,7 +41,9 @@ struct PlayerOptions {
 
 enum State {
     MainMenu,
-    PreGame,
+    PreGame {
+        keyconfig: Option<i32>,
+    },
     Game {
         game: tetris::game::Game,
         paused: bool,
@@ -276,7 +278,7 @@ impl webrunner::WebApp for TetrisApp {
             },
             State::Highscores{selected, sort_by_score, global} => { bg = true; State::Highscores{selected, sort_by_score, global} },
             State::MainMenu => { bg = true; State::MainMenu },
-            State::PreGame => { bg = true; State::PreGame },
+            State::PreGame{keyconfig} => { bg = true; State::PreGame{keyconfig} },
         });
 
         let nearfac = 0.1;
@@ -310,7 +312,7 @@ impl webrunner::WebApp for TetrisApp {
                     ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
                     if ui.button(im_str!("Start Game"), ((mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
                         self.check_player_data();
-                        ret = State::PreGame;
+                        ret = State::PreGame{keyconfig: None};
                     }
                 });
                 self.window(ui, im_str!("mainmenu_highscores"), (mb2x, mby), (mbw, mbh), 2.0).build(|| {
@@ -402,7 +404,7 @@ impl webrunner::WebApp for TetrisApp {
 
                 ret.unwrap_or(State::Highscores{selected, sort_by_score, global})
             }
-            State::PreGame => {
+            State::PreGame{mut keyconfig} => {
                 let mut ret = None;
 
                 self.window(ui, im_str!("pregame_start"), (mb1x, mby), (mbw, mbh), 2.0).build(|| {
@@ -426,36 +428,71 @@ impl webrunner::WebApp for TetrisApp {
                     }
                 });
 
-                self.window(ui, im_str!("pregame_options"), (mb1x + mbw, mby - 100.0), (mb2x - mb1x - mbw, 300.0), 1.5).build(|| {
-                    ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
-                    ui.text("Starting Level");
+                let optionswin = ((mb1x + mbw, mby - 120.0), (mb2x - mb1x - mbw, mbh + 240.0));
+                self.window(ui, im_str!("pregame_options"), optionswin.0, optionswin.1, 1.5).build(|| {
+                    if keyconfig.is_none() {
+                        ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
+                        ui.text("Starting Level");
 
-                    ui.set_cursor_pos((20.0 * self.ui_scale, 45.0 * self.ui_scale));
-                    ui.push_item_width(mb2x - mb1x - mbw);
-                    ui.slider_int(im_str!("##pregamestartlevel"), &mut self.config.level, 0, 20)
-                        .build();
-                    self.player.level = self.config.level;
+                        ui.set_cursor_pos((20.0 * self.ui_scale, 45.0 * self.ui_scale));
+                        ui.push_item_width(mb2x - mb1x - mbw);
+                        ui.slider_int(im_str!("##pregamestartlevel"), &mut self.config.level, 0, 20)
+                            .build();
+                        self.player.level = self.config.level;
 
-                    ui.set_cursor_pos((20.0 * self.ui_scale, 100.0 * self.ui_scale));
-                    ui.text("Player Name");
+                        ui.set_cursor_pos((20.0 * self.ui_scale, 100.0 * self.ui_scale));
+                        ui.text("Player Name");
 
-                    ui.set_cursor_pos((20.0 * self.ui_scale, 125.0 * self.ui_scale));
-                    ui.push_item_width(mb2x - mb1x - mbw);
-                    let mut pname = ImString::with_capacity(1024);
-                    pname.push_str(&self.player.name);
-                    ui.input_text(im_str!("##pregame_playername"), &mut pname).build();
-                    self.player.name = pname.to_str().to_string();
+                        ui.set_cursor_pos((20.0 * self.ui_scale, 125.0 * self.ui_scale));
+                        ui.push_item_width(mb2x - mb1x - mbw);
+                        let mut pname = ImString::with_capacity(1024);
+                        pname.push_str(&self.player.name);
+                        ui.input_text(im_str!("##pregame_playername"), &mut pname).build();
+                        self.player.name = pname.to_str().to_string();
 
-                    ui.set_cursor_pos((20.0 * self.ui_scale, 180.0 * self.ui_scale));
-                    ui.checkbox(im_str!("Ghost Piece"), &mut self.renderer.ghost_piece);
-                    self.player.ghost = self.renderer.ghost_piece;
+                        ui.set_cursor_pos((20.0 * self.ui_scale, 180.0 * self.ui_scale));
+                        ui.checkbox(im_str!("Ghost Piece"), &mut self.renderer.ghost_piece);
+                        self.player.ghost = self.renderer.ghost_piece;
 
-                    ui.set_cursor_pos((20.0 * self.ui_scale, 230.0 * self.ui_scale));
-                    ui.checkbox(im_str!("3D Pieces"), &mut self.renderer.threed);
-                    self.player.render3d = self.renderer.threed;
+                        ui.set_cursor_pos((20.0 * self.ui_scale, 230.0 * self.ui_scale));
+                        ui.checkbox(im_str!("3D Pieces"), &mut self.renderer.threed);
+                        self.player.render3d = self.renderer.threed;
+                    } else {
+                        let mut keynum = *keyconfig.as_ref().unwrap();
+
+                        {
+                            let mut keychoice = |y, name, key: &mut i32, index, scale| {
+                                ui.set_cursor_pos((30.0 * scale, y * scale));
+                                ui.text(name);
+                                ui.set_cursor_pos((170.0 * scale, y * scale - 10.0));
+                                let buttonstr = if keynum == index { String::from("...") } else { format!("{:?}", Keycode::from_i32(*key).unwrap_or(Keycode::Escape)) };
+                                if ui.button(im_str!("{}", buttonstr), (100.0 * scale, 30.0 * scale)) {
+                                    keynum = if keynum == index { -1 } else { index };
+                                }
+                            };
+                            keychoice(30.0,  "Left",         &mut self.player.left,  0, self.ui_scale);
+                            keychoice(70.0,  "Right",        &mut self.player.right, 1, self.ui_scale);
+                            keychoice(110.0, "Down",         &mut self.player.drop,  2, self.ui_scale);
+                            keychoice(150.0, "Rotate Left",  &mut self.player.rotl,  3, self.ui_scale);
+                            keychoice(190.0, "Rotate Right", &mut self.player.rotr,  4, self.ui_scale);
+                            keychoice(230.0, "Pause",        &mut self.player.pause, 5, self.ui_scale);
+                        }
+
+                        keyconfig = Some(keynum);
+                    }
+
+                    let buttonstr = if keyconfig.is_some() { "Game Settings" } else { "Controls" };
+                    let buttonw = 200.0;
+                    ui.set_cursor_pos((0.5 * self.ui_scale * ((optionswin.1).0 - buttonw), 280.0 * self.ui_scale));
+                    if ui.button(im_str!("{}", buttonstr), (buttonw * self.ui_scale, 40.0 * self.ui_scale)) {
+                        keyconfig = match keyconfig {
+                            None => Some(-1),
+                            Some(n) => None,
+                        };
+                    }
                 });
 
-                ret.unwrap_or(State::PreGame)
+                ret.unwrap_or(State::PreGame{keyconfig})
             }
             State::Game{game, paused, mut finished} => {
                 self.renderer.do_ui(ui, self.ui_center, self.ui_scale);
@@ -564,6 +601,20 @@ impl webrunner::WebApp for TetrisApp {
                         Keycode::Return => replayer.paused = !replayer.paused,
                         _ => {}
                     }
+                    State::PreGame { ref mut keyconfig } => {
+                        if let Some(num) = keyconfig {
+                            match num {
+                                0 => self.player.left = keycode.unwrap() as i32,
+                                1 => self.player.right = keycode.unwrap() as i32,
+                                2 => self.player.drop = keycode.unwrap() as i32,
+                                3 => self.player.rotl = keycode.unwrap() as i32,
+                                4 => self.player.rotr = keycode.unwrap() as i32,
+                                5 => self.player.pause = keycode.unwrap() as i32,
+                                _ => {}
+                            }
+                        }
+                        *keyconfig = Some(-1);
+;                    }
                     _ => {}
                 }
             },
