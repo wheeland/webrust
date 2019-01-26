@@ -85,7 +85,9 @@ struct TetrisApp {
     last_global: Vec<tetris::PlayedGame>,
     last_local: Vec<tetris::PlayedGame>,
 
-    replays: HashMap<usize, tetris::replay::Replay>
+    replays: HashMap<usize, tetris::replay::Replay>,
+
+    fpswidget: appbase::fpswidget::FpsWidget,
 }
 
 impl TetrisApp {
@@ -229,6 +231,7 @@ impl webrunner::WebApp for TetrisApp {
             last_global: Vec::new(),
             last_local: Vec::new(),
             replays: HashMap::new(),
+            fpswidget: appbase::fpswidget::FpsWidget::new(180),
         };
 
         ret.request_highscores();
@@ -245,6 +248,8 @@ impl webrunner::WebApp for TetrisApp {
     }
 
     fn render(&mut self, dt: f32) {
+        self.fpswidget.push(dt);
+
         unsafe {
             gl::ClearColor(0.0, 0.15, 0.2, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
@@ -304,6 +309,8 @@ impl webrunner::WebApp for TetrisApp {
         let mby = -60.0;
         let mbw = 200.0;
         let mbh = 120.0;
+
+        self.fpswidget.render(ui, (0.0, 0.0), (240.0, 80.0));
 
         self.ui = Some(match self.ui.take().unwrap() {
             State::MainMenu => {

@@ -1,46 +1,6 @@
 use imgui::*;
 use std::ffi::{CStr, CString};
 
-pub struct ValueHistory {
-    count: usize,
-    values: Vec<f32>
-}
-
-impl ValueHistory {
-    pub fn new(count: usize) -> ValueHistory {
-        ValueHistory {
-            count,
-            values: Vec::new()
-        }
-    }
-
-    pub fn push(&mut self, value: f32) {
-        self.values.push(value);
-        while self.values.len() > self.count {
-            self.values.remove(0);
-        }
-    }
-
-    pub fn average(&self, last: usize) -> f32 {
-        let mut sum = 0.0;
-        let mut cnt = 0;
-        for value in self.values.iter() {
-            sum += value;
-            cnt += 1;
-            if cnt >= last {
-                break;
-            }
-        }
-        sum / cnt as f32
-    }
-
-    pub fn values(&self, last: usize) -> &[f32] {
-        let count = std::cmp::min(self.count, self.values.len());
-        let lower = std::cmp::max(0, count as i32 - last as i32) as usize;
-        &self.values[lower..count]
-    }
-}
-
 pub fn format_number(n: i32) -> String {
     if n < 1000000 {
         format!("{0:.3}", 0.001 * n as f32)
@@ -305,27 +265,4 @@ extern "C" fn callback(data: *mut imgui::sys::ImGuiTextEditCallbackData) -> std:
     }
 
     ret
-}
-
-pub fn fps_widget(ui: &imgui::Ui, frame_times: &ValueHistory, position: (f32, f32), size: (f32, f32)) {
-    ui.window(im_str!("frametimewidget"))
-        .flags(ImGuiWindowFlags::NoResize | ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoTitleBar | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar)
-        .size(size, ImGuiCond::Always)
-        .position(position, ImGuiCond::Always)
-        .build(|| {
-            let plotsize = (size.0 - 60.0, size.1 - 35.0);
-            let frames = frame_times.values(200);
-            let max = frames.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(&1.0);
-
-            ui.text(format!("msecs per Frame ({0:.1} FPS)", 1000.0 / frame_times.average(40)));
-
-            ui.plot_lines(im_str!(""), frames)
-                .graph_size(plotsize)
-                .scale_min(0.0)
-                .scale_max(*max)
-                .build();
-
-            ui.same_line(plotsize.0 + 20.0);
-            ui.text(format!("{0:.1}\n\n0.0", *max));
-        });
 }

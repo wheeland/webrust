@@ -25,7 +25,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
 use sdl2::event::{Event};
 use imgui::*;
-use guiutil::ValueHistory;
+use appbase::fpswidget::FpsWidget;
 
 struct MyApp {
     windowsize: (u32, u32),
@@ -34,8 +34,7 @@ struct MyApp {
     current_mouse_press: Option<(i32, i32)>,
     savegame: Option<(String, String)>,
 
-    frame_times: ValueHistory,
-    generate_times: ValueHistory,
+    fps: FpsWidget,
 
     edit_generator: guiutil::ShaderEditData,
     edit_colorator: guiutil::ShaderEditData,
@@ -124,8 +123,7 @@ impl webrunner::WebApp for MyApp {
             keyboard: HashMap::new(),
             savegame,
             current_mouse_press: None,
-            frame_times: ValueHistory::new(150),
-            generate_times: ValueHistory::new(25),
+            fps: FpsWidget::new(150),
             edit_generator: guiutil::ShaderEditData::new("Generator", &earth::renderer::default_generator()),
             edit_colorator: guiutil::ShaderEditData::new("Kolorator", &earth::renderer::default_colorator()),
             edit_js: guiutil::ShaderEditData::new("JavaScript executor", "var elem = document.getElementById('state');"),
@@ -139,7 +137,7 @@ impl webrunner::WebApp for MyApp {
     }
 
     fn render(&mut self, dt: f32) {
-        self.frame_times.push(dt * 1000.0);
+        self.fps.push(dt);
 
         //
         // check for uploads
@@ -160,7 +158,7 @@ impl webrunner::WebApp for MyApp {
     }
 
     fn do_ui(&mut self, ui: &imgui::Ui, keymod: sdl2::keyboard::Mod) {
-        guiutil::fps_widget(ui, &self.frame_times, (0.0, 0.0), (200.0, 80.0));
+        self.fps.render(ui, (0.0, 0.0), (200.0, 80.0));
 
         ui.window(im_str!("renderstats"))
             .flags(ImGuiWindowFlags::NoResize | ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoTitleBar | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar)
