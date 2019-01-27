@@ -561,7 +561,8 @@ impl Generator {
         self.vertex_generator.uniform("depth", Uniform::Signed(pos.depth()));
         self.vertex_generator.uniform("cubeTransformMatrix", Uniform::Mat3(get_vertex_transformation_matrix(pos.direction())));
         self.vertex_generator.vertex_attrib_buffer("xy", &self.quad, 2, gl::FLOAT, false, 8, 0);
-        fbos.position_pass.draw();
+        fbos.position_pass.bind();
+        unsafe { gl::DrawArrays(gl::TRIANGLES, 0, 6) }
 
         //
         // Calculate normals
@@ -570,7 +571,10 @@ impl Generator {
         self.post_generator.vertex_attrib_buffer("xy", &self.quad, 2, gl::FLOAT, false, 8, 0);
         self.offset_texture.bind_at(1);
         fbos.position_pass.texture("position").unwrap().bind_at(0);
-        fbos.normal_pass.draw();
+        fbos.normal_pass.bind();
+        unsafe { gl::DrawArrays(gl::TRIANGLES, 0, 6) }
+
+        OffscreenBuffer::unbind();
 
         self.generation_order.push(pos);
         self.framebuffers.insert(pos, fbos);

@@ -590,6 +590,10 @@ impl OffscreenBuffer {
         }
     }
 
+    pub fn size(&self) -> (u32, u32) {
+        (self.size.0 as u32, self.size.1 as u32)
+    }
+
     pub fn add(&mut self, name: &str, internal: GLenum, format: GLenum, datatype: GLenum) {
         if self.textures.contains_key(name) {
             println!("Texture {} already attached", name);
@@ -607,7 +611,7 @@ impl OffscreenBuffer {
         self.textures.insert(name.to_string(), texture);
     }
 
-    pub fn draw(&self) {
+    pub fn bind(&self) {
         let mut draw_buffers: Vec<GLenum> = Vec::new();
         for i in 0..self.textures.len() {
             draw_buffers.push((gl::COLOR_ATTACHMENT0 + i as u32) as _);
@@ -616,9 +620,11 @@ impl OffscreenBuffer {
             gl::BindFramebuffer(gl::FRAMEBUFFER, self.fbo);
             gl::DrawBuffers(draw_buffers.len() as _, draw_buffers.as_ptr());
             gl::Viewport(0, 0, self.size.0 as _, self.size.1 as _);
-            gl::DrawArrays(gl::TRIANGLES, 0, 6);
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
         }
+    }
+
+    pub fn unbind() {
+        unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, 0) }
     }
 
     pub unsafe fn read(&self, name: &str, dst: *mut std::ffi::c_void) {
