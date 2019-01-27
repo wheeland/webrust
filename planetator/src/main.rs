@@ -151,7 +151,8 @@ impl webrunner::WebApp for MyApp {
         // advance camera
         let cdx = (if self.pressed(Keycode::Left) {0.0} else {1.0}) + (if self.pressed(Keycode::Right) {0.0} else {-1.0});
         let cdy = (if self.pressed(Keycode::Down) {0.0} else {1.0}) + (if self.pressed(Keycode::Up) {0.0} else {-1.0});
-        self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, 0.0, cdy) * dt));
+        let cdz = (if self.pressed(Keycode::RCtrl) {0.0} else {1.0}) + (if self.pressed(Keycode::RShift) {0.0} else {-1.0});
+        self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, cdz, cdy) * dt));
 
         unsafe {
             gl::Viewport(0, 0, self.windowsize.0 as _, self.windowsize.1 as _);
