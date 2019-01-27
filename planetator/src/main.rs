@@ -261,23 +261,33 @@ impl webrunner::WebApp for MyApp {
                 }
 
                 void main() {
-                    // calculate eye direction in that pixel
-                    vec4 globalPos = inverseViewProjectionMatrix * vec4(clipPos, 0.0, 1.0);
-                    vec3 eyeDir = normalize(globalPos.xyz / globalPos.w - eyePosition);
-
-                    float t0, t1, tMax = 1e10;
-                    if (raySphereIntersect(globalPos.xyz / globalPos.w, eyeDir, planetRadius, t0, t1) && t1 > 0.0)
-                        tMax = max(0.0, t0);
-
-                    vec3 color = computeIncidentLight(globalPos.xyz / globalPos.w, eyeDir, 0.0, tMax);
-                    vec4 planet = texture(planetColor, vec2(0.5) + 0.5 * clipPos);
                     vec3 normalFromTex = texture(planetNormal, vec2(0.5) + 0.5 * clipPos).rgb;
+
+                    // calculate eye direction in that pixel
+                    vec4 globalPosV4 = inverseViewProjectionMatrix * vec4(clipPos, 0.0, 1.0);
+                    vec3 globalPos = globalPosV4.xyz / globalPosV4.w;
+                    vec3 eyeDir = normalize(globalPos - eyePosition);
 
                     if (length(normalFromTex) > 0.0) {
                         vec3 normal = vec3(-1.0) + 2.0 * normalFromTex;
-                        float light = max(dot(normal, sunDirection), 0.0);
-                        outColor = vec4(vec3(0.5) + 0.5 *normal.rgb, 1.0);
-                    } else {
+                        vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
+                        vec3 pPos = texture(planetPosition, vec2(0.5) + 0.5 * clipPos).rgb;
+
+                        float dist = length(pPos - eyePosition);
+                        vec3 atmoColor = computeIncidentLight(eyePosition, eyeDir, 0.0, dist);
+                        float transmittance = exp(-10.0 * dist);
+
+                        float shadow = max(dot(normal, sunDirection), 0.0);
+
+                        outColor = vec4(mix(atmoColor, shadow * pColor, transmittance), 1.0);
+                    }
+                    else {
+                        float t0, t1, tMax = 1e10;
+                        if (raySphereIntersect(globalPos, eyeDir, planetRadius, t0, t1) && t1 > 0.0)
+                            tMax = max(0.0, t0);
+
+                        vec3 color = computeIncidentLight(eyePosition, eyeDir, 0.0, tMax);
+
                         outColor = vec4(color, 1.0);
                     }
                 }
