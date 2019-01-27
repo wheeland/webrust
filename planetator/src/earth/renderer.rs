@@ -30,6 +30,8 @@ pub struct Renderer {
     // the colorator may fail to compile (this may happen after removing a channel), but we'll just fall-back
     colorator: String,
 
+    fbo: Option<tinygl::OffscreenBuffer>,
+
     // errors to be picked up by y'all
     errors_generator: Option<String>,
     errors_channels: Option<String>,
@@ -77,12 +79,12 @@ fn create_render_program(colorator: &str, channels: &Channels) -> tinygl::Progra
         });
 
     let frag_source = String::from("
-            uniform vec3 eye;
             uniform float wf;
             uniform sampler2D normals;
             in vec2 tc;
             in vec3 pos;
-            out vec4 outColor;
+            layout(location = 0) out vec4 outColor;
+            layout(location = 1) out vec4 outNormal;
 
             ") + &super::noise::ShaderNoise::declarations() + "\n"
             + &chan_declarations + "
@@ -98,6 +100,7 @@ fn create_render_program(colorator: &str, channels: &Channels) -> tinygl::Progra
 
                 float wfVal = 1.0 - step(0.8, (0.2126*col.r + 0.7152*col.g + 0.0722*col.b));
                 outColor = vec4(mix(col, vec3(wfVal), wf), 1.0 - 0.7* wf);
+                outNormal = vec4(vec3(0.5) + 0.5 * norm, 1.0);
             }";
 
     tinygl::Program::new(vert_source, &frag_source)
@@ -117,8 +120,7 @@ pub fn default_generator() -> String {
 pub fn default_colorator() -> String {
 String::from("vec3 color(vec3 normal, vec3 position)
 {
-    float light = max(0.0, dot(normal.xyz, vec3(1.0, 0.0, 0.0)));
-    return vec3(light);
+    return vec3(1.0);
 }")
 }
 
@@ -184,6 +186,8 @@ impl Renderer {
             rendered_plates: 0,
             rendered_triangles: 0,
 
+            fbo: None,
+
             generator: default_generator(),
             channels,
             colorator,
@@ -195,6 +199,10 @@ impl Renderer {
 
         ret.create_planet(&default_generator(), &Channels::new(&Vec::new()), false);
         ret
+    }
+
+    pub fn fbo(&self) -> Option<&tinygl::OffscreenBuffer> {
+        self.fbo.as_ref()
     }
 
     pub fn camera(&mut self) -> &mut FlyCamera {
@@ -324,8 +332,21 @@ impl Renderer {
         planet.update_priorities();
         planet.start_data_generation(3);
 
+        //
+        // Update and bind Render Target
+        //
+        if self.fbo.as_ref().map(|fbo| fbo.size() != windowsize).unwrap_or(true) {
+            let mut fbo = tinygl::OffscreenBuffer::new((windowsize.0 as _, windowsize.1 as _));
+            fbo.add("colorWf", gl::RGBA8, gl::RGBA, gl::UNSIGNED_BYTE);
+            fbo.add("normal", gl::RGBA8, gl::RGBA, gl::UNSIGNED_BYTE);
+            fbo.add_depth();
+            self.fbo = Some(fbo);
+        }
+        self.fbo.as_ref().unwrap().bind();
+
         unsafe {
-            gl::Viewport(0, 0, windowsize.0 as _, windowsize.1 as _);
+            gl::ClearColor(0.0, 0.0, 0.0, 0.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
             gl::Enable(gl::CULL_FACE);
             gl::Enable(gl::DEPTH_TEST);
             gl::Enable(gl::BLEND);
@@ -384,5 +405,7 @@ impl Renderer {
         };
 
         self.rendered_plates = rendered_plates.len();
+
+        unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, 0) }
     }
 }

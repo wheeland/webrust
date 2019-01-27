@@ -144,6 +144,8 @@ impl webrunner::WebApp for MyApp {
                 uniform vec3 eyePosition;
                 uniform mat4 inverseViewProjectionMatrix;
                 uniform vec3 sunDirection;
+                uniform sampler2D planetColor;
+                uniform sampler2D planetNormal;
 
                 in vec2 clipPos;
                 out vec4 outColor;
@@ -267,8 +269,16 @@ impl webrunner::WebApp for MyApp {
                         tMax = max(0.0, t0);
 
                     vec3 color = computeIncidentLight(globalPos.xyz / globalPos.w, eyeDir, 0.0, tMax);
+                    vec4 planet = texture(planetColor, vec2(0.5) + 0.5 * clipPos);
+                    vec3 normalFromTex = texture(planetNormal, vec2(0.5) + 0.5 * clipPos).rgb;
 
-                    outColor = vec4(color, 1.0);
+                    if (length(normalFromTex) > 0.0) {
+                        vec3 normal = vec3(-1.0) + 2.0 * normalFromTex;
+                        float light = max(dot(normal, sunDirection), 0.0);
+                        outColor = vec4(vec3(0.5) + 0.5 *normal.rgb, 1.0);
+                    } else {
+                        outColor = vec4(color, 1.0);
+                    }
                 }
                 ", 300),
             fsquad: tinygl::shapes::FullscreenQuad::new(),
@@ -295,26 +305,30 @@ impl webrunner::WebApp for MyApp {
         let cdx = (if self.pressed(Keycode::Left) {0.0} else {1.0}) + (if self.pressed(Keycode::Right) {0.0} else {-1.0});
         let cdy = (if self.pressed(Keycode::Down) {0.0} else {1.0}) + (if self.pressed(Keycode::Up) {0.0} else {-1.0});
         let cdz = (if self.pressed(Keycode::RCtrl) {0.0} else {1.0}) + (if self.pressed(Keycode::RShift) {0.0} else {-1.0});
+        let mvp = self.renderer.camera().mvp(self.windowsize);
+        let eye = self.renderer.camera().eye();
         self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, cdz, cdy) * dt));
+
+        // render planet into FBO
+        self.renderer.render(self.windowsize);
+        let fbo = self.renderer.fbo().unwrap();
+        fbo.texture("normal").unwrap().bind_at(1);
+        fbo.texture("colorWf").unwrap().bind_at(0);
 
         unsafe {
             gl::Viewport(0, 0, self.windowsize.0 as _, self.windowsize.1 as _);
-            gl::ClearColor(0.2, 0.2, 0.2, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+            gl::Disable(gl::CULL_FACE);
+            gl::Disable(gl::DEPTH_TEST);
+            gl::Disable(gl::BLEND);
         }
 
-        let mvp = self.renderer.camera().mvp(self.windowsize);
-
         self.athmosphere_program.bind();
-        self.athmosphere_program.uniform("eyePosition", tinygl::Uniform::Vec3(self.renderer.camera().eye()));
+        self.athmosphere_program.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
         self.athmosphere_program.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
         self.athmosphere_program.uniform("sunDirection", tinygl::Uniform::Vec3(cgmath::Vector3::new(1.0, 0.0, 0.0)));
-        self.athmosphere_program.uniform("planetRadius", tinygl::Uniform::Float(1.0));
-        self.athmosphere_program.uniform("athmosphereHeight", tinygl::Uniform::Float(0.1));
+        self.athmosphere_program.uniform("planetColor", tinygl::Uniform::Signed(0));
+        self.athmosphere_program.uniform("planetNormal", tinygl::Uniform::Signed(1));
         self.fsquad.render(&self.athmosphere_program, "vertex");
-
-        // render planet
-        self.renderer.render(self.windowsize);
     }
 
     fn do_ui(&mut self, ui: &imgui::Ui, keymod: sdl2::keyboard::Mod) {
