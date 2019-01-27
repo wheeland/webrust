@@ -1,4 +1,64 @@
-use cgmath::{Vector3};
+use cgmath::{Vector2, Vector3};
+
+pub struct FullscreenQuad {
+    indices: super::IndexBuffer,
+    vertices: super::VertexBuffer,
+}
+
+impl FullscreenQuad {
+    pub fn new() -> Self {
+        let mut indices = Vec::<u16>::new();
+        let mut vertices = Vec::<Vector2<f32>>::new();
+
+        vertices.push(Vector2::new(-1.0, -1.0));
+        vertices.push(Vector2::new(1.0,  -1.0));
+        vertices.push(Vector2::new(-1.0,  1.0));
+        vertices.push(Vector2::new(1.0,   1.0));
+
+        indices.push(0);
+        indices.push(2);
+        indices.push(3);
+
+        indices.push(0);
+        indices.push(3);
+        indices.push(1);
+
+        let indices = super::IndexBuffer::from16(&indices);
+        let vertices = super::VertexBuffer::from(&vertices);
+
+        FullscreenQuad {
+            indices,
+            vertices,
+        }
+    }
+
+    pub fn indices(&self) -> &super::IndexBuffer {
+        &self.indices
+    }
+
+    pub fn vertices(&self) -> &super::VertexBuffer {
+        &self.vertices
+    }
+
+    pub fn render(&self, program: &super::Program, attrname: &str) {
+        unsafe {
+            gl::Disable(gl::DEPTH_TEST);
+            gl::Disable(gl::STENCIL_TEST);
+            gl::Disable(gl::BLEND);
+            gl::DepthMask(0);
+        }
+
+        program.bind();
+        program.vertex_attrib_buffer(attrname, &self.vertices, 2, gl::FLOAT, false, 0, 0);
+        self.indices.draw_all(gl::TRIANGLES);
+
+        unsafe {
+            gl::Enable(gl::DEPTH_TEST);
+            gl::Enable(gl::BLEND);
+            gl::DepthMask(1);
+        }
+    }
+}
 
 pub struct Cube {
     indices: Vec<u16>,
