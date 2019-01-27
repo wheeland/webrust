@@ -85,6 +85,7 @@ fn create_render_program(colorator: &str, channels: &Channels) -> tinygl::Progra
             in vec3 pos;
             layout(location = 0) out vec4 outColor;
             layout(location = 1) out vec4 outNormal;
+            layout(location = 2) out vec4 outPosition;
 
             ") + &super::noise::ShaderNoise::declarations() + "\n"
             + &chan_declarations + "
@@ -101,6 +102,7 @@ fn create_render_program(colorator: &str, channels: &Channels) -> tinygl::Progra
                 float wfVal = 1.0 - step(0.8, (0.2126*col.r + 0.7152*col.g + 0.0722*col.b));
                 outColor = vec4(mix(col, vec3(wfVal), wf), 1.0 - 0.7* wf);
                 outNormal = vec4(vec3(0.5) + 0.5 * norm, 1.0);
+                outPosition = vec4(pos, 1.0);
             }";
 
     tinygl::Program::new(vert_source, &frag_source)
@@ -339,6 +341,7 @@ impl Renderer {
             let mut fbo = tinygl::OffscreenBuffer::new((windowsize.0 as _, windowsize.1 as _));
             fbo.add("colorWf", gl::RGBA8, gl::RGBA, gl::UNSIGNED_BYTE);
             fbo.add("normal", gl::RGBA8, gl::RGBA, gl::UNSIGNED_BYTE);
+            fbo.add("position", gl::RGBA32F, gl::RGBA, gl::FLOAT);
             fbo.add_depth();
             self.fbo = Some(fbo);
         }

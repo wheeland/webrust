@@ -146,15 +146,16 @@ impl webrunner::WebApp for MyApp {
                 uniform vec3 sunDirection;
                 uniform sampler2D planetColor;
                 uniform sampler2D planetNormal;
+                uniform sampler2D planetPosition;
 
                 in vec2 clipPos;
                 out vec4 outColor;
 
                 const float planetRadius = 1.0;
-                const float atmosphereHeight = 0.1;
+                const float atmosphereHeight = 0.2;
                 const float atmosphereRadius = planetRadius + atmosphereHeight;
                 const float Hr = 0.2 * atmosphereHeight;
-                const float Hm = 0.04 * atmosphereHeight;
+                const float Hm = 0.03 * atmosphereHeight;
                 const vec3 betaR = vec3(3.8e-6, 13.5e-6, 33.1e-6) * 4.0e5;
                 const vec3 betaM = vec3(21e-6) * 4.0e5;
 
@@ -312,6 +313,7 @@ impl webrunner::WebApp for MyApp {
         // render planet into FBO
         self.renderer.render(self.windowsize);
         let fbo = self.renderer.fbo().unwrap();
+        fbo.texture("position").unwrap().bind_at(2);
         fbo.texture("normal").unwrap().bind_at(1);
         fbo.texture("colorWf").unwrap().bind_at(0);
 
@@ -328,6 +330,7 @@ impl webrunner::WebApp for MyApp {
         self.athmosphere_program.uniform("sunDirection", tinygl::Uniform::Vec3(cgmath::Vector3::new(1.0, 0.0, 0.0)));
         self.athmosphere_program.uniform("planetColor", tinygl::Uniform::Signed(0));
         self.athmosphere_program.uniform("planetNormal", tinygl::Uniform::Signed(1));
+        self.athmosphere_program.uniform("planetPosition", tinygl::Uniform::Signed(2));
         self.fsquad.render(&self.athmosphere_program, "vertex");
     }
 
