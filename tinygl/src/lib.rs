@@ -575,6 +575,7 @@ impl OffscreenTexture {
 pub struct OffscreenBuffer {
     size: (GLsizei, GLsizei),
     fbo: GLuint,
+    depth: Option<GLuint>,
     textures: HashMap<String, OffscreenTexture>
 }
 
@@ -586,6 +587,7 @@ impl OffscreenBuffer {
         OffscreenBuffer {
             size,
             fbo,
+            depth: None,
             textures: HashMap::new()
         }
     }
@@ -609,6 +611,22 @@ impl OffscreenBuffer {
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
         }
         self.textures.insert(name.to_string(), texture);
+    }
+
+    pub fn add_depth(&mut self) {
+        if self.depth.is_none() {
+            unsafe {
+                let mut depth = 0;
+                gl::GenRenderbuffers(1, &mut depth);
+                gl::BindRenderbuffer(gl::RENDERBUFFER, depth);
+                gl::RenderbufferStorage(gl::RENDERBUFFER, gl::DEPTH_COMPONENT24, self.size.0, self.size.1);
+                gl::BindFramebuffer(gl::FRAMEBUFFER, self.fbo);
+                gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, gl::RENDERBUFFER, depth);
+                gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+
+                self.depth = Some(depth);
+            }
+        }
     }
 
     pub fn bind(&self) {
@@ -657,6 +675,11 @@ impl OffscreenBuffer {
 
 impl Drop for OffscreenBuffer {
     fn drop(&mut self) {
-        unsafe { gl::DeleteFramebuffers(1, &mut self.fbo); }
+        unsafe {
+            gl::DeleteFramebuffers(1, &mut self.fbo);
+            if let Some(depth) = self.depth.take() {
+                gl::DeleteRenderbuffers(1, &depth);
+            }
+        }
     }
 }
