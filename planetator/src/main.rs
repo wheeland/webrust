@@ -26,6 +26,7 @@ use sdl2::mouse::MouseButton;
 use sdl2::event::{Event};
 use imgui::*;
 use appbase::fpswidget::FpsWidget;
+use cgmath::SquareMatrix;
 
 struct MyApp {
     windowsize: (u32, u32),
@@ -42,6 +43,9 @@ struct MyApp {
     select_channels: Vec<(String, i32)>,
 
     renderer: earth::renderer::Renderer,
+
+    athmosphere_program: tinygl::Program,
+    fsquad: tinygl::shapes::FullscreenQuad,
 }
 
 #[derive(Serialize)]
@@ -129,6 +133,145 @@ impl webrunner::WebApp for MyApp {
             edit_js: guiutil::ShaderEditData::new("JavaScript executor", "var elem = document.getElementById('state');"),
             select_channels: Vec::new(),
             renderer: earth::renderer::Renderer::new(),
+            athmosphere_program: tinygl::Program::new_versioned("
+                in vec2 vertex;
+                out vec2 clipPos;
+                void main() {
+                    clipPos = vertex;
+                    gl_Position = vec4(vertex, 0.0, 1.0);
+                }
+                ", "
+                uniform vec3 eyePosition;
+                uniform mat4 inverseViewProjectionMatrix;
+                uniform vec3 sunDirection;
+
+                in vec2 clipPos;
+                out vec4 outColor;
+
+                const float planetRadius = 1.0;
+                const float atmosphereHeight = 0.1;
+                const float atmosphereRadius = planetRadius + atmosphereHeight;
+                const float Hr = 0.2 * atmosphereHeight;
+                const float Hm = 0.04 * atmosphereHeight;
+                const vec3 betaR = vec3(3.8e-6, 13.5e-6, 33.1e-6) * 4.0e5;
+                const vec3 betaM = vec3(21e-6) * 4.0e5;
+
+                #define PI 3.14159
+
+                bool solveQuadratic(float a, float b, float c, out float x1, out float x2)
+                {
+                    if (b == 0.0) {
+                        // Handle special case where the the two vector ray.dir and V are perpendicular
+                        // with V = ray.orig - sphere.centre
+                        if (a == 0.0) return false;
+                        x1 = 0.0;
+                        x2 = sqrt(-c / a);
+                        return true;
+                    }
+                    float discr = b * b - 4.0 * a * c;
+
+                    if (discr < 0.0) return false;
+
+                    float q = (b < 0.0) ? -0.5 * (b - sqrt(discr)) : -0.5 * (b + sqrt(discr));
+                    x1 = q / a;
+                    x2 = c / q;
+
+                    return true;
+                }
+
+                bool raySphereIntersect(vec3 orig, vec3 dir, float radius, out float t0, out float t1)
+                {
+                    // They ray dir is normalized so A = 1
+                    float A = dir.x * dir.x + dir.y * dir.y + dir.z * dir.z;
+                    float B = 2.0 * (dir.x * orig.x + dir.y * orig.y + dir.z * orig.z);
+                    float C = orig.x * orig.x + orig.y * orig.y + orig.z * orig.z - radius * radius;
+
+                    if (!solveQuadratic(A, B, C, t0, t1)) return false;
+
+                    if (t0 > t1) {
+                        float tt = t0;
+                        t0 = t1;
+                        t1 = tt;
+                    }
+
+                    return true;
+                }
+
+                vec3 computeIncidentLight(vec3 orig, vec3 dir, float tmin, float tmax)
+                {
+                    float t0, t1;
+                    if (!raySphereIntersect(orig, dir, atmosphereRadius, t0, t1) || t1 < 0.0)
+                        return vec3(0.0);
+                    if (t0 > tmin && t0 > 0.0) tmin = t0;
+                    if (t1 < tmax) tmax = t1;
+                    int numSamples = 8;
+                    int numSamplesLight = 4;
+                    float segmentLength = (tmax - tmin) / float(numSamples);
+                    float tCurrent = tmin;
+
+                    // mie and rayleigh contribution
+                    vec3 sumR = vec3(0.0);
+                    vec3 sumM = vec3(0.0);
+
+                    float opticalDepthR = 0.0, opticalDepthM = 0.0;
+                    float mu = dot(dir, sunDirection); // mu in the paper which is the cosine of the angle between the sun direction and the ray direction
+                    float phaseR = 3.0 / (16.0 * PI) * (1.0 + mu * mu);
+                    float g = 0.76;
+                    float phaseM = 3.0 / (8.0 * PI) * ((1.0 - g * g) * (1.0 + mu * mu)) / ((2.0 + g * g) * pow(1.0 + g * g - 2.0 * g * mu, 1.5));
+
+                    for (int i = 0; i < numSamples; ++i) {
+                        vec3 samplePosition = orig + (tCurrent + segmentLength * 0.5) * dir;
+                        float height = length(samplePosition) - planetRadius;
+
+                        // compute optical depth for light
+                        float hr = exp(-height / Hr) * segmentLength;
+                        float hm = exp(-height / Hm) * segmentLength;
+                        opticalDepthR += hr;
+                        opticalDepthM += hm;
+
+                        // light optical depth
+                        float t0Light, t1Light;
+                        raySphereIntersect(samplePosition, sunDirection, atmosphereRadius, t0Light, t1Light);
+                        float segmentLengthLight = t1Light / float(numSamplesLight);
+                        float tCurrentLight = 0.0;
+                        float opticalDepthLightR = 0.0, opticalDepthLightM = 0.0;
+
+                        int j;
+                        for (j = 0; j < numSamplesLight; ++j) {
+                            vec3 samplePositionLight = samplePosition + (tCurrentLight + segmentLengthLight * 0.5) * sunDirection;
+                            float heightLight = length(samplePositionLight) - planetRadius;
+                            if (heightLight < 0.0) break;
+                            opticalDepthLightR += exp(-heightLight / Hr) * segmentLengthLight;
+                            opticalDepthLightM += exp(-heightLight / Hm) * segmentLengthLight;
+                            tCurrentLight += segmentLengthLight;
+                        }
+                        if (j == numSamplesLight) {
+                            vec3 tau = betaR * (opticalDepthR + opticalDepthLightR) + betaM * 1.1 * (opticalDepthM + opticalDepthLightM);
+                            vec3 attenuation = vec3(exp(-tau.x), exp(-tau.y), exp(-tau.z));
+                            sumR += attenuation * hr;
+                            sumM += attenuation * hm;
+                        }
+                        tCurrent += segmentLength;
+                    }
+
+                    return (sumR * betaR * phaseR + sumM * betaM * phaseM) * 20.0;
+                }
+
+                void main() {
+                    // calculate eye direction in that pixel
+                    vec4 globalPos = inverseViewProjectionMatrix * vec4(clipPos, 0.0, 1.0);
+                    vec3 eyeDir = normalize(globalPos.xyz / globalPos.w - eyePosition);
+
+                    float t0, t1, tMax = 1e10;
+                    if (raySphereIntersect(globalPos.xyz / globalPos.w, eyeDir, planetRadius, t0, t1) && t1 > 0.0)
+                        tMax = max(0.0, t0);
+
+                    vec3 color = computeIncidentLight(globalPos.xyz / globalPos.w, eyeDir, 0.0, tMax);
+
+                    outColor = vec4(color, 1.0);
+                }
+                ", 300),
+            fsquad: tinygl::shapes::FullscreenQuad::new(),
         }
     }
 
@@ -159,6 +302,16 @@ impl webrunner::WebApp for MyApp {
             gl::ClearColor(0.2, 0.2, 0.2, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
+
+        let mvp = self.renderer.camera().mvp(self.windowsize);
+
+        self.athmosphere_program.bind();
+        self.athmosphere_program.uniform("eyePosition", tinygl::Uniform::Vec3(self.renderer.camera().eye()));
+        self.athmosphere_program.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
+        self.athmosphere_program.uniform("sunDirection", tinygl::Uniform::Vec3(cgmath::Vector3::new(1.0, 0.0, 0.0)));
+        self.athmosphere_program.uniform("planetRadius", tinygl::Uniform::Float(1.0));
+        self.athmosphere_program.uniform("athmosphereHeight", tinygl::Uniform::Float(0.1));
+        self.fsquad.render(&self.athmosphere_program, "vertex");
 
         // render planet
         self.renderer.render(self.windowsize);
