@@ -219,6 +219,12 @@ impl Program {
         Self::new_versioned(vsrc, fsrc, 300)
     }
 
+    fn print_lines(src: &str) {
+        for ln in src.split("\n").enumerate() {
+            println!("{:4} {}", ln.0 + 5, ln.1);
+        }
+    }
+
     pub fn new_versioned(vsrc: &str, fsrc: &str, version: i32) -> Self {
         let vs = Self::compile_shader(vsrc, gl::VERTEX_SHADER, version);
         let fs = Self::compile_shader(fsrc, gl::FRAGMENT_SHADER, version);
@@ -228,9 +234,11 @@ impl Program {
         let mut uniforms = HashMap::new();
 
         if !vs.0 {
+            Self::print_lines(vsrc);
             Self::print_errors("Vertex Shader Log:", &vs.2);
         }
         if !fs.0 {
+            Self::print_lines(fsrc);
             Self::print_errors("Fragment Shader Log:", &fs.2);
         }
 
