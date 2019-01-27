@@ -153,6 +153,12 @@ impl webrunner::WebApp for MyApp {
         let cdy = (if self.pressed(Keycode::Down) {0.0} else {1.0}) + (if self.pressed(Keycode::Up) {0.0} else {-1.0});
         self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, 0.0, cdy) * dt));
 
+        unsafe {
+            gl::Viewport(0, 0, self.windowsize.0 as _, self.windowsize.1 as _);
+            gl::ClearColor(0.2, 0.2, 0.2, 1.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+        }
+
         // render planet
         self.renderer.render(self.windowsize);
     }

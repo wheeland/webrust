@@ -322,12 +322,10 @@ impl Renderer {
             planet.update_quad_tree(&self.camera.eye(), &culler, 14, self.hide_backside);
         }
         planet.update_priorities();
-        planet.start_data_generation(3  );
+        planet.start_data_generation(3);
 
         unsafe {
             gl::Viewport(0, 0, windowsize.0 as _, windowsize.1 as _);
-            gl::ClearColor(0.2, 0.2, 0.2, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
             gl::Enable(gl::CULL_FACE);
             gl::Enable(gl::DEPTH_TEST);
             gl::Enable(gl::BLEND);
