@@ -44,32 +44,32 @@ pub struct Replay {
     config: Config,
     first: piece::Type,
     second: piece::Type,
-    time: usize,
+    time: i32,
     data: Vec<u16>,
 }
 
 impl Replay {
-    pub fn new(config: &Config, first: piece::Type, second: piece::Type) -> Self {
+    pub fn new(config: &Config, first: piece::Type, second: piece::Type, time: i32) -> Self {
         Replay {
             config: config.clone(),
             first,
             second,
-            time: 0,
+            time,
             data: Vec::new(),
         }
     }
 
-    fn add(&mut self, time: usize, tp: EntryType, detail: u8) {
+    fn add(&mut self, time: i32, tp: EntryType, detail: u8) {
         let mut dt = time - self.time;
         while dt > 255 {
             self.data.push(Entry::from(255, EntryType::Nop, 0).0);
             dt -= 255;
         }
-        self.data.push(Entry::from(dt, tp, detail).0);
+        self.data.push(Entry::from(dt.max(0) as usize, tp, detail).0);
         self.time = time;
     }
 
-    pub fn add_move(&mut self, time: usize, rotate: Option<bool>, x: i32, y: i32) {
+    pub fn add_move(&mut self, time: i32, rotate: Option<bool>, x: i32, y: i32) {
         if let Some(clockwise) = rotate {
             self.add(time, EntryType::Rot, if clockwise { 1 } else { 0 });
         }
@@ -81,12 +81,12 @@ impl Replay {
         }
     }
 
-    pub fn add_merge(&mut self, time: usize, drop: i32, next: piece::Piece) {
+    pub fn add_merge(&mut self, time: i32, drop: i32, next: piece::Piece) {
         self.add(time, EntryType::Merge, drop as u8);
         self.add(time, EntryType::NextPiece, next.get_type() as u8);
     }
 
-    pub fn add_new_piece(&mut self, time: usize) {
+    pub fn add_new_piece(&mut self, time: i32) {
         self.add(time, EntryType::Spawn, 0);
     }
 
@@ -94,7 +94,7 @@ impl Replay {
         &self.config
     }
 
-    pub fn frames(&self) -> usize {
+    pub fn frames(&self) -> i32 {
         self.time
     }
 }
@@ -131,7 +131,7 @@ impl Replayer {
             state,
             paused: false,
             speed: 1.0,
-            frames: replay.frames(),
+            frames: replay.frames().max(0) as usize,
             time: 0.0,
         };
 
@@ -144,7 +144,7 @@ impl Replayer {
         for entry in &replay.data {
             let entry = Entry(*entry);
             let detail = entry.detail();
-            time += entry.dt();
+            time += entry.dt() as i32;
 
             match entry.entry_type() {
                 EntryType::Nop => {
@@ -199,11 +199,11 @@ impl Replayer {
         self.frames as f32 / 60.0
     }
 
-    pub fn timestamp(&self) -> usize {
-        (self.time * 60.0) as usize
+    pub fn timestamp(&self) -> i32 {
+        (self.time * 60.0) as i32
     }
 
     pub fn snapshot(&self) -> &Snapshot {
-        self.state.snapshot_at(self.timestamp())
+        self.state.snapshot_at(self.timestamp() as i32)
     }
 }

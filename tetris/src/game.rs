@@ -32,18 +32,18 @@ pub struct Game {
 
     state: GameHistory,
 
-    timestamp: usize,
-    timer: f32,
+    timestamp: i32,
     lost: Option<(i32, i32)>,
 
+    drop_timer: i32,
     left: bool,
     right: bool,
     movekey: Move,
-    das: f32,
+    das: i32,
 
     down_pressed: bool,
     down: i32,
-    down_das: f32,
+    down_das: i32,
 
     replay: super::replay::Replay,
 }
@@ -64,26 +64,27 @@ impl Game {
     pub fn new(config: &super::Config) -> Self {
         let first = Self::gen_piece(piece::Type::None);
         let second = Self::gen_piece(first.get_type());
+        let timestamp = 0;
 
         let state = GameHistory::new(config, first, second);
-        let replay = super::replay::Replay::new(config, first.get_type(), second.get_type());
+        let replay = super::replay::Replay::new(config, first.get_type(), second.get_type(), timestamp);
 
         Game {
             config: config.clone(),
 
             state,
-            timer: -1.5,
-            timestamp: 0,
+            timestamp,
             lost: None,
 
+            drop_timer: -90,
             movekey: Move::None,
             left: false,
             right: false,
-            das: 0.0,
+            das: 0,
 
             down: 0,
             down_pressed: false,
-            down_das: 0.0,
+            down_das: 0,
 
             replay,
         }
@@ -129,7 +130,7 @@ impl Game {
                 let moved = self.try_move(None, direction, 0);
 
                 // init DAS
-                self.das = if moved { self.config.das_initial } else { 0.0 };
+                self.das = if moved { self.config.das_initial } else { 0 };
             }
         }
     }
@@ -146,14 +147,13 @@ impl Game {
 
     pub fn down(&mut self, pressed: bool) {
         if !self.down_pressed && pressed {
-            self.try_move(None, 0, -1);
-            self.timer = self.timer.max(0.0);
-            self.down = 1;
-            self.down_das = self.config.das_down;
+            if self.try_move(None, 0, -1) {
+                self.down = 1;
+                self.down_das = self.config.das_down;
+            }
         }
         else if !pressed {
             self.down = 0;
-            self.timer = 0.0;
         }
         self.down_pressed = pressed;
     }
@@ -183,7 +183,7 @@ impl Game {
             self.state.merge(self.timestamp, next_piece, self.down);
 
             // adjust timers
-            self.timer -= self.state.snapshot().are_duration().unwrap() as f32 / 60.0;
+            self.drop_timer = -self.state.snapshot().are_duration().unwrap();
             self.down = 0;
 
             let animation = self.state.snapshot().animation();
@@ -196,20 +196,19 @@ impl Game {
         Outcome::None
     }
 
-    pub fn frame(&mut self, dt: f32) -> Outcome {
-        self.timer += dt;
+    pub fn frame(&mut self) -> Outcome {
         self.timestamp += 1;
 
         let mut ret = Outcome::None;
 
         // update DAS movement
-        if self.movekey != Move::None && self.das <= 0.0 {
+        if self.movekey != Move::None && self.das <= 0 {
             let direction = if self.movekey == Move::Left { -1 } else { 1 };
             if self.try_move(None, direction, 0) {
                 self.das = self.config.das_step;
             }
         }
-        self.das -= dt;
+        self.das -= 1;
 
         // If we ARE in ARE, count down and possibly start next tile
         // only move tiles down if ARE is finished
@@ -223,37 +222,38 @@ impl Game {
                     self.lost = Some((last_breath.score(), last_breath.level()));
                     ret = Outcome::Death;
                 }
-                self.timer = 0.0;   // re-set gravity timer
+                self.drop_timer = 0;   // re-set gravity timer
             } else {
                 are_we_are = true;
             }
         }
+
+        // Compute gravity for current level
+        let gravity = self.state.snapshot().level();
+        let gravity = gravity.min(self.config.gravity.len() as i32 - 1);
+        let gravity = *self.config.gravity.get(gravity as usize).unwrap();
+
         // update soft drop
         let mut move_down = false;
-        if self.down > 0 && self.down_das <= 0.0 {
-            self.timer = self.timer.max(0.0);
-            self.down_das += self.config.das_down;
+        if self.down > 0 && self.down_das <= 0 {
+            self.drop_timer = gravity;
+            self.down_das = self.config.das_down;
             self.down += 1;
             move_down = true;
         }
-        self.down_das -= dt;
+        self.down_das -= 1;
 
         if !are_we_are {
-            // If down is not pressed, we might want to move down becaue of gravity
-            if !self.down_pressed{
-                // Compute gravity for current level
-                let gravity = self.state.snapshot().level();
-                let gravity = gravity.min(self.config.gravity.len() as i32 - 1);
-                let gravity = *self.config.gravity.get(gravity as usize).unwrap();
+            self.drop_timer += 1;
 
-                if self.timer > gravity {
-                    self.timer -= gravity;
-                    move_down = true;
-                }
+            // If down is not pressed, we might want to move down becaue of gravity
+            if !self.down_pressed && self.drop_timer >= gravity {
+                move_down = true;
             }
 
             if move_down {
                 ret = self.move_down();
+                self.drop_timer = 0;
             }
         }
 
@@ -264,7 +264,7 @@ impl Game {
         self.state.snapshot()
     }
 
-    pub fn timestamp(&self) -> usize {
+    pub fn timestamp(&self) -> i32 {
         self.timestamp
     }
 

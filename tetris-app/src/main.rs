@@ -24,6 +24,7 @@ mod util;
 mod client;
 
 const ZFAR: f32 = 700.0;
+const FRAME: f32 = 1.0 / 60.0;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct PlayerOptions {
@@ -46,6 +47,7 @@ enum State {
     },
     Game {
         game: tetris::game::Game,
+        dtime: f32,
         paused: bool,
         finished: bool,
     },
@@ -264,16 +266,33 @@ impl webrunner::WebApp for TetrisApp {
         // Advance running game?
         let mut bg = false;
         self.ui = Some(match self.ui.take().unwrap() {
-            State::Game{mut game, paused, mut finished} => {
+            State::Game{mut game, paused, mut finished, mut dtime} => {
                 if !finished && !paused {
-                    if let tetris::game::Outcome::Death = game.frame(dt) {
+                    // advance timer
+                    dtime -= dt.min(0.1) - FRAME;
+
+                    let mut frames = 1;
+                    while dtime < -FRAME {
+                        frames += 1;
+                        dtime += FRAME;
+                    }
+                    while dtime > FRAME {
+                        frames -= 1;
+                        dtime -= FRAME;
+                    }
+
+                    let mut outcome = tetris::game::Outcome::None;
+                    for i in 0..frames {
+                        outcome = game.frame();
+                    }
+                    if let tetris::game::Outcome::Death = outcome {
                         self.save(&game);
                         finished = true;
                     }
                 }
 
                 self.renderer.set_state(game.timestamp(), game.snapshot());
-                State::Game{game, paused, finished}
+                State::Game{game, paused, finished, dtime}
             },
             State::Replay{mut replayer} => {
                 let adv = dt * replayer.speed;
@@ -422,7 +441,8 @@ impl webrunner::WebApp for TetrisApp {
                         ret = Some(State::Game {
                             game: tetris::game::Game::new(&self.config),
                             paused: false,
-                            finished: false
+                            finished: false,
+                            dtime: 0.0,
                         });
                     }
                 });
@@ -501,7 +521,7 @@ impl webrunner::WebApp for TetrisApp {
 
                 ret.unwrap_or(State::PreGame{keyconfig})
             }
-            State::Game{game, paused, mut finished} => {
+            State::Game{game, paused, mut finished, dtime} => {
                 self.renderer.do_ui(ui, self.ui_center, self.ui_scale);
                 let mut ret = None;
 
@@ -534,7 +554,7 @@ impl webrunner::WebApp for TetrisApp {
                     });
                 }
 
-                ret.unwrap_or(State::Game{game, paused, finished})
+                ret.unwrap_or(State::Game{game, paused, finished, dtime})
             }
             State::Replay{mut replayer} => {
                 self.renderer.do_ui(ui, self.ui_center, self.ui_scale);

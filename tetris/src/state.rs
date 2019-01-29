@@ -50,7 +50,7 @@ struct Turn {
 enum State {
     ARE {
         waiting: piece::Piece,
-        duration: usize,
+        duration: i32,
         animation: Option<(Vec<i32>, stack::Stack)>,
     },
     Piece {
@@ -62,7 +62,7 @@ enum State {
 
 #[derive(Clone)]
 pub struct Snapshot {
-    timestamp: usize,
+    timestamp: i32,
     turn: Rc<Turn>,
     state: State,
 }
@@ -82,7 +82,7 @@ impl Snapshot {
         &self.turn.stack
     }
 
-    pub fn timestamp(&self) -> usize {
+    pub fn timestamp(&self) -> i32 {
         self.timestamp
     }
 
@@ -132,7 +132,7 @@ impl Snapshot {
         }
     }
 
-    pub fn are_duration(&self) -> Option<usize> {
+    pub fn are_duration(&self) -> Option<i32> {
         match self.state {
             State::Piece{..} => None,
             State::ARE{duration, ..} => Some(duration)
@@ -148,7 +148,7 @@ impl Snapshot {
 }
 
 impl GameHistory {
-    pub fn try_move(&mut self, timestamp: usize, piece: piece::Piece, x: i32, y: i32) -> bool {
+    pub fn try_move(&mut self, timestamp: i32, piece: piece::Piece, x: i32, y: i32) -> bool {
         // make sure we are progressing ever forward
         let last_frame = self.frames.last().unwrap().clone();
         if last_frame.timestamp > timestamp {
@@ -167,7 +167,7 @@ impl GameHistory {
         fits
     }
 
-    pub fn start_new_piece(&mut self, timestamp: usize) -> bool {
+    pub fn start_new_piece(&mut self, timestamp: i32) -> bool {
         let last_frame = self.frames.last().unwrap().clone();
 
         let new_frame = match last_frame.state {
@@ -191,7 +191,7 @@ impl GameHistory {
         ret
     }
 
-    pub fn merge(&mut self, timestamp: usize, next_piece: piece::Piece, soft_drop: i32) -> bool {
+    pub fn merge(&mut self, timestamp: i32, next_piece: piece::Piece, soft_drop: i32) -> bool {
         // make sure we are progressing ever forward
         let last_frame = self.frames.last().unwrap().clone();
         if last_frame.timestamp > timestamp {
@@ -241,7 +241,7 @@ impl GameHistory {
 
         let new_state = State::ARE {
             waiting: last_frame.next_piece(),
-            duration: are as usize,
+            duration: are,
             animation: match line_cleared {
                 false => None,
                 true => Some((eliminated.1, merged))
@@ -287,7 +287,7 @@ impl GameHistory {
         self.frames.last().unwrap()
     }
 
-    pub fn snapshot_at(&self, timestamp: usize) -> &Snapshot {
+    pub fn snapshot_at(&self, timestamp: i32) -> &Snapshot {
         let mut ret = self.frames.first().unwrap();
         for frame in &self.frames {
             if frame.timestamp > timestamp {

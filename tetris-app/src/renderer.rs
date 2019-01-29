@@ -39,7 +39,7 @@ struct FallingPiece {
 }
 
 pub struct Renderer {
-    timestamp: usize,
+    timestamp: i32,
     state: Option<Snapshot>,
 
     pos_field: Rectangle,
@@ -174,7 +174,7 @@ impl Renderer {
             pos_stats,
 
             ghost_piece: false,
-            threed: true,
+            threed: false,
             tile_size: pos_field.w / 10.0,
             z,
 
@@ -240,7 +240,7 @@ impl Renderer {
         }
     }
 
-    pub fn set_state(&mut self, timestamp: usize, state: &Snapshot) {
+    pub fn set_state(&mut self, timestamp: i32, state: &Snapshot) {
         self.timestamp = timestamp;
         self.state = Some(state.clone());
     }
