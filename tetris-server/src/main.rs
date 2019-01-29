@@ -10,7 +10,7 @@ extern crate rusqlite;
 extern crate chrono;
 
 use tetris::networking::*;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::error::Error;
 
 use rusqlite::types::ToSql;
@@ -154,10 +154,23 @@ fn main() {
     let mut data = String::new();
     std::io::stdin().read_to_string(&mut data).unwrap();
 
+    // log shit
+    // let mut file = std::fs::OpenOptions::new()
+        // .append(true)
+        // .create(true)
+        // .open("server.log")
+        // .unwrap();
+
+    // file.write_all(format!("buffer: {:?}\n", data).as_bytes());
+
     // print 'em
     let answer = match decode::<ServerMessage>(&data) {
-        None => ServerAnswer::InvalidMessage(format!("Couldn't parse {} bytes", data.len())),
+        None => {
+            // file.write_all(format!("error parsing: {:?}\n", data).as_bytes());
+            ServerAnswer::InvalidMessage(format!("Couldn't parse {} bytes", data.len()))
+        }
         Some(request) => {
+            // file.write_all(format!("message: {:?}\n", request).as_bytes());
             match process(request) {
                 Err(err) => ServerAnswer::ServerError(String::from(err)),
                 Ok(ret) => ret,
@@ -165,7 +178,7 @@ fn main() {
         }
     };
 
-    // std::fs::write("server.answer", format!("{}\n\n{:?}", data, answer));
+    // file.write_all(format!("answer: {:?}\n\n", answer).as_bytes());
 
     println!("{}", encode(&answer));
 }
