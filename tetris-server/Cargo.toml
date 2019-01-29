@@ -3,6 +3,10 @@ name = "tetris-server"
 version = "0.1.0"
 authors = ["Wieland Hagen <wieland.hagen@kdab.com>"]
 
+[profile.release]
+opt-level = "z"
+lto = true
+
 [dependencies]
 base64 = "0.10.0"
 bincode = "1.0"

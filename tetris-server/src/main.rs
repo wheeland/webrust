@@ -45,7 +45,7 @@ fn open_database(path: &str) -> Result<Connection, String> {
 
 fn process(message: ServerMessage) -> Result<ServerAnswer, String> {
     // open SQLite connection
-    let db = open_database("tetris.sqlite")?;
+    let db = open_database("/var/tetris/tetris.sqlite")?;
 
     let ret = match message {
         ServerMessage::UploadReplay { name, idtag, replay } => {
@@ -172,7 +172,7 @@ fn main() {
         Some(request) => {
             // file.write_all(format!("message: {:?}\n", request).as_bytes());
             match process(request) {
-                Err(err) => ServerAnswer::ServerError(String::from(err)),
+                Err(err) => ServerAnswer::ServerError(String::from("")),
                 Ok(ret) => ret,
             }
         }
