@@ -52,3 +52,20 @@ lightAt(cam, PA) = {
 }
 
 now we need to add the actual colors, which means to add the phase function and the scattering coefficients to the picture
+
+notes on the shader
+    outside of atmosphere (rCam > rAtm)
+        0 intersection: black
+        2 intersection: calc along way
+        2 intersection but with ground: calc until ground
+    inside of atmosphere (rCam > rAtm)
+        ground: calc until ground
+        1 intersection: calc until end of atm.
+
+new approach:
+    color = earth ? groundColor : blacknessOfTheVoid    // light that goes into our direction at this point
+    for every point in [far, near] {
+        color = transmittance(color, distance)
+        sun = sunlight at this point
+        color += scattered(sun, direction)
+    }

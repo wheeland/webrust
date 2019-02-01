@@ -18,6 +18,7 @@ mod earth;
 mod culling;
 mod guiutil;
 mod fileloading_web;
+mod atmosphere;
 
 use std::collections::HashMap;
 use std::io::Read;
@@ -43,8 +44,9 @@ struct MyApp {
     select_channels: Vec<(String, i32)>,
 
     renderer: earth::renderer::Renderer,
+    atmosphere: atmosphere::Atmosphere,
+    postprocess: tinygl::Program,
 
-    athmosphere_program: tinygl::Program,
     fsquad: tinygl::shapes::FullscreenQuad,
 }
 
@@ -133,132 +135,26 @@ impl webrunner::WebApp for MyApp {
             edit_js: guiutil::ShaderEditData::new("JavaScript executor", "var elem = document.getElementById('state');"),
             select_channels: Vec::new(),
             renderer: earth::renderer::Renderer::new(),
-            athmosphere_program: tinygl::Program::new_versioned("
+            atmosphere: atmosphere::Atmosphere::new(),
+            postprocess: tinygl::Program::new_versioned("
                 in vec2 vertex;
                 out vec2 clipPos;
                 void main() {
                     clipPos = vertex;
                     gl_Position = vec4(vertex, 0.0, 1.0);
                 }
-                ", "
+                ", &(String::from("
                 uniform vec3 eyePosition;
-                uniform mat4 inverseViewProjectionMatrix;
                 uniform vec3 sunDirection;
+                uniform mat4 inverseViewProjectionMatrix;
                 uniform sampler2D planetColor;
                 uniform sampler2D planetNormal;
                 uniform sampler2D planetPosition;
-
+                ")
+                + &atmosphere::Atmosphere::shader_source() +
+                "
                 in vec2 clipPos;
                 out vec4 outColor;
-
-                const float planetRadius = 1.0;
-                const float atmosphereHeight = 0.2;
-                const float atmosphereRadius = planetRadius + atmosphereHeight;
-                const float Hr = 0.2 * atmosphereHeight;
-                const float Hm = 0.03 * atmosphereHeight;
-                const vec3 betaR = vec3(3.8e-6, 13.5e-6, 33.1e-6) * 4.0e5;
-                const vec3 betaM = vec3(21e-6) * 4.0e5;
-
-                #define PI 3.14159
-
-                bool solveQuadratic(float a, float b, float c, out float x1, out float x2)
-                {
-                    if (b == 0.0) {
-                        // Handle special case where the the two vector ray.dir and V are perpendicular
-                        // with V = ray.orig - sphere.centre
-                        if (a == 0.0) return false;
-                        x1 = 0.0;
-                        x2 = sqrt(-c / a);
-                        return true;
-                    }
-                    float discr = b * b - 4.0 * a * c;
-
-                    if (discr < 0.0) return false;
-
-                    float q = (b < 0.0) ? -0.5 * (b - sqrt(discr)) : -0.5 * (b + sqrt(discr));
-                    x1 = q / a;
-                    x2 = c / q;
-
-                    return true;
-                }
-
-                bool raySphereIntersect(vec3 orig, vec3 dir, float radius, out float t0, out float t1)
-                {
-                    // They ray dir is normalized so A = 1
-                    float A = dir.x * dir.x + dir.y * dir.y + dir.z * dir.z;
-                    float B = 2.0 * (dir.x * orig.x + dir.y * orig.y + dir.z * orig.z);
-                    float C = orig.x * orig.x + orig.y * orig.y + orig.z * orig.z - radius * radius;
-
-                    if (!solveQuadratic(A, B, C, t0, t1)) return false;
-
-                    if (t0 > t1) {
-                        float tt = t0;
-                        t0 = t1;
-                        t1 = tt;
-                    }
-
-                    return true;
-                }
-
-                vec3 computeIncidentLight(vec3 orig, vec3 dir, float tmin, float tmax)
-                {
-                    float t0, t1;
-                    if (!raySphereIntersect(orig, dir, atmosphereRadius, t0, t1) || t1 < 0.0)
-                        return vec3(0.0);
-                    if (t0 > tmin && t0 > 0.0) tmin = t0;
-                    if (t1 < tmax) tmax = t1;
-                    int numSamples = 8;
-                    int numSamplesLight = 4;
-                    float segmentLength = (tmax - tmin) / float(numSamples);
-                    float tCurrent = tmin;
-
-                    // mie and rayleigh contribution
-                    vec3 sumR = vec3(0.0);
-                    vec3 sumM = vec3(0.0);
-
-                    float opticalDepthR = 0.0, opticalDepthM = 0.0;
-                    float mu = dot(dir, sunDirection); // mu in the paper which is the cosine of the angle between the sun direction and the ray direction
-                    float phaseR = 3.0 / (16.0 * PI) * (1.0 + mu * mu);
-                    float g = 0.76;
-                    float phaseM = 3.0 / (8.0 * PI) * ((1.0 - g * g) * (1.0 + mu * mu)) / ((2.0 + g * g) * pow(1.0 + g * g - 2.0 * g * mu, 1.5));
-
-                    for (int i = 0; i < numSamples; ++i) {
-                        vec3 samplePosition = orig + (tCurrent + segmentLength * 0.5) * dir;
-                        float height = length(samplePosition) - planetRadius;
-
-                        // compute optical depth for light
-                        float hr = exp(-height / Hr) * segmentLength;
-                        float hm = exp(-height / Hm) * segmentLength;
-                        opticalDepthR += hr;
-                        opticalDepthM += hm;
-
-                        // light optical depth
-                        float t0Light, t1Light;
-                        raySphereIntersect(samplePosition, sunDirection, atmosphereRadius, t0Light, t1Light);
-                        float segmentLengthLight = t1Light / float(numSamplesLight);
-                        float tCurrentLight = 0.0;
-                        float opticalDepthLightR = 0.0, opticalDepthLightM = 0.0;
-
-                        int j;
-                        for (j = 0; j < numSamplesLight; ++j) {
-                            vec3 samplePositionLight = samplePosition + (tCurrentLight + segmentLengthLight * 0.5) * sunDirection;
-                            float heightLight = length(samplePositionLight) - planetRadius;
-                            if (heightLight < 0.0) break;
-                            opticalDepthLightR += exp(-heightLight / Hr) * segmentLengthLight;
-                            opticalDepthLightM += exp(-heightLight / Hm) * segmentLengthLight;
-                            tCurrentLight += segmentLengthLight;
-                        }
-                        if (j == numSamplesLight) {
-                            vec3 tau = betaR * (opticalDepthR + opticalDepthLightR) + betaM * 1.1 * (opticalDepthM + opticalDepthLightM);
-                            vec3 attenuation = vec3(exp(-tau.x), exp(-tau.y), exp(-tau.z));
-                            sumR += attenuation * hr;
-                            sumM += attenuation * hm;
-                        }
-                        tCurrent += segmentLength;
-                    }
-
-                    return (sumR * betaR * phaseR + sumM * betaM * phaseM) * 20.0;
-                }
 
                 void main() {
                     vec3 normalFromTex = texture(planetNormal, vec2(0.5) + 0.5 * clipPos).rgb;
@@ -268,30 +164,34 @@ impl webrunner::WebApp for MyApp {
                     vec3 globalPos = globalPosV4.xyz / globalPosV4.w;
                     vec3 eyeDir = normalize(globalPos - eyePosition);
 
+                    // get intersection points of view ray with atmosphere
+                    float t0, t1;
+                    bool hasAtmo = raySphereIntersect(eyePosition, eyeDir, atmosphereRadius, t0, t1);
+
+                    vec3 color = vec3(0.0);
+
                     if (length(normalFromTex) > 0.0) {
                         vec3 normal = vec3(-1.0) + 2.0 * normalFromTex;
                         vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
                         vec3 pPos = texture(planetPosition, vec2(0.5) + 0.5 * clipPos).rgb;
 
-                        float dist = length(pPos - eyePosition);
-                        vec3 atmoColor = computeIncidentLight(eyePosition, eyeDir, 0.0, dist);
-                        float transmittance = exp(-10.0 * dist);
-
+                        // add shadow to planet color
                         float shadow = max(dot(normal, sunDirection), 0.0);
+                        pColor *= shadow;
 
-                        outColor = vec4(mix(atmoColor, shadow * pColor, transmittance), 1.0);
+                        // calc atmospheric depth along view ray
+                        float dist = length(pPos - eyePosition);
+                        color = computeIncidentLight(eyePosition, eyeDir, max(t0, 0.0), dist, sunDirection, pColor);
                     }
                     else {
-                        float t0, t1, tMax = 1e10;
-                        if (raySphereIntersect(globalPos, eyeDir, planetRadius, t0, t1) && t1 > 0.0)
-                            tMax = max(0.0, t0);
-
-                        vec3 color = computeIncidentLight(eyePosition, eyeDir, 0.0, tMax);
-
-                        outColor = vec4(color, 1.0);
+                        if (hasAtmo && t1 > 0.0) {
+                            color = computeIncidentLight(eyePosition, eyeDir, max(t0, 0.0), t1, sunDirection, vec3(0.0));
+                        }
                     }
+
+                    outColor = vec4(color, 1.0);
                 }
-                ", 300),
+                "), 300),
             fsquad: tinygl::shapes::FullscreenQuad::new(),
         }
     }
@@ -316,16 +216,23 @@ impl webrunner::WebApp for MyApp {
         let cdx = (if self.pressed(Keycode::A) {0.0} else {1.0}) + (if self.pressed(Keycode::D) {0.0} else {-1.0});
         let cdy = (if self.pressed(Keycode::S) {0.0} else {1.0}) + (if self.pressed(Keycode::W) {0.0} else {-1.0});
         let cdz = (if self.pressed(Keycode::LShift) {0.0} else {1.0}) + (if self.pressed(Keycode::Space) {0.0} else {-1.0});
+        self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, cdz, cdy) * dt));
         let mvp = self.renderer.camera().mvp(self.windowsize);
         let eye = self.renderer.camera().eye();
-        self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, cdz, cdy) * dt));
 
         // render planet into FBO
         self.renderer.render(self.windowsize);
         let fbo = self.renderer.fbo().unwrap();
-        fbo.texture("position").unwrap().bind_at(2);
-        fbo.texture("normal").unwrap().bind_at(1);
-        fbo.texture("colorWf").unwrap().bind_at(0);
+
+        self.postprocess.bind();
+        self.postprocess.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
+        self.postprocess.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
+        self.postprocess.uniform("sunDirection", tinygl::Uniform::Vec3(cgmath::Vector3::new(1.0, 0.0, 0.0)));
+        self.postprocess.uniform("planetColor", tinygl::Uniform::Signed(0));
+        self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
+        self.postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));
+        self.postprocess.uniform("planetRadius", tinygl::Uniform::Float(self.renderer.radius()));
+        self.atmosphere.prepare_shader(&self.postprocess, self.renderer.radius(), 3);
 
         unsafe {
             gl::Viewport(0, 0, self.windowsize.0 as _, self.windowsize.1 as _);
@@ -334,14 +241,11 @@ impl webrunner::WebApp for MyApp {
             gl::Disable(gl::BLEND);
         }
 
-        self.athmosphere_program.bind();
-        self.athmosphere_program.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
-        self.athmosphere_program.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
-        self.athmosphere_program.uniform("sunDirection", tinygl::Uniform::Vec3(cgmath::Vector3::new(1.0, 0.0, 0.0)));
-        self.athmosphere_program.uniform("planetColor", tinygl::Uniform::Signed(0));
-        self.athmosphere_program.uniform("planetNormal", tinygl::Uniform::Signed(1));
-        self.athmosphere_program.uniform("planetPosition", tinygl::Uniform::Signed(2));
-        self.fsquad.render(&self.athmosphere_program, "vertex");
+        fbo.texture("position").unwrap().bind_at(2);
+        fbo.texture("normal").unwrap().bind_at(1);
+        fbo.texture("colorWf").unwrap().bind_at(0);
+
+        self.fsquad.render(&self.postprocess, "vertex");
     }
 
     fn do_ui(&mut self, ui: &imgui::Ui, keymod: sdl2::keyboard::Mod) {
@@ -349,7 +253,7 @@ impl webrunner::WebApp for MyApp {
 
         ui.window(im_str!("renderstats"))
             .flags(ImGuiWindowFlags::NoResize | ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoTitleBar | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar)
-            .size((150.0, 190.0), ImGuiCond::Always)
+            .size((150.0, 300.0), ImGuiCond::Always)
             .position((0.0, 80.0), ImGuiCond::Always)
             .build(|| {
                 ui.text(format!("Plates: {}", self.renderer.rendered_plates()));
@@ -360,13 +264,39 @@ impl webrunner::WebApp for MyApp {
                 ui.checkbox(im_str!("No Update"), &mut self.renderer.no_update_plates);
                 ui.checkbox(im_str!("Cull Backside"), &mut self.renderer.hide_backside);
 
-                ui.text("Vertex Detail:");
-                ui.push_item_width(-1.0);
-                let mut detail = self.renderer.vertex_detail();
-                if ui.slider_float(im_str!("##pcd"), &mut detail, 0.0, 1.0).build() {
-                    self.renderer.set_vertex_detail(detail);
-                }
-                ui.pop_item_width();
+                let slideropt = |text, id, value, min, max| -> f32 {
+                    let mut value = value;
+                    ui.text(text);
+                    ui.push_item_width(-1.0);
+                    ui.slider_float(im_str!("##{}", id), &mut value, min, max).build();
+                    ui.pop_item_width();
+                    value
+                };
+
+                let detail = slideropt("Vertex Detail:", "vertexdetail", self.renderer.vertex_detail(), 0.0, 1.0);
+                self.renderer.set_vertex_detail(detail);
+
+                //
+                // Atmoshpere Settings
+                //
+                let atmopt = |label, id, max, mut h, mut beta: [f32;3]| {
+                    ui.text(label);
+                    ui.color_edit(im_str!("#{}color", id), &mut beta)
+                        .inputs(false)
+                        .label(false)
+                        .build();
+                    ui.same_line(40.0);
+                    ui.push_item_width(-1.0);
+                    ui.slider_float(im_str!("#{}slider", id), &mut h, 0.0, max).build();
+                    ui.pop_item_width();
+                    (h, beta)
+                };
+                let raleigh = atmopt("Atmosphere Raleigh", "raleigh", 50.0, 1000.0 * self.atmosphere.hr(), self.atmosphere.beta_r().into());
+                let mie = atmopt("Atmosphere Mie", "mie", 5.0, 1000.0 * self.atmosphere.hm(), self.atmosphere.beta_m().into());
+                self.atmosphere.set_hr(raleigh.0 / 1000.0);
+                self.atmosphere.set_hm(mie.0 / 1000.0);
+                self.atmosphere.set_beta_r(raleigh.1);
+                self.atmosphere.set_beta_m(mie.1);
 
                 if ui.button(im_str!("Load Shite"), (100.0, 20.0)) {
                     fileloading_web::start_upload("state");
