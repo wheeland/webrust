@@ -313,9 +313,9 @@ impl webrunner::WebApp for MyApp {
         }
 
         // advance camera
-        let cdx = (if self.pressed(Keycode::Left) {0.0} else {1.0}) + (if self.pressed(Keycode::Right) {0.0} else {-1.0});
-        let cdy = (if self.pressed(Keycode::Down) {0.0} else {1.0}) + (if self.pressed(Keycode::Up) {0.0} else {-1.0});
-        let cdz = (if self.pressed(Keycode::RCtrl) {0.0} else {1.0}) + (if self.pressed(Keycode::RShift) {0.0} else {-1.0});
+        let cdx = (if self.pressed(Keycode::A) {0.0} else {1.0}) + (if self.pressed(Keycode::D) {0.0} else {-1.0});
+        let cdy = (if self.pressed(Keycode::S) {0.0} else {1.0}) + (if self.pressed(Keycode::W) {0.0} else {-1.0});
+        let cdz = (if self.pressed(Keycode::LShift) {0.0} else {1.0}) + (if self.pressed(Keycode::Space) {0.0} else {-1.0});
         let mvp = self.renderer.camera().mvp(self.windowsize);
         let eye = self.renderer.camera().eye();
         self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, cdz, cdy) * dt));
