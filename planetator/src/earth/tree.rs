@@ -70,8 +70,10 @@ impl Planet {
 
         let sz = self.plate_size + 3;
         self.traverse_mut(|node| {
-            node.data_manager.borrow().retriangulate(node.generated_data.as_mut().unwrap());
-            node.gpu_data = Some(GpuData::new(node.generated_data.as_ref().unwrap(), sz));
+            if node.generated_data.is_some() {
+                node.data_manager.borrow().retriangulate(node.generated_data.as_mut().unwrap());
+                node.gpu_data = Some(GpuData::new(node.generated_data.as_ref().unwrap(), sz));
+            }
             true
         });
     }

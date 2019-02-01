@@ -236,8 +236,10 @@ impl Renderer {
     }
 
     pub fn set_vertex_detail(&mut self, vertex_detail: f32) {
-        self.vertex_detail = vertex_detail;
-        self.planet.as_mut().unwrap().set_detail((255.0 * self.vertex_detail) as _);
+        if self.vertex_detail != vertex_detail {
+            self.vertex_detail = vertex_detail;
+            self.planet.as_mut().unwrap().set_detail((255.0 * self.vertex_detail) as _);
+        }
     }
 
     pub fn depth(&self) -> i32 {
