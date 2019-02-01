@@ -1,0 +1,54 @@
+nishita paper from 1993 -> de-facto standard, which is usually implemented on GPU
+
+https://www.scratchapixel.com/lessons/procedural-generation-virtual-worlds/simulating-sky/simulating-colors-of-the-sky
+also check out 
+    https://www.scratchapixel.com/lessons/advanced-rendering/volume-rendering-for-artists
+
+Texture and Modeling: a Procedural Approach!
+
+scattering of photons
+    - on athmospheric gas molecules: raleigh scattering
+        - blue is scattered more than red/green, due to light wavelength
+    - on aerosols (lower athmosphere, bigger: dust, sand, pollution): mie scattering
+
+transmittance = reduction of light energy after it passes through a medium
+    trasnmittance = exp(-absorption * passed-length)
+
+light is scattered on one particle uniformly in all directions
+BUT: when the distance between particles in a medium is smaller than lambda,
+due to interference, this is NOT true when regarding the medium as a whole
+    -> depending on the particle density of the medium, photons of lambda
+       will be scattered according to some probability distribution P(angle)
+    -> there can be forward and/or backward scattering!
+    - these forward/backward scatter probabilities can be thought of as two bulgy cones
+-> this can be approximated with a PHASE FUNCTION
+    - a phase function calculates the amount of light scattered towards the viewer,
+      depending on the angle
+    - there are several phase functions, including raleigh and mie for athmospheres, but also others
+    - usually these function takes a second parameter: the mean cosine / "g"
+    - 
+
+can define raleighScattering(wavelen, height)
+    -> how much light is scattered?
+
+PA = point where the eye ray exist the athmosphere
+transmittance parameter gets higher in lower altitutes!
+
+transmittance(a, b) = {
+    exp(-sum(extinction(height) along [a,b]))
+}
+raleighTransmittance(a, b) = {
+    exp(-raleigh(0) * sum(exp(-h / H) along [a,b]))
+}
+
+transmittance == "optical depth"
+
+lightAt(cam, PA) = {
+    for pos in [cam, PA, step=ds] {
+        transmittance(cam, pos) * SunLight(pos) * ds
+        // SunLight(pos) == amount of light that is scattered towards the camera at that point
+        // SunLight(pos) = SunIntensity * raleighTransmittance(pos, posWhereSunEntersAtmosphere)
+    }
+}
+
+now we need to add the actual colors, which means to add the phase function and the scattering coefficients to the picture

@@ -1,0 +1,22 @@
+texturing
+    - texture upload from web (via server?) or file
+    - 2d texture application on 3d, see http://www.decarpentier.nl/scape-render
+
+graphical effects
+    - general:
+        check http://www.adriancourreges.com/blog/2015/11/02/gta-v-graphics-study/ and assorted
+    - athmosphere (continuously fading in/out)
+        -> this would ideally include distance fog, right?
+        -> can't we do this the same concept as in the C++ thing?
+    - (fog)
+    - shadows: do the 'ol classic shadow mapping, but LODdy
+        http://developer.download.nvidia.com/SDK/10.5/opengl/src/cascaded_shadow_maps/doc/cascaded_shadow_maps.pdf
+    - clouds
+    - depth of field blur
+    - final tone mapping / HDR-to-RGB8
+    - sun lens flare
+    - stars
+
+references
+    http://advances.realtimerendering.com
+    
