@@ -236,7 +236,6 @@ impl webrunner::WebApp for MyApp {
 
         unsafe {
             gl::Viewport(0, 0, self.windowsize.0 as _, self.windowsize.1 as _);
-            gl::Disable(gl::CULL_FACE);
             gl::Disable(gl::DEPTH_TEST);
             gl::Disable(gl::BLEND);
         }
