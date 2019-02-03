@@ -334,7 +334,7 @@ impl Plate {
         self.bogo_points.iter().all(|pt| {
             let pt = pt * (radius + minh);
             let dir = (pt - eye).normalize();
-            dir.dot(pt) > 0.0
+            dir.dot(pt) > 0.2
         })
     }
 
