@@ -329,7 +329,7 @@ impl webrunner::WebApp for TetrisApp {
         let mbw = 200.0;
         let mbh = 120.0;
 
-        self.fpswidget.render(ui, (0.0, 0.0), (240.0, 80.0));
+        // self.fpswidget.render(ui, (0.0, 0.0), (240.0, 80.0));
 
         self.ui = Some(match self.ui.take().unwrap() {
             State::MainMenu => {
