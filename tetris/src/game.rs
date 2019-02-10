@@ -10,7 +10,7 @@ enum Move {
 }
 
 pub enum Outcome {
-    None,
+    HorizonalMove,
     Merge,
     Clear(Vec<i32>, stack::Stack),
     Death,
@@ -18,12 +18,7 @@ pub enum Outcome {
 
 impl std::fmt::Debug for Outcome {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", match &self {
-            Outcome::None => "None",
-            Outcome::Merge => "Merge",
-            Outcome::Clear(..) => "Clear",
-            Outcome::Death => "Death",
-        })
+        write!(f, "{:?}", self)
     }
 }
 
@@ -39,6 +34,7 @@ pub struct Game {
     left: bool,
     right: bool,
     movekey: Move,
+    just_moved: bool,
     das: i32,
 
     down_pressed: bool,
@@ -81,6 +77,7 @@ impl Game {
             left: false,
             right: false,
             das: 0,
+            just_moved: false,
 
             down: 0,
             down_pressed: false,
@@ -127,10 +124,10 @@ impl Game {
             // try move piece
             if movekey != Move::None {
                 let direction = if movekey == Move::Left { -1 } else { 1 };
-                let moved = self.try_move(None, direction, 0);
+                self.just_moved = self.try_move(None, direction, 0);
 
                 // init DAS
-                self.das = if moved { self.config.das_initial } else { 0 };
+                self.das = if self.just_moved { self.config.das_initial } else { 0 };
             }
         }
     }
@@ -162,15 +159,15 @@ impl Game {
         self.try_move(Some(clockwise), 0, 0);
     }
 
-    fn move_down(&mut self) -> Outcome {
+    fn move_down(&mut self) -> Option<Outcome> {
         if self.lost.is_some() {
-            return Outcome::Death;
+            return Some(Outcome::Death);
         }
 
         // If we don't have a current piece (because we ARE in ARE), just ignore
         let curr_piece = self.state.snapshot().piece();
         if curr_piece.is_none() {
-            return Outcome::None;
+            return None;
         }
 
         // try to drop piece one tile further and merge it if it doesn't work
@@ -188,24 +185,26 @@ impl Game {
 
             let animation = self.state.snapshot().animation();
             return match animation {
-                None => Outcome::Merge,
-                Some(anim) => Outcome::Clear(anim.0.clone(), anim.1.clone())
+                None => Some(Outcome::Merge),
+                Some(anim) => Some(Outcome::Clear(anim.0.clone(), anim.1.clone()))
             }
         }
 
-        Outcome::None
+        None
     }
 
-    pub fn frame(&mut self) -> Outcome {
+    pub fn frame(&mut self) -> Option<Outcome> {
         self.timestamp += 1;
 
-        let mut ret = Outcome::None;
+        let mut ret = if self.just_moved { Some(Outcome::HorizonalMove) } else { None };
+        self.just_moved = false;
 
         // update DAS movement
         if self.movekey != Move::None && self.das <= 0 {
             let direction = if self.movekey == Move::Left { -1 } else { 1 };
             if self.try_move(None, direction, 0) {
                 self.das = self.config.das_step;
+                ret = Some(Outcome::HorizonalMove);
             }
         }
         self.das -= 1;
@@ -220,7 +219,7 @@ impl Game {
                 if !self.state.start_new_piece(self.timestamp) {
                     let last_breath = self.state.snapshot();
                     self.lost = Some((last_breath.score(), last_breath.level()));
-                    ret = Outcome::Death;
+                    ret = Some(Outcome::Death);
                 }
                 self.drop_timer = 0;   // re-set gravity timer
             } else {
@@ -252,7 +251,9 @@ impl Game {
             }
 
             if move_down {
-                ret = self.move_down();
+                if let Some(downret) = self.move_down() {
+                    ret = Some(downret);
+                }
                 self.drop_timer = 0;
             }
         }

@@ -92,6 +92,14 @@ struct TetrisApp {
     fpswidget: appbase::fpswidget::FpsWidget,
 }
 
+fn play_sound(tagname: &str) {
+    appbase::webrunner::run_javascript(&(String::from("{
+        let element = document.getElementById('") + tagname + "');
+        element.currentTime = 0;
+        element.play();
+    }"));
+}
+
 impl TetrisApp {
     fn save(&mut self, game: &tetris::game::Game) {
         self.requests.push(self.server.upload_replay(&self.player.name, game.replay()));
@@ -281,13 +289,24 @@ impl webrunner::WebApp for TetrisApp {
                         dtime -= FRAME;
                     }
 
-                    let mut outcome = tetris::game::Outcome::None;
                     for i in 0..frames {
-                        outcome = game.frame();
-                    }
-                    if let tetris::game::Outcome::Death = outcome {
-                        self.save(&game);
-                        finished = true;
+                        if let Some(ret) = game.frame() {
+                            match ret {
+                                tetris::game::Outcome::Death => {
+                                    self.save(&game);
+                                    finished = true;
+                                }
+                                tetris::game::Outcome::HorizonalMove => {
+                                    play_sound("blip");
+                                }
+                                tetris::game::Outcome::Merge => {
+                                    play_sound("deww");
+                                }
+                                tetris::game::Outcome::Clear(..) => {
+                                    play_sound("dabbedi");
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -611,10 +630,12 @@ impl webrunner::WebApp for TetrisApp {
                             if key == self.player.drop { game.down(true) }
                             if key == self.player.rotl && !self.rotl {
                                 self.rotl = true;
+                                play_sound("rerr");
                                 game.rotate(false);
                             }
                             if key == self.player.rotr && !self.rotr {
                                 self.rotr = true;
+                                play_sound("rerr");
                                 game.rotate(true);
                             }
                         }
