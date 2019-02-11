@@ -200,7 +200,7 @@ impl Atmosphere {
         tex.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
         tex.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
         tex.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
-        tex.wrap(gl::TEXTURE_WRAP_T, gl::REPEAT);
+        tex.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
         tex
     }
 
