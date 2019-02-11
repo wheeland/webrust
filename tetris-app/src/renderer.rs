@@ -326,6 +326,13 @@ impl Renderer {
         let model = cgmath::Matrix4::from_nonuniform_scale(scale, scale, threed * scale);
         let model = cgmath::Matrix4::from_translation(cgmath::Vector3::new(0.0, 0.0, (1.0 - threed) * scale)) * model;
 
+        unsafe {
+            gl::Enable(gl::BLEND);
+            gl::Enable(gl::CULL_FACE);
+            gl::Enable(gl::DEPTH_TEST);
+            gl::Disable(gl::STENCIL_TEST);
+        }
+
         self.cube_indices.bind();
         self.block_program.bind();
         self.block_program.uniform("model", tinygl::Uniform::Mat4(model));
@@ -337,11 +344,6 @@ impl Renderer {
         self.block_program.vertex_attrib_divisor("position", 1);
         self.block_program.vertex_attrib_divisor("size", 1);
         self.block_program.vertex_attrib_divisor("alpha", 1);
-
-        unsafe {
-            gl::Enable(gl::BLEND);
-            gl::Enable(gl::CULL_FACE);
-        }
 
         let palette = palette.min(self.piece_colors.len() - 1);
         let colors = &self.piece_colors[palette];
@@ -360,10 +362,7 @@ impl Renderer {
         self.block_program.vertex_attrib_divisor("size", 0);
         self.block_program.vertex_attrib_divisor("alpha", 0);
 
-        self.block_program.disable_vertex_attrib("position");
-        self.block_program.disable_vertex_attrib("size");
-        self.block_program.disable_vertex_attrib("vertex");
-        self.block_program.disable_vertex_attrib("alpha");
+        self.block_program.disable_all_vertex_attribs();
     }
 
     pub fn render(&mut self, view: &cgmath::Matrix4<f32>) {

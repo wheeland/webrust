@@ -563,6 +563,7 @@ impl Generator {
         self.vertex_generator.vertex_attrib_buffer("xy", &self.quad, 2, gl::FLOAT, false, 8, 0);
         fbos.position_pass.bind();
         unsafe { gl::DrawArrays(gl::TRIANGLES, 0, 6) }
+        self.vertex_generator.disable_all_vertex_attribs();
 
         //
         // Calculate normals
@@ -573,6 +574,7 @@ impl Generator {
         fbos.position_pass.texture("position").unwrap().bind_at(0);
         fbos.normal_pass.bind();
         unsafe { gl::DrawArrays(gl::TRIANGLES, 0, 6) }
+        self.post_generator.disable_all_vertex_attribs();
 
         OffscreenBuffer::unbind();
 

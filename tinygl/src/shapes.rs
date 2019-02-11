@@ -28,23 +28,10 @@ impl FullscreenQuad {
     }
 
     pub fn render(&self, program: &super::Program, attrname: &str) {
-        unsafe {
-            gl::Disable(gl::DEPTH_TEST);
-            gl::Disable(gl::STENCIL_TEST);
-            gl::Disable(gl::BLEND);
-            gl::DepthMask(0);
-        }
-
         program.bind();
         program.vertex_attrib_buffer(attrname, &self.vertices, 2, gl::FLOAT, false, 0, 0);
-
         unsafe { gl::DrawArrays(gl::TRIANGLES, 0, 6) }
-
-        unsafe {
-            gl::Enable(gl::DEPTH_TEST);
-            gl::Enable(gl::BLEND);
-            gl::DepthMask(1);
-        }
+        program.disable_vertex_attrib(attrname);
     }
 }
 

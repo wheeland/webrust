@@ -409,6 +409,8 @@ impl Renderer {
             }
         };
 
+        program.disable_all_vertex_attribs();
+
         self.rendered_plates = rendered_plates.len();
 
         unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, 0) }

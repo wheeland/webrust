@@ -437,6 +437,14 @@ impl Program {
         }
     }
 
+    pub fn disable_all_vertex_attribs(&self) {
+        for loc in self.attribute_locations.borrow().iter() {
+            if let Some(loc) = loc.1 {
+                unsafe { gl::DisableVertexAttribArray(*loc); }
+            }
+        }
+    }
+
     pub fn uniform(&self, uniform: &str, value: Uniform) {
         // spit warning on first try, then remember that it's not there
         let opt = self.uniform_locations.borrow().get(uniform).map(|r| *r);
