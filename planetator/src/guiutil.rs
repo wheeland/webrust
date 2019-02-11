@@ -22,6 +22,10 @@ pub struct ShaderEditData {
     window_title: String,
     window_open: bool,
     window_active: bool,
+    window_fade: f32,
+
+    position: (f32, f32),
+    size: (f32, f32),
 
     working_source: String,             // code that is actually used
     source: ImString,                   // code in the window
@@ -29,13 +33,21 @@ pub struct ShaderEditData {
 }
 
 impl ShaderEditData {
-    pub fn new(window_title: &str, src: &str) -> Self {
+    pub fn new(
+        window_title: &str,
+        src: &str,
+        position: (f32, f32),
+        size: (f32, f32)
+    ) -> Self {
         let mut source = ImString::with_capacity(64 * 1024);
         source.push_str(src);
         ShaderEditData {
             window_title: window_title.to_string(),
             window_open: false,
             window_active: false,
+            window_fade: 0.0,
+            position,
+            size,
             source,
             working_source: src.to_string(),
             callback_data: ShaderEditCallbackData {
@@ -65,6 +77,7 @@ impl ShaderEditData {
 
     pub fn toggle(&mut self) {
         self.window_open = !self.window_open;
+        self.window_fade = 1.0;
     }
 
     pub fn to_str(&self) -> String {
@@ -92,11 +105,9 @@ impl ShaderEditData {
     pub fn render(&mut self,
               ui: &imgui::Ui,
               errors: Option<&String>,
-              position: (f32, f32),
-              size: (f32, f32),
               keymod: sdl2::keyboard::Mod
     ) -> bool {
-        if !self.window_open {
+        if !self.window_open && self.window_fade <= 0.0 {
             return false;
         }
 
@@ -106,62 +117,87 @@ impl ShaderEditData {
 
         let mut accepted = self.window_active && is_ctrl_return_pressed;
         let mut window_open = self.window_open;
-        let mut do_close_window=  self.window_active && is_esc_pressed;
+        let mut do_close_window = self.window_active && is_esc_pressed;
 
-        // if ESC was pressed, don't execute any of this to prevent source code loss by evil imgui!
+        // if ESC was pressed, take away focus to prevent source code loss by evil imgui!
         if do_close_window {
+            self.window_fade = 1.0;
             self.window_open = false;
-            return false
         }
+
+        // fade in/out the window when opened/closed
+        self.window_fade = (self.window_fade - 0.1).max(0.0);
+        let alpha = if self.window_open { 1.0 - self.window_fade } else { self.window_fade };
+        let ofs = if self.window_open { -50.0 * self.window_fade } else { 50.0 * (1.0 - self.window_fade) };
 
         self.callback_data.keymod = keymod;
 
-        ui.window(im_str!("{}", self.window_title))
-            .flags(ImGuiWindowFlags::NoCollapse | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar)
-            .size(size, ImGuiCond::Appearing)
-            .opened(&mut window_open)
-            .position(position, ImGuiCond::Appearing)
-            .build(|| {
-                let has_error = errors.is_some();
-                let errorsz = if has_error { 150.0 } else { 0.0 };
-                let winsz = ui.get_window_size();
+        ui.set_next_window_pos(self.position);
 
-                // if Ctrl+Return was pressed, the focus was taken away from this item, but this is not what we want, so GIVE IT BACK ALREADY!
-                if accepted {
-                    unsafe { imgui::sys::igSetKeyboardFocusHere(0); }
-                }
+        ui.with_style_var(imgui::StyleVar::Alpha(alpha * alpha), || {
+            ui.window(im_str!("{}", self.window_title))
+                .collapsible(false)
+                .save_settings(false)
+                .scroll_bar(false)
+                .movable(true)
+                .inputs(self.window_open)
+                .size(
+                    (self.size.0 + ofs, self.size.1 + ofs),
+                    ImGuiCond::Always
+                )
+                .position(
+                    (self.position.0 - 0.5 * ofs, self.position.1 - 0.5 * ofs),
+                    if self.window_fade <= 0.0 { ImGuiCond::Appearing } else { ImGuiCond::Always }
+                )
+                .opened(&mut window_open)
+                .build(|| {
+                    let has_error = errors.is_some();
+                    let errorsz = if has_error { 150.0 } else { 0.0 };
+                    let winsz = ui.get_window_size();
 
-                ui.input_text_multiline(im_str!("##shadertextinput"), &mut self.source, (winsz.0 - 20.0, winsz.1 - 50.0 - errorsz))
-                    .callback_completion(true)
-                    .callback_char_filter(true)
-                    .callback_always(true)
-                    .callback(Some(callback), &mut self.callback_data as _)
-                    .build();
-                self.window_active = ui.is_item_active();
+                    // if Ctrl+Return was pressed, the focus was taken away from this item, but this is not what we want, so GIVE IT BACK ALREADY!
+                    if accepted {
+                        unsafe { imgui::sys::igSetKeyboardFocusHere(0); }
+                    }
 
-                if has_error {
-                    let mut error_str = ImString::new(errors.unwrap().to_string());
-                    ui.input_text_multiline(im_str!("##shadertexterror"), &mut error_str, (winsz.0 - 20.0, errorsz))
-                        .flags(ImGuiInputTextFlags::ReadOnly)
+                    ui.input_text_multiline(im_str!("##shadertextinput"), &mut self.source, (winsz.0 - 20.0, winsz.1 - 50.0 - errorsz))
+                        .callback_completion(true)
+                        .callback_char_filter(true)
+                        .callback_always(true)
+                        .read_only(!self.window_open)
+                        .callback(Some(callback), &mut self.callback_data as _)
                         .build();
-                }
+                    self.window_active = ui.is_item_active();
 
-                ui.new_line();
-                ui.same_line(50.0);
-                if ui.button(im_str!("Apply (Ctrl+Return)"), (140.0, 20.0)) {
-                    accepted = true;
-                }
+                    if has_error {
+                        let mut error_str = ImString::new(errors.unwrap().to_string());
+                        ui.input_text_multiline(im_str!("##shadertexterror"), &mut error_str, (winsz.0 - 20.0, errorsz))
+                            .flags(ImGuiInputTextFlags::ReadOnly)
+                            .build();
+                    }
 
-                ui.same_line(winsz.0 / 2.0 - 50.0);
-                if ui.button(im_str!("Reset##shaderedit"), (100.0, 20.0)) {
-                    self.reset();
-                }
+                    ui.new_line();
+                    ui.same_line(50.0);
+                    if ui.button(im_str!("Apply (Ctrl+Return)"), (140.0, 20.0)) {
+                        accepted = true;
+                    }
 
-                ui.same_line(winsz.0 - 150.0);
-                if ui.button(im_str!("Close (Esc)"), (140.0, 20.0)) {
-                    do_close_window = true;
-                }
-            });
+                    ui.same_line(winsz.0 / 2.0 - 50.0);
+                    if ui.button(im_str!("Reset##shaderedit"), (100.0, 20.0)) {
+                        self.reset();
+                    }
+
+                    ui.same_line(winsz.0 - 150.0);
+                    if ui.button(im_str!("Close (Esc)"), (140.0, 20.0)) {
+                        do_close_window = true;
+                    }
+
+                    if self.window_fade <= 0.0 {
+                        self.size = ui.get_window_size();
+                        self.position = ui.get_window_position();
+                    }
+                });
+        });
 
         self.window_open = window_open && !do_close_window;
         accepted

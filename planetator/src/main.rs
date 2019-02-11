@@ -130,9 +130,9 @@ impl webrunner::WebApp for MyApp {
             savegame,
             current_mouse_press: None,
             fps: FpsWidget::new(150),
-            edit_generator: guiutil::ShaderEditData::new("Generator", &earth::renderer::default_generator()),
-            edit_colorator: guiutil::ShaderEditData::new("Kolorator", &earth::renderer::default_colorator()),
-            edit_js: guiutil::ShaderEditData::new("JavaScript executor", "var elem = document.getElementById('state');"),
+            edit_generator: guiutil::ShaderEditData::new("Generator", &earth::renderer::default_generator(), (250.0, 250.0), (600.0, 400.0)),
+            edit_colorator: guiutil::ShaderEditData::new("Kolorator", &earth::renderer::default_colorator(), (250.0, 250.0), (600.0, 400.0)),
+            edit_js: guiutil::ShaderEditData::new("JavaScript executor", "var elem = document.getElementById('state');", (250.0, 250.0), (600.0, 400.0)),
             select_channels: Vec::new(),
             renderer: earth::renderer::Renderer::new(),
             atmosphere: atmosphere::Atmosphere::new(),
@@ -424,14 +424,14 @@ impl webrunner::WebApp for MyApp {
                 }
             }
 
-        if self.edit_generator.render(ui, self.renderer.errors_generator(), (250.0, 0.0), (600.0, 400.0), keymod) {
+        if self.edit_generator.render(ui, self.renderer.errors_generator(), keymod) {
             self.channels_changed();
             if self.renderer.set_generator(&self.edit_generator.to_str()) {
                 self.edit_generator.works();
             }
         }
 
-        if self.edit_colorator.render(ui, self.renderer.errors_colorator(), (250.0, 250.0), (600.0, 400.0), keymod) {
+        if self.edit_colorator.render(ui, self.renderer.errors_colorator(), keymod) {
             if self.renderer.set_colorator(&self.edit_colorator.to_str()) {
                 self.edit_colorator.works();
             }
