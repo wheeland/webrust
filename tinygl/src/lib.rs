@@ -277,7 +277,8 @@ impl Program {
                 for i in 0..attribute_count {
                     gl::GetActiveAttrib(program, i as GLuint, buf_len as GLsizei, &mut name_len, &mut size, &mut datatype, buf.as_mut_ptr() as *mut GLchar);
                     let name = std::ffi::CStr::from_ptr(buf.as_ptr()).to_str().unwrap().to_owned();
-                    attrs.insert(name, Some(i as u32));
+                    let loc = gl::GetAttribLocation(program, buf.as_ptr() as _);
+                    attrs.insert(name, Some(loc as u32));
                 }
 
                 for i in 0..uniform_count {
