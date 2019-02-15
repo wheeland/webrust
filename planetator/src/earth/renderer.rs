@@ -43,6 +43,7 @@ fn create_render_program(colorator: &str, channels: &Channels) -> tinygl::Progra
             uniform mat4 mvp;
             uniform float radius;
             uniform float wf;
+            uniform float Far;
             in vec4 posHeight;
             in vec2 plateCoords;
             out vec2 tc;
@@ -51,7 +52,6 @@ fn create_render_program(colorator: &str, channels: &Channels) -> tinygl::Progra
             void main()
             {
                 float C = 1.0;
-                float Far = 1000.0;
 
                 tc = plateCoords;
                 pos = posHeight.xyz * (posHeight.w + radius + 0.0001 * wf);
@@ -172,13 +172,13 @@ impl Renderer {
         let channels = Channels::new(&Vec::new());
 
         let mut ret = Renderer {
-            camera: FlyCamera::new(1.0),
+            camera: FlyCamera::new(100.0),
             program: None,
             default_program: create_render_program(&colorator, &channels),
 
             planet: None,
             planet_depth: 6,
-            planet_radius: 1.0,
+            planet_radius: 100.0,
 
             wireframe: false,
             reduce_poly_count: true,
@@ -368,6 +368,7 @@ impl Renderer {
         };
         program.bind();
         program.uniform("mvp", tinygl::Uniform::Mat4(mvp));
+        program.uniform("Far", tinygl::Uniform::Float(self.camera.far()));
         program.uniform("eye", tinygl::Uniform::Vec3(self.camera.eye()));
         program.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
         program.uniform("normals", tinygl::Uniform::Signed(0));

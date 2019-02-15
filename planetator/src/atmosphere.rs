@@ -3,14 +3,14 @@ use cgmath::{Vector3};
 use tinygl::{Program, Texture, Uniform, OffscreenBuffer};
 
 pub struct Atmosphere {
-    rel_hr: f32,
-    rel_hm: f32,
+    hr: f32,
+    hm: f32,
     beta_r: Vector3<f32>,
     beta_m: Vector3<f32>,
     beta_mul: f32,
     beta_exp: f32,
 
-    sun_optical_depth: Option<Texture>,
+    sun_optical_depth: (f32, Option<Texture>),
     sun_optical_depth_program: Program,
     fsquad: tinygl::shapes::FullscreenQuad,
 }
@@ -174,11 +174,11 @@ fn glsl_render() -> String {
 }
 
 impl Atmosphere {
-    fn rel_atmosphere_height(&self) -> f32 {
-        4.0 * self.rel_hm.max(self.rel_hr)
+    fn atmosphere_height(&self) -> f32 {
+        4.0 * self.hm.max(self.hr)
     }
 
-    fn generate_optical_depth_texture(&self, size: (i32, i32)) -> Texture {
+    fn generate_optical_depth_texture(&self, radius: f32, size: (i32, i32)) -> Texture {
         // Create and Bind target FBO
         let mut buffer = OffscreenBuffer::new(size);
         buffer.add("color", gl::RG32F, gl::RG, gl::FLOAT);
@@ -186,9 +186,9 @@ impl Atmosphere {
 
         // Set Parameters
         self.sun_optical_depth_program.bind();
-        self.sun_optical_depth_program.uniform("relAtmosphereHeight", Uniform::Float(self.rel_atmosphere_height()));
-        self.sun_optical_depth_program.uniform("relHr", Uniform::Float(self.rel_hr));
-        self.sun_optical_depth_program.uniform("relHm", Uniform::Float(self.rel_hm));
+        self.sun_optical_depth_program.uniform("relAtmosphereHeight", Uniform::Float(self.atmosphere_height() / radius));
+        self.sun_optical_depth_program.uniform("relHr", Uniform::Float(self.hr / radius));
+        self.sun_optical_depth_program.uniform("relHm", Uniform::Float(self.hm / radius));
 
         // Render
         unsafe { gl::Disable(gl::BLEND); }
@@ -206,50 +206,50 @@ impl Atmosphere {
 
     pub fn new() -> Self {
         Atmosphere {
-            rel_hr: 0.01,
-            rel_hm: 0.001,
+            hr: 1.0,
+            hm: 0.1,
             beta_r: Vector3::new(0.15, 0.28, 0.5),
             beta_m: Vector3::new(0.4, 0.4, 0.4),
             beta_mul: 40.0,
             beta_exp: 2.0,
-            sun_optical_depth: None,
+            sun_optical_depth: (0.0, None),
             sun_optical_depth_program: Program::new(&glsl_depthgen_vs(), &glsl_depthgen_fs()),
             fsquad: tinygl::shapes::FullscreenQuad::new(),
         }
     }
 
-    fn beta(&self, beta: Vector3<f32>) -> Vector3<f32> {
+    fn beta(&self, beta: Vector3<f32>, radius: f32) -> Vector3<f32> {
         Vector3::new(
-            self.beta_mul * beta.x.powf(self.beta_exp),
-            self.beta_mul * beta.y.powf(self.beta_exp),
-            self.beta_mul * beta.z.powf(self.beta_exp),
+            self.beta_mul * 1.0 / radius * beta.x.powf(self.beta_exp),
+            self.beta_mul * 1.0 / radius * beta.y.powf(self.beta_exp),
+            self.beta_mul * 1.0 / radius * beta.z.powf(self.beta_exp),
         )
     }
 
     pub fn prepare_shader(&mut self, program: &Program, radius: f32, tex_unit: u32) {
         // (Create and) bind optical depth texture
-        // if self.sun_optical_depth.is_none() {
-            self.sun_optical_depth = Some(self.generate_optical_depth_texture((128, 128)));
-        // }
-        self.sun_optical_depth.as_mut().unwrap().bind_at(tex_unit);
+        if self.sun_optical_depth.0 != radius || self.sun_optical_depth.1.is_none() {
+            self.sun_optical_depth = (radius, Some(self.generate_optical_depth_texture(radius, (128, 128))));
+        }
+        self.sun_optical_depth.1.as_mut().unwrap().bind_at(tex_unit);
 
         // Set Program uniforms
         program.bind();
         program.uniform("atmosphereOptDepth", Uniform::Signed(tex_unit as i32));
         program.uniform("planetRadius", Uniform::Float(radius));
-        program.uniform("atmosphereRadius", Uniform::Float(radius * (1.0 + self.rel_atmosphere_height())));
-        program.uniform("atmosphereHr", Uniform::Float(radius * self.rel_hr));
-        program.uniform("atmosphereHm", Uniform::Float(radius * self.rel_hm));
-        program.uniform("atmosphereBetaR", Uniform::Vec3(self.beta(self.beta_r / radius)));
-        program.uniform("atmosphereBetaM", Uniform::Vec3(self.beta(self.beta_m / radius)));
+        program.uniform("atmosphereRadius", Uniform::Float(radius + self.atmosphere_height()));
+        program.uniform("atmosphereHr", Uniform::Float(self.hr));
+        program.uniform("atmosphereHm", Uniform::Float(self.hm));
+        program.uniform("atmosphereBetaR", Uniform::Vec3(self.beta(self.beta_r, radius)));
+        program.uniform("atmosphereBetaM", Uniform::Vec3(self.beta(self.beta_m, radius)));
     }
 
     pub fn shader_source() -> String {
         glsl_render()
     }
 
-    pub fn hr(&self) -> f32 { self.rel_hr }
-    pub fn hm(&self) -> f32 { self.rel_hm }
+    pub fn hr(&self) -> f32 { self.hr }
+    pub fn hm(&self) -> f32 { self.hm }
     pub fn beta_r(&self) -> Vector3<f32> { self.beta_r }
     pub fn beta_m(&self) -> Vector3<f32>  { self.beta_m }
 
@@ -257,16 +257,16 @@ impl Atmosphere {
     pub fn set_beta_m<V: Into<Vector3<f32>>>(&mut self, v: V) { self.beta_m = v.into(); }
 
     pub fn set_hr(&mut self, hr: f32) {
-        if self.rel_hr != hr {
-            self.rel_hr = hr;
-            self.sun_optical_depth = None;
+        if self.hr != hr {
+            self.hr = hr;
+            self.sun_optical_depth = (0.0, None);
         }
     }
 
     pub fn set_hm(&mut self, hm: f32) {
-        if self.rel_hm != hm {
-            self.rel_hm = hm;
-            self.sun_optical_depth = None;
+        if self.hm != hm {
+            self.hm = hm;
+            self.sun_optical_depth = (0.0, None);
         }
     }
 }

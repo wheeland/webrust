@@ -291,10 +291,10 @@ impl webrunner::WebApp for MyApp {
                     ui.pop_item_width();
                     (h, beta)
                 };
-                let raleigh = atmopt("Atmosphere Raleigh", "raleigh", 50.0, 1000.0 * self.atmosphere.hr(), self.atmosphere.beta_r().into());
-                let mie = atmopt("Atmosphere Mie", "mie", 5.0, 1000.0 * self.atmosphere.hm(), self.atmosphere.beta_m().into());
-                self.atmosphere.set_hr(raleigh.0 / 1000.0);
-                self.atmosphere.set_hm(mie.0 / 1000.0);
+                let raleigh = atmopt("Atmosphere Raleigh", "raleigh", 10.0, self.atmosphere.hr(), self.atmosphere.beta_r().into());
+                let mie = atmopt("Atmosphere Mie", "mie", 1.0, self.atmosphere.hm(), self.atmosphere.beta_m().into());
+                self.atmosphere.set_hr(raleigh.0);
+                self.atmosphere.set_hm(mie.0);
                 self.atmosphere.set_beta_r(raleigh.1);
                 self.atmosphere.set_beta_m(mie.1);
             });
@@ -315,7 +315,7 @@ impl webrunner::WebApp for MyApp {
                 }
 
                 let mut radius = self.renderer.radius();
-                if ui.slider_float(im_str!("Radius##radiusslider"), &mut radius, 0.2, 10.0).build() {
+                if ui.slider_float(im_str!("Radius##radiusslider"), &mut radius, 50.0, 1000.0).build() {
                     self.renderer.set_radius(radius);
                 }
 
