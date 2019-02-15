@@ -344,16 +344,22 @@ impl Plate {
         self.children = match self.children.take() {
             None => { Some(
                 [
-                    Self::new(self.position.child(0, 0), &self.data_manager),
-                    Self::new(self.position.child(0, 1), &self.data_manager),
-                    Self::new(self.position.child(1, 0), &self.data_manager),
-                    Self::new(self.position.child(1, 1), &self.data_manager),
+                    Self::new(self.position.child(0, 0), &self.data_manager, self.minmax),
+                    Self::new(self.position.child(0, 1), &self.data_manager, self.minmax),
+                    Self::new(self.position.child(1, 0), &self.data_manager, self.minmax),
+                    Self::new(self.position.child(1, 1), &self.data_manager, self.minmax),
                 ]) },
             Some(some) => Some(some)
         };
     }
 
     fn delete_children(&mut self) {
+        // make sure to go recursively till the leaves of the tree to release double parent-child links
+        if let Some(ref children) = self.children {
+            for c in children {
+                c.borrow_mut().delete_children();
+            }
+        }
         self.children = None;
     }
 
