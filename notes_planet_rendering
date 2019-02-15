@@ -5,9 +5,10 @@ texturing
 graphical effects
     - general:
         check http://www.adriancourreges.com/blog/2015/11/02/gta-v-graphics-study/ and assorted
-    - athmosphere (continuously fading in/out)
+    x athmosphere (continuously fading in/out)
         -> this would ideally include distance fog, right?
         -> can't we do this the same concept as in the C++ thing?
+    - color terrain based on average incoming sun color (based on optical depth texture)
     - (fog)
     - shadows: do the 'ol classic shadow mapping, but LODdy
         http://developer.download.nvidia.com/SDK/10.5/opengl/src/cascaded_shadow_maps/doc/cascaded_shadow_maps.pdf
