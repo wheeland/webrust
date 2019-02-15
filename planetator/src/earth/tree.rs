@@ -46,7 +46,7 @@ impl Planet {
 
         let dirs = [plate::Direction::PosX, plate::Direction::PosY, plate::Direction::PosZ, plate::Direction::NegX, plate::Direction::NegY, plate::Direction::NegZ];
         let root_plates = dirs.iter().map(|dir| {
-            Plate::new(plate::Position::root(*dir), &manager)
+            Plate::new(plate::Position::root(*dir), &manager, (-1, 0.0, 0.0))
         }).collect();
 
         Ok(Planet {
@@ -134,25 +134,41 @@ impl Planet {
         }
     }
 
-    fn collect_rendered_plates(plate: &PlatePtr, out: &mut Vec<PlatePtr>) {
+    // collects all plates that shall be rendered for this sub-tree and returns whether
+    // all is good
+    fn collect_rendered_plates(plate: &PlatePtr, out: &mut Vec<PlatePtr>) -> bool {
         let node = &(*plate.borrow());
-        if node.visible {
-            // check if we need to render the node
-            let render = match node.children.as_ref() {
-                None => true,
-                Some(c) => !c.iter().all(|child| child.borrow().has_render_data())
-            };
+        let old_length = out.len();
 
-            if render && node.has_render_data() {
+        if !node.visible {
+            return true;
+        }
+
+        // no children? -> need to render this very plate
+        if node.children.is_none() {
+            if node.has_render_data() {
                 out.push(plate.clone());
-            }
-
-            if !render {
-                for c in node.children.as_ref().unwrap() {
-                    Self::collect_rendered_plates(c, out);
-                }
+                return true;
+            } else {
+                //no children and no render data -> parent to the rescue
+                return false;
             }
         }
+
+        // has children? -> try and see if we can render all of them
+        let can_render_children = node.children.as_ref().unwrap().iter().all(|child| Self::collect_rendered_plates(child, out));
+        if !can_render_children {
+            // some children can't be rendered -> switch back to rendering self
+            while out.len() > old_length {
+                out.pop();
+            }
+            if !node.has_render_data() {
+                return false;
+            }
+            out.push(plate.clone());
+        }
+
+        return true;
     }
 
     // Call render callback for all leaf nodes with RenderData
@@ -200,6 +216,7 @@ type PlatePtr = Rc<RefCell<Plate>>;
 pub struct Plate {
     position: plate::Position,
     bogo_points: [Vector3<f32>;9],      // list of points covering all the extreme positions of this plate
+    minmax: (i32, f32, f32),            // min/max height for this plate, computed from the Terrain Data of certain depth
     bounds: culling::Sphere,
     visible: bool,
 
@@ -215,12 +232,12 @@ pub struct Plate {
 }
 
 impl Plate {
-    fn bogo_bounding_box(bogo_points: &[Vector3<f32>;9], radius: f32, minheight: f32, maxheight: f32) -> culling::Sphere {
+    fn bogo_bounding_box(bogo_points: &[Vector3<f32>;9], radius: f32, minmax: (f32, f32)) -> culling::Sphere {
         let mut maxr2 = 0.0f32;
         let center = bogo_points[4] * radius;
 
         for pt in bogo_points {
-            for h in [minheight, maxheight].iter() {
+            for h in [minmax.0, minmax.1].iter() {
                 let pt = pt * (radius + h);
                 let dist2 = (pt - center).magnitude2();
                 maxr2 = maxr2.max(dist2);
@@ -230,17 +247,35 @@ impl Plate {
         culling::Sphere::from(center, maxr)
     }
 
+    // Updates the bounding box of this plate and it's children based on the newest and hottest terrain data
+    fn update_bounding_box(&mut self, minmax: (i32, f32, f32)) {
+        // if this node already has its own data, just ignore it
+        if self.minmax.0 < minmax.0 {
+            let radius = self.data_manager.borrow().radius();
+            self.minmax = minmax;
+            self.bounds = Self::bogo_bounding_box(&self.bogo_points, radius, (minmax.1, minmax.2));
+
+            if let Some(ref children) = self.children {
+                for child in children {
+                    child.borrow_mut().update_bounding_box(minmax);
+                }
+            }
+        }
+    }
+
     fn set_data(&mut self, data: generator::Result) {
-        let radius = self.data_manager.borrow().radius();
-        self.bounds = Self::bogo_bounding_box(&self.bogo_points, radius, data.height_extent.0, data.height_extent.1);
+        let depth = self.position().depth();
+        self.update_bounding_box((depth, data.height_extent.0, data.height_extent.1));
+
         self.gpu_data = Some(GpuData::new(&data, self.data_manager.borrow().size() + 3));
         self.generated_data = Some(data);
     }
 
-    fn new(position: plate::Position, data_manager: &generator::PlateDataManagerPtr) -> PlatePtr {
+    fn new(position: plate::Position, data_manager: &generator::PlateDataManagerPtr, minmax: (i32, f32, f32)) -> PlatePtr {
         let data_manager = data_manager.clone();
         let render_data = data_manager.borrow_mut().request(&position, 0.0);
-        let minmax = render_data.as_ref().map_or((0.0, 0.0), |rd| rd.height_extent);
+
+        let minmax = render_data.as_ref().map_or(minmax, |rd| (position.depth(), rd.height_extent.0, rd.height_extent.1));
 
         let radius = data_manager.borrow().radius();
         let bogo_points = [
@@ -254,12 +289,13 @@ impl Plate {
             position.square_to_sphere(&Vector2::new(0.5, 1.0)),
             position.square_to_sphere(&Vector2::new(1.0, 1.0)),
         ];
-        let bounds = Self::bogo_bounding_box(&bogo_points, radius, minmax.0, minmax.1);
+        let bounds = Self::bogo_bounding_box(&bogo_points, radius, (minmax.1, minmax.2));
 
         let mut ret = Plate {
             position,
             bogo_points,
             bounds,
+            minmax,
             visible: false,
             my_priority: 0.0,
             total_priority: 0.0,
