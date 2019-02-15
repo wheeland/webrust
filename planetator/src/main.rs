@@ -297,11 +297,6 @@ impl webrunner::WebApp for MyApp {
                 self.atmosphere.set_hm(mie.0 / 1000.0);
                 self.atmosphere.set_beta_r(raleigh.1);
                 self.atmosphere.set_beta_m(mie.1);
-
-                if ui.button(im_str!("Load Shite"), (100.0, 20.0)) {
-                    fileloading_web::start_upload("state");
-                    fileloading_web::download("shit.txt", "Why Hello thar!");
-                }
             });
 
         let planet_opt_win_size = (260.0, 300.0 + 24.0 * self.select_channels.len() as f32);
@@ -420,7 +415,7 @@ impl webrunner::WebApp for MyApp {
         #[cfg(target_os = "emscripten")]
             {
 //                if !self.edit_js.is_open() { self.edit_js.toggle()  }
-                if self.edit_js.render(ui, None, (250.0, 250.0), (600.0, 400.0), keymod) {
+                if self.edit_js.render(ui, None, keymod) {
                     webrunner::run_javascript(&self.edit_js.to_str());
                 }
             }
