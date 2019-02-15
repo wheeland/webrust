@@ -6,6 +6,7 @@ extern crate appbase;
 extern crate webutil;
 extern crate tetris;
 extern crate rand;
+extern crate tinygl;
 
 extern crate serde;
 extern crate base64;
@@ -20,7 +21,6 @@ use appbase::webrunner;
 use std::collections::HashMap;
 
 mod renderer;
-mod util;
 mod client;
 
 const ZFAR: f32 = 700.0;

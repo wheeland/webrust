@@ -3,7 +3,7 @@ use cgmath::{Vector2, Vector3, Vector4};
 use appbase::imgui_helper::staticwindow;
 use rand::{Rng,SeedableRng};
 
-use super::util;
+use tinygl::util;
 use tetris::piece;
 use tetris::state::*;
 

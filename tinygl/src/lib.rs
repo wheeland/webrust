@@ -7,6 +7,7 @@ use gl::types::*;
 use cgmath::prelude::*;
 
 pub mod shapes;
+pub mod util;
 
 struct BufferBase {
     target: GLenum,
