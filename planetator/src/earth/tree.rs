@@ -209,6 +209,7 @@ pub struct Plate {
 
     generated_data: Option<generator::Result>,
     gpu_data: Option<GpuData>,
+    debug_color: Vector3<f32>,
 
     children: Option<[PlatePtr;4]>,
 }
@@ -264,6 +265,7 @@ impl Plate {
             total_priority: 0.0,
             data_manager,
             generated_data: None,
+            debug_color: tinygl::util::hsv(((position.x() + 100) * (position.y() + 200)) as f32, 1.0, 1.0),
             gpu_data: None,
             children: None
         };
@@ -412,7 +414,13 @@ impl Plate {
             program.uniform(&(String::from("texture_") + (channel.1).0), tinygl::Uniform::Signed(idx as i32));
         }
 
+        program.uniform("debugColor", tinygl::Uniform::Vec3(self.debug_color));
+
         render_data.normals.bind_at(0);
+    }
+
+    pub fn debug_color(&self) -> Vector3<f32> {
+        self.debug_color
     }
 
     pub fn indices(&self) -> &tinygl::IndexBuffer {

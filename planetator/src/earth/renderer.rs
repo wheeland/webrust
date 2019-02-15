@@ -81,6 +81,7 @@ fn create_render_program(colorator: &str, channels: &Channels) -> tinygl::Progra
     let frag_source = String::from("
             uniform float wf;
             uniform sampler2D normals;
+            uniform vec3 debugColor;
             in vec2 tc;
             in vec3 pos;
             layout(location = 0) out vec4 outColor;
