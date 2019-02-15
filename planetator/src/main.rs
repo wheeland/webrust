@@ -19,6 +19,7 @@ mod culling;
 mod guiutil;
 mod fileloading_web;
 mod atmosphere;
+mod savegames;
 
 use std::collections::HashMap;
 use std::io::Read;
@@ -50,14 +51,6 @@ struct MyApp {
     fsquad: tinygl::shapes::FullscreenQuad,
 }
 
-#[derive(Serialize)]
-#[derive(Deserialize)]
-struct Serialized {
-    generator: String,
-    colorator: String,
-    select_channels: Vec<(String, i32)>,
-}
-
 impl MyApp {
     fn pressed(&self, key: Keycode) -> bool {
         *self.keyboard.get(&key).unwrap_or(&false)
@@ -77,7 +70,7 @@ impl MyApp {
     }
 
     fn save_state(&self) -> String {
-        serde_json::to_string(&Serialized {
+        serde_json::to_string(&savegames::Savegame::Version0 {
             generator: self.edit_generator.to_str().to_string(),
             colorator: self.edit_colorator.to_str().to_string(),
             select_channels: self.select_channels.clone(),
@@ -85,12 +78,20 @@ impl MyApp {
     }
 
     fn restore_state(&mut self, serialized: &str) {
-        let deser = serde_json::from_str::<Serialized>(serialized);
+        let deser = serde_json::from_str::<savegames::Savegame>(serialized);
 
         if let Ok(deser) = deser {
-            self.edit_generator.set_source(&deser.generator);
-            self.edit_colorator.set_source(&deser.colorator);
-            self.select_channels = deser.select_channels.clone();
+            match deser {
+                savegames::Savegame::Version0{generator, colorator, select_channels} => {
+                    self.edit_generator.set_source(&generator);
+                    self.edit_colorator.set_source(&colorator);
+                    self.select_channels = select_channels.clone();
+                }
+                _ => {
+                    println!("Couldn't parse savegame");
+                    return;
+                }
+            }
 
             self.edit_generator.works();
             self.edit_colorator.works();
