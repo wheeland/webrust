@@ -138,34 +138,29 @@ impl Planet {
     // all is good
     fn collect_rendered_plates(plate: &PlatePtr, out: &mut Vec<PlatePtr>) -> bool {
         let node = &(*plate.borrow());
-        let old_length = out.len();
 
-        if !node.visible {
-            return true;
-        }
+        if node.visible {
+            let old_length = out.len();
 
-        // no children? -> need to render this very plate
-        if node.children.is_none() {
-            if node.has_render_data() {
+            // see if we will render the children instead
+            let mut render_self = match node.children.as_ref() {
+                None => true,
+                Some(children) => !children.iter().all(|child| Self::collect_rendered_plates(child, out))
+            };
+
+            if render_self {
+                // some children can't be rendered -> switch back to rendering self
+                while out.len() > old_length {
+                    out.pop();
+                }
+
+                if !node.has_render_data() {
+                    //no children and no render data -> parent to the rescue
+                    return false;
+                }
+
                 out.push(plate.clone());
-                return true;
-            } else {
-                //no children and no render data -> parent to the rescue
-                return false;
             }
-        }
-
-        // has children? -> try and see if we can render all of them
-        let can_render_children = node.children.as_ref().unwrap().iter().all(|child| Self::collect_rendered_plates(child, out));
-        if !can_render_children {
-            // some children can't be rendered -> switch back to rendering self
-            while out.len() > old_length {
-                out.pop();
-            }
-            if !node.has_render_data() {
-                return false;
-            }
-            out.push(plate.clone());
         }
 
         return true;
