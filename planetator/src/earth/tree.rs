@@ -136,16 +136,21 @@ impl Planet {
 
     // collects all plates that shall be rendered for this sub-tree and returns whether
     // all is good
-    fn collect_rendered_plates(plate: &PlatePtr, out: &mut Vec<PlatePtr>) -> bool {
+    fn collect_rendered_plates<T1: Fn(&Plate) -> bool, T2: Fn(&Plate) -> bool>(
+        plate: &PlatePtr,
+        out: &mut Vec<PlatePtr>,
+        visible: &T1,
+        split: &T2
+    ) -> bool {
         let node = &(*plate.borrow());
 
-        if node.visible {
+        if visible(node) {
             let old_length = out.len();
 
             // see if we will render the children instead
             let mut render_self = match node.children.as_ref() {
                 None => true,
-                Some(children) => !children.iter().all(|child| Self::collect_rendered_plates(child, out))
+                Some(children) => !split(node) || !children.iter().all(|child| Self::collect_rendered_plates(child, out, visible, split))
             };
 
             if render_self {
@@ -170,7 +175,7 @@ impl Planet {
     pub fn rendered_plates(&self) -> Vec<PlatePtr> {
         let mut ret = Vec::new();
         for root in &self.root_plates {
-            Self::collect_rendered_plates(&root, &mut ret);
+            Self::collect_rendered_plates(&root, &mut ret, &|n| n.visible, &|n| true);
         }
         ret
     }
