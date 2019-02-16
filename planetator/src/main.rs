@@ -19,6 +19,7 @@ mod culling;
 mod guiutil;
 mod fileloading_web;
 mod atmosphere;
+mod shadowmap;
 mod savegames;
 
 use std::collections::HashMap;
@@ -28,7 +29,7 @@ use sdl2::mouse::MouseButton;
 use sdl2::event::{Event};
 use imgui::*;
 use appbase::fpswidget::FpsWidget;
-use cgmath::SquareMatrix;
+use cgmath::prelude::*;
 
 struct MyApp {
     windowsize: (u32, u32),
@@ -148,9 +149,11 @@ impl webrunner::WebApp for MyApp {
                 uniform vec3 eyePosition;
                 uniform vec3 sunDirection;
                 uniform mat4 inverseViewProjectionMatrix;
+                uniform mat4 sunViewProjection;
                 uniform sampler2D planetColor;
                 uniform sampler2D planetNormal;
                 uniform sampler2D planetPosition;
+                uniform sampler2DShadow sunShadow;
                 ")
                 + &atmosphere::Atmosphere::shader_source() +
                 "
@@ -176,9 +179,17 @@ impl webrunner::WebApp for MyApp {
                         vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
                         vec3 pPos = texture(planetPosition, vec2(0.5) + 0.5 * clipPos).rgb;
 
+                        const mat4 shadowMatrix = mat4(0.5, 0.0, 0.0, 0.0,
+                                   0.0, 0.5, 0.0, 0.0,
+                                   0.0, 0.0, 0.5, 0.0,
+                                   0.5, 0.5, 0.5, 1.0);
+
+                        vec4 posInSunSpace = shadowMatrix * sunViewProjection * vec4(pPos, 1.0);
+                        float shadowMapSample = textureProj(sunShadow, posInSunSpace);
+
                         // add shadow to planet color
-                        float shadow = max(dot(normal, sunDirection), 0.0);
-                        pColor *= shadow;
+                        float litaf = smoothstep(0.0, 2.0, shadowMapSample);
+                        pColor *= (0.2 + 0.8 * litaf);
 
                         // calc atmospheric depth along view ray
                         float dist = length(pPos - eyePosition);
@@ -213,7 +224,9 @@ impl webrunner::WebApp for MyApp {
             self.savegame = Some((state_data.0.clone(), serialized));
         }
 
+        //
         // advance camera
+        //
         let cdx = (if self.pressed(Keycode::A) {0.0} else {1.0}) + (if self.pressed(Keycode::D) {0.0} else {-1.0});
         let cdy = (if self.pressed(Keycode::S) {0.0} else {1.0}) + (if self.pressed(Keycode::W) {0.0} else {-1.0});
         let cdz = (if self.pressed(Keycode::LShift) {0.0} else {1.0}) + (if self.pressed(Keycode::Space) {0.0} else {-1.0});
@@ -225,15 +238,28 @@ impl webrunner::WebApp for MyApp {
         self.renderer.render(self.windowsize);
         let fbo = self.renderer.fbo().unwrap();
 
+        //
+        // Render Depth Shadow Map
+        //
+        let sun_direction = cgmath::Vector3::new(1.0, 1.0, 1.0);
+        let mut shadow = shadowmap::ShadowMap::new();
+        shadow.prepare((1024, 1024), sun_direction, eye.normalize() * self.renderer.radius(), 2.5 * self.renderer.radius());
+        self.renderer.render_for(shadow.program(), shadow.eye(), shadow.mvp());
+        shadowmap::ShadowMap::finish();
+
+        shadow.texture().unwrap().bind_at(3);
+
         self.postprocess.bind();
         self.postprocess.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
         self.postprocess.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
-        self.postprocess.uniform("sunDirection", tinygl::Uniform::Vec3(cgmath::Vector3::new(1.0, 0.0, 0.0)));
+        self.postprocess.uniform("sunDirection", tinygl::Uniform::Vec3(sun_direction.normalize()));
+        self.postprocess.uniform("sunViewProjection", tinygl::Uniform::Mat4(shadow.mvp()));
+        self.postprocess.uniform("sunShadow", tinygl::Uniform::Signed(3));
         self.postprocess.uniform("planetColor", tinygl::Uniform::Signed(0));
         self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
         self.postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));
         self.postprocess.uniform("planetRadius", tinygl::Uniform::Float(self.renderer.radius()));
-        self.atmosphere.prepare_shader(&self.postprocess, self.renderer.radius(), 3);
+        self.atmosphere.prepare_shader(&self.postprocess, self.renderer.radius(), 5);
 
         unsafe {
             gl::Viewport(0, 0, self.windowsize.0 as _, self.windowsize.1 as _);

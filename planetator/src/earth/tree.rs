@@ -104,12 +104,12 @@ impl Planet {
             let dist = node.distance(eye) / radius;
             let required_detail = 4.0 * 0.5f32.powi(node.position().depth());
 
-            if dist < required_detail && node.visible && node.position.depth() < max_level {
+            if dist < required_detail && node.position.depth() < max_level {
                 node.create_children();
             } else {
                 node.delete_children();
             }
-            node.my_priority = required_detail / dist;
+            node.my_priority = if node.visible { required_detail / dist } else { 0.0 };
 
             true
         });
@@ -171,13 +171,29 @@ impl Planet {
         return true;
     }
 
-    // Call render callback for all leaf nodes with RenderData
-    pub fn rendered_plates(&self) -> Vec<PlatePtr> {
+    fn get_rendered_plates<T1: Fn(&Plate) -> bool, T2: Fn(&Plate) -> bool>(&self, visible: T1, split: T2) -> Vec<PlatePtr> {
         let mut ret = Vec::new();
         for root in &self.root_plates {
-            Self::collect_rendered_plates(&root, &mut ret, &|n| n.visible, &|n| true);
+            Self::collect_rendered_plates(&root, &mut ret, &visible, &split);
         }
         ret
+    }
+
+    // Collect all leaf nodes with RenderData
+    pub fn rendered_plates(&self) -> Vec<PlatePtr> {
+        self.get_rendered_plates(|n| n.visible, |n| true)
+    }
+
+    // Collect all nodes according to given viewport and detail
+    pub fn rendered_plates_for_camera(&self, eye: Vector3<f32>, mvp: Matrix4<f32>, detail: f32) -> Vec<PlatePtr> {
+        let culler = culling::Culler::new(&mvp);
+        self.get_rendered_plates(|node| {
+            culler.visible(&node.bounds)
+        }, |node| {
+            let dist = node.distance(&eye) / self.radius;
+            let required_detail = 4.0 * 0.5f32.powi(node.position().depth());
+            dist < required_detail * detail
+        })
     }
 }
 
@@ -444,6 +460,11 @@ impl Plate {
 
     pub fn traverse_mut<T: FnMut(&mut Plate) -> bool>(&mut self, mut functor: T) {
         Self::traverse_mut_helper(self, &mut functor);
+    }
+
+    pub fn bind_pos_height_buffer(&self, program: &tinygl::Program) {
+        let render_data = self.gpu_data.as_ref().expect("Expected GpuData");
+        program.vertex_attrib_buffer("posHeight", &render_data.positions, 4, gl::FLOAT, false, 16, 0);
     }
 
     pub fn bind_render_data(&self, program: &tinygl::Program) {

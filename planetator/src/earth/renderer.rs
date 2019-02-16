@@ -1,4 +1,5 @@
 use cgmath::prelude::*;
+use cgmath::*;
 use super::super::culling;
 
 use super::Channels;
@@ -102,6 +103,7 @@ fn create_render_program(colorator: &str, channels: &Channels) -> tinygl::Progra
 
                 float wfVal = 1.0 - step(0.8, (0.2126*col.r + 0.7152*col.g + 0.0722*col.b));
                 outColor = vec4(mix(col, vec3(wfVal), wf), 1.0 - 0.7* wf);
+                // outColor = mix(outColor, vec4(debugColor, 1.0), 0.5);
                 outNormal = vec4(vec3(0.5) + 0.5 * norm, 1.0);
                 outPosition = vec4(pos, 1.0);
             }";
@@ -112,11 +114,11 @@ fn create_render_program(colorator: &str, channels: &Channels) -> tinygl::Progra
 pub fn default_generator() -> String {
     String::from("void generate(vec3 position, int depth)
 {
-    float mountain = smoothstep(-0.5, 1.0, simplexNoise(position * 4.0));
-    float base = simplexNoise(position * 5.0, 4, 0.5);
-    float detail = simplexNoise(position * 20.0, 6, 0.5);
-    height = 0.4 * base + mountain * (0.5 + 0.5 * detail);
-    height /= 55.0;
+    float mountain = smoothstep(-0.5, 1.0, simplexNoise(position * 0.2));
+    float base = simplexNoise(position * 0.1, 4, 0.5);
+    float detail = simplexNoise(position, 6, 0.5);
+    height = 1.4 * base + mountain * (0.5 + 0.5 * detail);
+    // height /= 55.0;
 }")
 }
 
@@ -345,7 +347,7 @@ impl Renderer {
             fbo.add("colorWf", gl::RGBA8, gl::RGBA, gl::UNSIGNED_BYTE);
             fbo.add("normal", gl::RGBA8, gl::RGBA, gl::UNSIGNED_BYTE);
             fbo.add("position", gl::RGBA32F, gl::RGBA, gl::FLOAT);
-            fbo.add_depth();
+            fbo.add_depth_renderbuffer();
             self.fbo = Some(fbo);
         }
         self.fbo.as_ref().unwrap().bind();
@@ -380,6 +382,7 @@ impl Renderer {
 
         self.rendered_triangles = 0;
         let rendered_plates = planet.rendered_plates();
+
         for plate in &rendered_plates {
             plate.borrow().bind_render_data(program);
 
@@ -416,5 +419,17 @@ impl Renderer {
         self.rendered_plates = rendered_plates.len();
 
         unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, 0) }
+    }
+
+    pub fn render_for(&self, program: &tinygl::Program, eye: Vector3<f32>, mvp: Matrix4<f32>) {
+        let planet = self.planet.as_ref().unwrap();
+        let plates = planet.rendered_plates_for_camera(eye, mvp, 1.0);
+
+        program.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
+
+        for plate in &plates {
+            plate.borrow().bind_pos_height_buffer(program);
+            plate.borrow().indices().draw_all(gl::TRIANGLES);
+        };
     }
 }

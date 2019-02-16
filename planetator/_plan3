@@ -5,7 +5,7 @@ to do:
     - add texturing, can choose shizzles from URL
         - save textures on server, reference via unique ID in the saved planets
     - gallery with some kewl planets
-        - mars, earh, moon
+        - marz, urth, mewn
         - oasis -> dunes that shift along some vec2 noise direction (=wind direction),
           sprinkled water/forest oases
         - can click "new" on gallery -> create own planet, give name, save, publish to gallery

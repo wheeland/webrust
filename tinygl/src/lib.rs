@@ -585,7 +585,8 @@ impl OffscreenTexture {
 pub struct OffscreenBuffer {
     size: (GLsizei, GLsizei),
     fbo: GLuint,
-    depth: Option<GLuint>,
+    depth_rb: Option<GLuint>,
+    depth_tex: Option<Texture>,
     textures: HashMap<String, OffscreenTexture>
 }
 
@@ -597,7 +598,8 @@ impl OffscreenBuffer {
         OffscreenBuffer {
             size,
             fbo,
-            depth: None,
+            depth_rb: None,
+            depth_tex: None,
             textures: HashMap::new()
         }
     }
@@ -623,8 +625,8 @@ impl OffscreenBuffer {
         self.textures.insert(name.to_string(), texture);
     }
 
-    pub fn add_depth(&mut self) {
-        if self.depth.is_none() {
+    pub fn add_depth_renderbuffer(&mut self) {
+        if self.depth_rb.is_none() && self.depth_tex.is_none() {
             unsafe {
                 let mut depth = 0;
                 gl::GenRenderbuffers(1, &mut depth);
@@ -634,9 +636,36 @@ impl OffscreenBuffer {
                 gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, gl::RENDERBUFFER, depth);
                 gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
 
-                self.depth = Some(depth);
+                self.depth_rb = Some(depth);
             }
         }
+    }
+
+    pub fn add_depth_texture(&mut self) {
+        if self.depth_rb.is_none() && self.depth_tex.is_none() {
+            unsafe {
+                let mut texture = Texture::new(gl::TEXTURE_2D);
+                texture.bind();
+                texture.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
+                texture.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
+                unsafe {
+                    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_COMPARE_MODE, gl::COMPARE_REF_TO_TEXTURE as _);
+                    gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_COMPARE_FUNC, gl::LEQUAL as _);
+                    texture.teximage(self.size, gl::DEPTH_COMPONENT24, gl::DEPTH_COMPONENT, gl::UNSIGNED_INT, std::ptr::null());
+                }
+
+                unsafe {
+                    gl::BindFramebuffer(gl::FRAMEBUFFER, self.fbo);
+                    gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, gl::TEXTURE_2D, texture.handle(), 0);
+                    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+                }
+                self.depth_tex = Some(texture);
+            }
+        }
+    }
+
+    pub fn depth_texture(&self) -> Option<&Texture> {
+        self.depth_tex.as_ref()
     }
 
     pub fn bind(&self) {
@@ -687,7 +716,7 @@ impl Drop for OffscreenBuffer {
     fn drop(&mut self) {
         unsafe {
             gl::DeleteFramebuffers(1, &mut self.fbo);
-            if let Some(depth) = self.depth.take() {
+            if let Some(depth) = self.depth_rb.take() {
                 gl::DeleteRenderbuffers(1, &depth);
             }
         }

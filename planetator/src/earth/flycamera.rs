@@ -53,6 +53,10 @@ impl FlyCamera {
         self.look
     }
 
+    pub fn up(&self) -> Vector3<f32> {
+        self.up
+    }
+
     pub fn view_matrix(&self) -> Matrix4<f32> {
         self.view_matrix
     }
