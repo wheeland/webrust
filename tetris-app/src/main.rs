@@ -37,6 +37,7 @@ struct PlayerOptions {
     pause: i32,
     level: i32,
     ghost: bool,
+    sound: bool,
     render3d: bool,
 }
 
@@ -220,6 +221,7 @@ impl webrunner::WebApp for TetrisApp {
                 pause: Keycode::Return as i32,
                 level: 0,
                 name: String::from("Your name please?"),
+                sound: true,
                 ghost: true,
                 render3d: true,
             },
@@ -297,13 +299,13 @@ impl webrunner::WebApp for TetrisApp {
                                     finished = true;
                                 }
                                 tetris::game::Outcome::HorizonalMove => {
-                                    play_sound("blip");
+                                    if self.player.sound { play_sound("blip"); }
                                 }
                                 tetris::game::Outcome::Merge => {
-                                    play_sound("deww");
+                                    if self.player.sound { play_sound("deww"); }
                                 }
                                 tetris::game::Outcome::Clear(..) => {
-                                    play_sound("dabbedi");
+                                    if self.player.sound { play_sound("dabbedi"); }
                                 }
                             }
                         }
@@ -486,23 +488,26 @@ impl webrunner::WebApp for TetrisApp {
                             .build();
                         self.player.level = self.config.level;
 
-                        ui.set_cursor_pos((20.0 * self.ui_scale, 100.0 * self.ui_scale));
+                        ui.set_cursor_pos((20.0 * self.ui_scale, 85.0 * self.ui_scale));
                         ui.text("Player Name");
 
-                        ui.set_cursor_pos((20.0 * self.ui_scale, 125.0 * self.ui_scale));
+                        ui.set_cursor_pos((20.0 * self.ui_scale, 110.0 * self.ui_scale));
                         ui.push_item_width(mb2x - mb1x - mbw);
                         let mut pname = ImString::with_capacity(1024);
                         pname.push_str(&self.player.name);
                         ui.input_text(im_str!("##pregame_playername"), &mut pname).build();
                         self.player.name = pname.to_str().to_string();
 
-                        ui.set_cursor_pos((20.0 * self.ui_scale, 180.0 * self.ui_scale));
+                        ui.set_cursor_pos((20.0 * self.ui_scale, 165.0 * self.ui_scale));
                         ui.checkbox(im_str!("Ghost Piece"), &mut self.renderer.ghost_piece);
                         self.player.ghost = self.renderer.ghost_piece;
 
-                        ui.set_cursor_pos((20.0 * self.ui_scale, 230.0 * self.ui_scale));
+                        ui.set_cursor_pos((20.0 * self.ui_scale, 210.0 * self.ui_scale));
                         ui.checkbox(im_str!("3D Pieces"), &mut self.renderer.threed);
                         self.player.render3d = self.renderer.threed;
+
+                        ui.set_cursor_pos((20.0 * self.ui_scale, 255.0 * self.ui_scale));
+                        ui.checkbox(im_str!("Play Sounds"), &mut self.player.sound);
                     } else {
                         let mut keynum = *keyconfig.as_ref().unwrap();
 
@@ -529,7 +534,7 @@ impl webrunner::WebApp for TetrisApp {
 
                     let buttonstr = if keyconfig.is_some() { "Game Settings" } else { "Controls" };
                     let buttonw = 200.0;
-                    ui.set_cursor_pos((0.5 * self.ui_scale * ((optionswin.1).0 - buttonw), 280.0 * self.ui_scale));
+                    ui.set_cursor_pos((0.5 * self.ui_scale * ((optionswin.1).0 - buttonw), 295.0 * self.ui_scale));
                     if ui.button(im_str!("{}", buttonstr), (buttonw * self.ui_scale, 40.0 * self.ui_scale)) {
                         keyconfig = match keyconfig {
                             None => Some(-1),
@@ -630,12 +635,12 @@ impl webrunner::WebApp for TetrisApp {
                             if key == self.player.drop { game.down(true) }
                             if key == self.player.rotl && !self.rotl {
                                 self.rotl = true;
-                                play_sound("rerr");
+                                if self.player.sound { play_sound("rerr"); }
                                 game.rotate(false);
                             }
                             if key == self.player.rotr && !self.rotr {
                                 self.rotr = true;
-                                play_sound("rerr");
+                                if self.player.sound { play_sound("rerr"); }
                                 game.rotate(true);
                             }
                         }
