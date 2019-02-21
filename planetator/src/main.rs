@@ -153,7 +153,8 @@ impl webrunner::WebApp for MyApp {
                 uniform sampler2D planetColor;
                 uniform sampler2D planetNormal;
                 uniform sampler2D planetPosition;
-                uniform sampler2DShadow sunShadow;
+                // uniform highp sampler2DShadow sunShadow;
+                uniform highp sampler2D sunShadow;
                 ")
                 + &atmosphere::Atmosphere::shader_source() +
                 "
@@ -179,17 +180,13 @@ impl webrunner::WebApp for MyApp {
                         vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
                         vec3 pPos = texture(planetPosition, vec2(0.5) + 0.5 * clipPos).rgb;
 
-                        const mat4 shadowMatrix = mat4(0.5, 0.0, 0.0, 0.0,
-                                   0.0, 0.5, 0.0, 0.0,
-                                   0.0, 0.0, 0.5, 0.0,
-                                   0.5, 0.5, 0.5, 1.0);
-
-                        vec4 posInSunSpace = shadowMatrix * sunViewProjection * vec4(pPos, 1.0);
-                        float shadowMapSample = textureProj(sunShadow, posInSunSpace);
-
-                        // add shadow to planet color
-                        float litaf = smoothstep(0.0, 2.0, shadowMapSample);
-                        pColor *= (0.2 + 0.8 * litaf);
+                        vec4 posInSunSpace = sunViewProjection * vec4(pPos, 1.0);
+                        posInSunSpace /= posInSunSpace.w;
+                        posInSunSpace = 0.5 * posInSunSpace + vec4(0.5);
+                        float shadowMapSample = texture(sunShadow, posInSunSpace.xy).x;
+                        float diff = shadowMapSample - posInSunSpace.z;
+                        float isLitAf = smoothstep(-0.02, 0.0, diff);
+                        pColor *= (0.2 + 0.8 * isLitAf);
 
                         // calc atmospheric depth along view ray
                         float dist = length(pPos - eyePosition);
@@ -243,8 +240,8 @@ impl webrunner::WebApp for MyApp {
         //
         let sun_direction = cgmath::Vector3::new(1.0, 1.0, 1.0);
         let mut shadow = shadowmap::ShadowMap::new();
-        shadow.prepare((1024, 1024), sun_direction, eye.normalize() * self.renderer.radius(), 2.5 * self.renderer.radius());
-        self.renderer.render_for(shadow.program(), shadow.eye(), shadow.mvp());
+        shadow.prepare((2048, 2048), sun_direction, eye.normalize() * self.renderer.radius(), 2.0 * self.renderer.radius());
+        self.renderer.render_for(shadow.program(), eye, shadow.mvp());
         shadowmap::ShadowMap::finish();
 
         shadow.texture().unwrap().bind_at(3);
