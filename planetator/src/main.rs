@@ -151,16 +151,36 @@ impl webrunner::WebApp for MyApp {
                 uniform vec3 eyePosition;
                 uniform vec3 sunDirection;
                 uniform mat4 inverseViewProjectionMatrix;
-                uniform mat4 sunViewProjection;
                 uniform sampler2D planetColor;
                 uniform sampler2D planetNormal;
                 uniform sampler2D planetPosition;
-                uniform highp sampler2D sunShadow;
+
+                struct ShadowMap {
+                    highp sampler2D depth;
+                    mat4 mvp;
+                };
+                uniform ShadowMap shadowMaps[4];
+
                 ")
                 + &atmosphere::Atmosphere::shader_source() +
                 "
                 in vec2 clipPos;
                 out vec4 outColor;
+
+                bool getShadowed(int n, vec3 pos, out float lit) {
+                    vec4 posInSunSpace = shadowMaps[n].mvp * vec4(pos, 1.0);
+                    posInSunSpace /= posInSunSpace.w;
+                    posInSunSpace = 0.5 * posInSunSpace + vec4(0.5);
+
+                    if (all(greaterThan(posInSunSpace.xy, vec2(0.0))) && all(lessThan(posInSunSpace.xy, vec2(1.0)))) {
+                        float shadowMapSample = texture(shadowMaps[n].depth, posInSunSpace.xy).x;
+                        float diff = shadowMapSample - posInSunSpace.z;
+                        lit = smoothstep(-0.02, 0.0, diff);
+                        return true;
+                    } else {
+                        return false;
+                    }
+                }
 
                 void main() {
                     vec3 normalFromTex = texture(planetNormal, vec2(0.5) + 0.5 * clipPos).rgb;
@@ -181,13 +201,24 @@ impl webrunner::WebApp for MyApp {
                         vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
                         vec3 pPos = texture(planetPosition, vec2(0.5) + 0.5 * clipPos).rgb;
 
-                        vec4 posInSunSpace = sunViewProjection * vec4(pPos, 1.0);
-                        posInSunSpace /= posInSunSpace.w;
-                        posInSunSpace = 0.5 * posInSunSpace + vec4(0.5);
-                        float shadowMapSample = texture(sunShadow, posInSunSpace.xy).x;
-                        float diff = shadowMapSample - posInSunSpace.z;
-                        float isLitAf = smoothstep(-0.02, 0.0, diff);
-                        pColor *= (0.2 + 0.8 * isLitAf);
+                        //
+                        // Find out if we are shadowed by the terrain
+                        //
+                        float lit = 0.0;
+                        vec3 shadowMapColor = vec3(1.0, 0.0, 0.0);
+                        if (!getShadowed(3, pPos, lit)) {
+                            shadowMapColor = vec3(1.0, 1.0, 0.0);
+                            if (!getShadowed(2, pPos, lit)) {
+                                shadowMapColor = vec3(0.0, 1.0, 0.0);
+                                if (!getShadowed(1, pPos, lit)) {
+                                    shadowMapColor = vec3(0.0, 0.0, 1.0);
+                                    getShadowed(0, pPos, lit);
+                                }
+                            }
+                        }
+                        float shadow = mix(0.7, 1.0, lit);
+                        pColor *= shadow;
+                        pColor *= max(0.5 + 0.5 * dot(normal, sunDirection), 0.0);
 
                         // calc atmospheric depth along view ray
                         float dist = length(pPos - eyePosition);
@@ -231,6 +262,7 @@ impl webrunner::WebApp for MyApp {
         self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, cdz, cdy) * dt));
         let mvp = self.renderer.camera().mvp(self.windowsize);
         let eye = self.renderer.camera().eye();
+        let look = self.renderer.camera().look();
 
         // render planet into FBO
         self.renderer.render(self.windowsize);
@@ -239,26 +271,36 @@ impl webrunner::WebApp for MyApp {
         //
         // Render Depth Shadow Map
         //
-        self.sun_angle += dt * 0.3;
-        let sun_direction = cgmath::Vector3::new(self.sun_angle.sin(), 0.5, self.sun_angle.cos()).normalize();
-        let mut shadow = shadowmap::ShadowMap::new();
-        shadow.prepare((2048, 2048), sun_direction, eye.normalize() * self.renderer.radius(), 2.0 * self.renderer.radius());
-        self.renderer.render_for(shadow.program(), eye, shadow.mvp());
-        shadowmap::ShadowMap::finish();
-
-        shadow.texture().unwrap().bind_at(3);
+        self.sun_angle += dt * 0.5;
+        let sun_direction = cgmath::Vector3::new(self.sun_angle.sin(), 0.0 * (self.sun_angle * 0.3).sin(), self.sun_angle.cos()).normalize();
+        // let sun_direction = cgmath::Vector3::new(self.sun_angle.sin(), 0.7, self.sun_angle.cos()).normalize();
+        // let sun_direction = cgmath::Vector3::new(1.0, 1.0, 1.0).normalize();
+        // let sun_direction = cgmath::Vector3::new(0.0, 0.5 * self.sun_angle.sin(), 1.0).normalize();
+        let mut shadow = shadowmap::ShadowMap::new((1024, 1024));
+        shadow.render(self.renderer.radius(), sun_direction, eye, look, |prog, eye, mvp| {
+            self.renderer.render_for(prog, eye, mvp);
+        });
 
         self.postprocess.bind();
+
+        // assign shadow map uniforms
+        for entry in shadow.entries().iter().enumerate() {
+            let num = entry.0;
+            let entry = entry.1;
+
+            entry.0.bind_at((3 + num) as u32);
+            self.postprocess.uniform(&format!("shadowMaps[{}].depth", num), tinygl::Uniform::Signed((3 + num) as i32));
+            self.postprocess.uniform(&format!("shadowMaps[{}].mvp", num), tinygl::Uniform::Mat4(entry.1));
+        }
+
         self.postprocess.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
         self.postprocess.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
         self.postprocess.uniform("sunDirection", tinygl::Uniform::Vec3(sun_direction.normalize()));
-        self.postprocess.uniform("sunViewProjection", tinygl::Uniform::Mat4(shadow.mvp()));
-        self.postprocess.uniform("sunShadow", tinygl::Uniform::Signed(3));
         self.postprocess.uniform("planetColor", tinygl::Uniform::Signed(0));
         self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
         self.postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));
         self.postprocess.uniform("planetRadius", tinygl::Uniform::Float(self.renderer.radius()));
-        self.atmosphere.prepare_shader(&self.postprocess, self.renderer.radius(), 5);
+        self.atmosphere.prepare_shader(&self.postprocess, self.renderer.radius(), 7);
 
         unsafe {
             gl::Viewport(0, 0, self.windowsize.0 as _, self.windowsize.1 as _);

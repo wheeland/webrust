@@ -57,7 +57,7 @@ fn create_render_program(colorator: &str, channels: &Channels) -> tinygl::Progra
                 tc = plateCoords;
                 pos = posHeight.xyz * (posHeight.w + radius + 0.0001 * wf);
                 vec4 wpos = mvp * vec4(pos, 1.0);
-                wpos.z = (2.0 * log(C * wpos.w + 1.0) / log(C * Far + 1.0) - 1.0) * wpos.w;
+                // wpos.z = (2.0 * log(C * wpos.w + 1.0) / log(C * Far + 1.0) - 1.0) * wpos.w;
                 gl_Position = wpos;
             }";
 
@@ -118,7 +118,7 @@ pub fn default_generator() -> String {
     float base = simplexNoise(position * 0.1, 4, 0.5);
     float detail = simplexNoise(position, 6, 0.5);
     height = 1.4 * base + mountain * (0.5 + 0.5 * detail);
-    // height /= 55.0;
+    height *= 1.0 - smoothstep(0.8, 0.9, abs(normalize(position).y));
 }")
 }
 

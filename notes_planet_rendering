@@ -20,8 +20,12 @@ graphical effects
     - depth of field blur
     - final tone mapping / HDR-to-RGB8
     - sun lens flare
+    - water rendering
     - stars
 
 references
     http://advances.realtimerendering.com
     http://wiki.flightgear.org/Procedural_Texturing
+
+examples
+    https://www.youtube.com/watch?v=-L_C3VMt4wM

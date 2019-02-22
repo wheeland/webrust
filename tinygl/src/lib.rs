@@ -668,6 +668,10 @@ impl OffscreenBuffer {
         self.depth_tex.as_ref()
     }
 
+    pub fn depth_texture_mut(&mut self) -> Option<&mut Texture> {
+        self.depth_tex.as_mut()
+    }
+
     pub fn bind(&self) {
         let mut draw_buffers: Vec<GLenum> = Vec::new();
         for i in 0..self.textures.len() {

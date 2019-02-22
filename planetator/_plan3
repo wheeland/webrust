@@ -1,5 +1,5 @@
 to do:
-    - replace simplification with something ROAM-like that doesn't add cuts in the
+    x replace simplification with something ROAM-like that doesn't add cuts in the
       middle of triangles -> can't have a vertex in the middle of nothing, this will blow up!
     x battle the screwups
     - add texturing, can choose shizzles from URL
