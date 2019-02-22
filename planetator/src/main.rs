@@ -45,6 +45,7 @@ struct MyApp {
     edit_js: guiutil::ShaderEditData,
     select_channels: Vec<(String, i32)>,
 
+    sun_angle: f32,
     renderer: earth::renderer::Renderer,
     atmosphere: atmosphere::Atmosphere,
     postprocess: tinygl::Program,
@@ -136,6 +137,7 @@ impl webrunner::WebApp for MyApp {
             edit_colorator: guiutil::ShaderEditData::new("Kolorator", &earth::renderer::default_colorator(), (250.0, 250.0), (600.0, 400.0)),
             edit_js: guiutil::ShaderEditData::new("JavaScript executor", "var elem = document.getElementById('state');", (250.0, 250.0), (600.0, 400.0)),
             select_channels: Vec::new(),
+            sun_angle: 0.0,
             renderer: earth::renderer::Renderer::new(),
             atmosphere: atmosphere::Atmosphere::new(),
             postprocess: tinygl::Program::new_versioned("
@@ -153,7 +155,6 @@ impl webrunner::WebApp for MyApp {
                 uniform sampler2D planetColor;
                 uniform sampler2D planetNormal;
                 uniform sampler2D planetPosition;
-                // uniform highp sampler2DShadow sunShadow;
                 uniform highp sampler2D sunShadow;
                 ")
                 + &atmosphere::Atmosphere::shader_source() +
@@ -238,7 +239,8 @@ impl webrunner::WebApp for MyApp {
         //
         // Render Depth Shadow Map
         //
-        let sun_direction = cgmath::Vector3::new(1.0, 1.0, 1.0);
+        self.sun_angle += dt * 0.3;
+        let sun_direction = cgmath::Vector3::new(self.sun_angle.sin(), 0.5, self.sun_angle.cos()).normalize();
         let mut shadow = shadowmap::ShadowMap::new();
         shadow.prepare((2048, 2048), sun_direction, eye.normalize() * self.renderer.radius(), 2.0 * self.renderer.radius());
         self.renderer.render_for(shadow.program(), eye, shadow.mvp());
