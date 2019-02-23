@@ -7,6 +7,7 @@ struct ShadowCascade {
     level: i32,
     fbo: OffscreenBuffer,
     extent: f32,
+    granularity: f32,
     orthogonal_depth: f32,
 
     // may change every time it's rendered:
@@ -34,6 +35,7 @@ impl ShadowCascade {
             level,
             fbo,
             extent,
+            granularity: 2.0 * extent / size as f32,
             orthogonal_depth: extent * 20.0,
             center: Vector3::new(0.0, 0.0, 0.0),
             mvp: Matrix4::from_scale(1.0)
@@ -41,7 +43,10 @@ impl ShadowCascade {
     }
 
     fn set_center(&mut self, center: Vector3<f32>) {
-        self.center = center;
+        let cx = (center.x / self.granularity).round() * self.granularity;
+        let cy = (center.y / self.granularity).round() * self.granularity;
+        let cz = (center.z / self.granularity).round() * self.granularity;
+        self.center = Vector3::new(cx, cy, cz);;
 
         let translate = Matrix4::from_translation(-self.center);
         let sz_scale = 1.0 / self.extent;
