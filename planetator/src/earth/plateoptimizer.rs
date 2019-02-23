@@ -271,15 +271,14 @@ impl IndexBufferBuilder {
                     }
 
                     let (x1, xm, x2) = (quadx * size, quadx * size + size2, quadx * size + size);
-                    let verts = [(x1, ym), (x2, ym), (xm, y1), (xm, y2)];
 
                     // check if one of the 4 keypoints has been rendered -> if so, we need to render this
                     // in this case, we also need to interpolate all the offending keypoints!
                     let rendered = [
-                        *self.rendered.at(verts[0].0, verts[0].1),
-                        *self.rendered.at(verts[1].0, verts[1].1),
-                        *self.rendered.at(verts[2].0, verts[2].1),
-                        *self.rendered.at(verts[3].0, verts[3].1),
+                        *self.rendered.at(x1, ym),
+                        *self.rendered.at(x2, ym),
+                        *self.rendered.at(xm, y1),
+                        *self.rendered.at(xm, y2),
                     ];
                     let some_rendered = rendered[0] || rendered[1] || rendered[2] || rendered[3];
                     if some_rendered || level == maxlevel {
@@ -296,11 +295,32 @@ impl IndexBufferBuilder {
                         if idx.edge_top  { self.ribbon(idx.i00, idx.i10, -vribbonofs); }
                         if idx.edge_bottom { self.ribbon(idx.i11, idx.i01, vribbonofs); }
 
-                        if some_rendered {
-                            if rendered[0] { self.merged_vertices.push(idx.i0m); }
-                            if rendered[1] { self.merged_vertices.push(idx.i1m); }
-                            if rendered[2] { self.merged_vertices.push(idx.im0); }
-                            if rendered[3] { self.merged_vertices.push(idx.im1); }
+                        // if there is an edge-split towards a neighboring quad, we'll have to
+                        //  (a) modify that middle vertex so that it's interpolated between the two corner ones
+                        //  (b) add a little triangle that fills the hole, because otherwise there may be artifacts
+                        if rendered[0] {
+                            self.merged_vertices.push(idx.i0m);
+                            self.triangles.push(idx.i00);
+                            self.triangles.push(idx.i0m);
+                            self.triangles.push(idx.i01);
+                        }
+                        if rendered[1] {
+                            self.merged_vertices.push(idx.i1m);
+                            self.triangles.push(idx.i10);
+                            self.triangles.push(idx.i11);
+                            self.triangles.push(idx.i1m);
+                        }
+                        if rendered[2] {
+                            self.merged_vertices.push(idx.im0);
+                            self.triangles.push(idx.i00);
+                            self.triangles.push(idx.i10);
+                            self.triangles.push(idx.im0);
+                        }
+                        if rendered[3] {
+                            self.merged_vertices.push(idx.im1);
+                            self.triangles.push(idx.i01);
+                            self.triangles.push(idx.im1);
+                            self.triangles.push(idx.i11);
                         }
                     }
                 }
