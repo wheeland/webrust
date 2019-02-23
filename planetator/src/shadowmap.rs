@@ -31,11 +31,20 @@ impl BoundingBox {
         }
     }
 
+    pub fn size(&self) -> f32 {
+        let extent = self.max - self.min;
+        extent.x.max(extent.y).max(extent.z)
+    }
+
+    pub fn depth(&self) -> f32 {
+        self.size() * 20.0
+    }
+
     pub fn matrix(&self) -> Matrix4<f32> {
         let translate = Matrix4::from_translation(-0.5 * (self.min + self.max));
-        let extent = self.max - self.min;
-        let scale = 1.0 / extent.x.max(extent.y).max(extent.z);
-        Matrix4::from_nonuniform_scale(scale, scale, -0.1 * scale) * translate
+        let sz_scale = 1.0 / self.size();
+        let depth_scale = 1.0 / self.depth();
+        Matrix4::from_nonuniform_scale(sz_scale, sz_scale, -depth_scale) * translate
     }
 }
 
@@ -43,6 +52,7 @@ struct Entry {
     bounds: BoundingBox,
     fbo: OffscreenBuffer,
     mvp: Matrix4<f32>,
+    orthogonal_depth: f32,
 }
 
 pub struct ShadowMap {
@@ -72,6 +82,7 @@ impl ShadowMap {
                 fbo: buf,
                 bounds: BoundingBox::new(),
                 mvp: Matrix4::from_scale(1.0),
+                orthogonal_depth: 0.0,
             });
         }
 
@@ -97,12 +108,6 @@ impl ShadowMap {
         &self.program
     }
 
-    pub fn entries(&self) -> Vec<(&Texture, Matrix4<f32>)> {
-        self.entries.iter().map(|entry| {
-            (entry.fbo.depth_texture().unwrap(), entry.mvp)
-        }).collect()
-    }
-
     pub fn render<T: Fn(&Program, Vector3<f32>, Matrix4<f32>)>(
         &mut self,
         radius: f32,
@@ -110,7 +115,7 @@ impl ShadowMap {
         eye: Vector3<f32>,
         look: Vector3<f32>,
         render: T,
-    ) {
+    ) -> Vec<(&Texture, Matrix4<f32>, f32)> {
         // Create Sun rotation matrix
         let sun_lon = sun_direction.x.atan2(sun_direction.z);
         let sun_lat = sun_direction.y.asin();
@@ -123,6 +128,8 @@ impl ShadowMap {
             gl::DepthFunc(gl::LESS);
             gl::PolygonOffset(2.0, 2.0);
         }
+
+        let mut ret = Vec::new();
 
         // go through all passes
         for (num, mut entry) in self.entries.iter_mut().enumerate() {
@@ -139,8 +146,9 @@ impl ShadowMap {
             cube.add(sunspace_center + Vector3::new(1.0, 0.0, 0.0)  * cubesize);
             cube.add(sunspace_center + Vector3::new(0.0, -1.0, 0.0) * cubesize);
             cube.add(sunspace_center + Vector3::new(0.0, 1.0, 0.0)  * cubesize);
-            entry.bounds = cube;
 
+            entry.orthogonal_depth = cube.depth();
+            entry.bounds = cube;
             entry.mvp = entry.bounds.matrix() * sun_rotation;
 
             // configure program
@@ -151,6 +159,8 @@ impl ShadowMap {
             entry.fbo.bind();
             unsafe { gl::Clear(gl::DEPTH_BUFFER_BIT); }
             render(&self.program, sun_direction * radius * 2.0, entry.mvp);
+
+            ret.push((entry.fbo.depth_texture().unwrap(), entry.mvp, entry.orthogonal_depth));
         }
 
         // reset GL
@@ -160,5 +170,7 @@ impl ShadowMap {
             gl::PolygonOffset(0.0, 0.0);
         }
         tinygl::OffscreenBuffer::unbind();
+
+        ret
     }
 }
