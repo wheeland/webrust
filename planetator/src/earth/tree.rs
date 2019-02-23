@@ -209,7 +209,7 @@ impl GpuData {
         let triangulation = data.triangulation.as_ref().expect("No Triangulation data found");
 
         let mut ret = GpuData {
-            positions: tinygl::VertexBuffer::from(&triangulation.vertices),
+            positions: tinygl::VertexBuffer::from(&data.vertex_data),
             normals: tinygl::Texture::new(gl::TEXTURE_2D),
             triangles: tinygl::IndexBuffer::from16(&triangulation.triangles),
             wireframe: tinygl::IndexBuffer::from16(&triangulation.wireframe),

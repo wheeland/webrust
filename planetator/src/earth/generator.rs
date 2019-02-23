@@ -22,17 +22,15 @@ fn del_mem_usage(delta: usize) { unsafe { MEM_USAGE -= delta as i32; } }
 //
 pub struct Triangulation {
     detail: u8,
-    pub vertices: Vec<Vector4<f32>>,
     pub triangles: Vec<Idx>,
     pub wireframe: Vec<Idx>,
 }
 
 impl Triangulation {
-    fn new(detail: u8, vertices: Vec<Vector4<f32>>, triangles: Vec<Idx>, wireframe: Vec<Idx>,) -> Self {
-        add_mem_usage(vertices.capacity() * 16 + (triangles.capacity() + wireframe.capacity()) * std::mem::size_of::<Idx>());
+    fn new(detail: u8, triangles: Vec<Idx>, wireframe: Vec<Idx>,) -> Self {
+        add_mem_usage((triangles.capacity() + wireframe.capacity()) * std::mem::size_of::<Idx>());
         Triangulation {
             detail,
-            vertices,
             triangles,
             wireframe,
         }
@@ -40,7 +38,7 @@ impl Triangulation {
 }
 impl Drop for Triangulation {
     fn drop(&mut self) {
-        del_mem_usage(self.vertices.capacity() * 16 + (self.triangles.capacity() + self.wireframe.capacity()) * std::mem::size_of::<Idx>());
+        del_mem_usage((self.triangles.capacity() + self.wireframe.capacity()) * std::mem::size_of::<Idx>());
     }
 }
 
@@ -305,6 +303,9 @@ pub fn compile_postvertex(channels: &super::Channels) -> Program {
 
             void main()
             {
+                //
+                // Get coordinates of neighbor vertices
+                //
                 vec4 heightPosCenter = texture(positions, gl_FragCoord.xy / (size + 3.0));
                 vec3 xp = _pos(gl_FragCoord.xy + vec2(1.0,  0.0));
                 vec3 xn = _pos(gl_FragCoord.xy + vec2(-1.0, 0.0));
@@ -318,10 +319,11 @@ pub fn compile_postvertex(channels: &super::Channels) -> Program {
                 // get position of parent vertices within this tile (range: [0..1])
                 vec4 parents = texture(parentCoords, (gl_FragCoord.xy - vec2(1.0)) / (size + 1.0));
 
+                //
                 // calculate interpolated position
+                //
                 float interpolation = 0.0;
                 if (parents.xy != parents.zw) {
-
                     // read parent world positions
                     vec3 pparent1 = _pos(vec2(1.5) + parents.xy * size);
                     vec3 pparent2 = _pos(vec2(1.5) + parents.zw * size);
@@ -332,7 +334,7 @@ pub fn compile_postvertex(channels: &super::Channels) -> Program {
                     // calculate relative difference to this position
                     float dParents = length(pparent1 - pparent2);
                     float dMid = length(mid - pCenter);
-                    interpolation = dMid / dParents * sqrt(length(parents.xy - parents.zw));
+                    interpolation = 0.5 * dMid / dParents * sqrt(length(parents.xy - parents.zw));
                 }
 
                 normal = vec4(vec3(0.5) + 0.5 * norm, 5.0 * interpolation * sqrt(size));
@@ -605,13 +607,12 @@ impl Generator {
 
     pub fn triangulate(&self, data: &Result) -> Triangulation {
         let tex_size = (self.size + 3) as usize;
-        let mut vertices = data.vertex_data.clone();
 
         let optimized = self.optimizer.optimize(|x,y| {
             data.normals[4 * (x + 1 +  tex_size * (y + 1)) + 3] < 255 - self.detail
         });
 
-        Triangulation::new(self.detail, vertices, optimized.triangles, optimized.wireframe)
+        Triangulation::new(self.detail, optimized.triangles, optimized.wireframe)
     }
 
 
