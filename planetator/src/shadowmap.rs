@@ -29,21 +29,21 @@ impl ShadowCascade {
             tex.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
         }
 
-        let extent = max_radius * 0.4f32.powi(level as i32);
-
-        ShadowCascade {
+        let mut ret = ShadowCascade {
             level,
             fbo,
-            extent,
-            granularity: 2.0 * extent / size as f32,
-            orthogonal_depth: extent * 20.0,
+            extent: 0.0,
+            granularity: 0.0,
+            orthogonal_depth: 0.0,
             center: Vector3::new(0.0, 0.0, 0.0),
             projection: Matrix4::from_scale(1.0)
-        }
+        };
+        ret.set_radius(max_radius);
+        ret
     }
 
     fn set_radius(&mut self, max_radius: f32) {
-        self.extent = max_radius * 0.4f32.powi(self.level as i32);
+        self.extent = max_radius * 0.6f32.powi(self.level as i32);
         self.granularity = 2.0 * self.extent / self.fbo.size().0 as f32;
         self.orthogonal_depth = self.extent * 20.0;
     }
@@ -207,8 +207,12 @@ impl ShadowMap {
         };
 
         // select central point to render: cheap for now -: center on camera eye
+        let rel_idx = to_render.index as f32 / 6.0;
+        let eye_height = eye.magnitude() - self.radius;
+        let look_center = eye + look * eye_height * rel_idx;
+        let look_surface_center = look_center.normalize() * self.radius;
+
         let sun_rotation = self.get_sun_cascades(to_render.tp).sun_rotation;
-        let look_surface_center = eye.normalize() * self.radius;
         let sunspace_center = sun_rotation.transform_vector(look_surface_center);
 
         let projection = {
