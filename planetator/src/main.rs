@@ -354,16 +354,16 @@ impl webrunner::WebApp for MyApp {
                 ui.checkbox(im_str!("No Update"), &mut self.renderer.no_update_plates);
                 ui.checkbox(im_str!("Cull Backside"), &mut self.renderer.hide_backside);
 
-                let slideropt = |text, id, value, min, max| -> f32 {
+                let slideropt = |text, id, value, min, max, power| -> f32 {
                     let mut value = value;
                     ui.text(text);
                     ui.push_item_width(-1.0);
-                    ui.slider_float(im_str!("##{}", id), &mut value, min, max).build();
+                    ui.slider_float(im_str!("##{}", id), &mut value, min, max).power(power).build();
                     ui.pop_item_width();
                     value
                 };
 
-                let detail = slideropt("Vertex Detail:", "vertexdetail", self.renderer.vertex_detail(), 0.0, 1.0);
+                let detail = slideropt("Vertex Detail:", "vertexdetail", self.renderer.vertex_detail(), 0.0, 1.0, 1.0);
                 self.renderer.set_vertex_detail(detail);
 
                 //
@@ -391,9 +391,9 @@ impl webrunner::WebApp for MyApp {
                 //
                 // Sun Settings
                 //
-                self.sun_speed = slideropt("Sun Rotation:", "sunrot", self.sun_speed, -90.0, 90.0);
-                self.sun_lon = slideropt("Sun Longitude:", "sunlon", self.sun_lon, 0.0, 360.0);
-                self.sun_lat = slideropt("Sun Latitude:", "sunlat", self.sun_lat, -45.0, 45.0);
+                self.sun_speed = slideropt("Sun Rotation:", "sunrot", self.sun_speed, -90.0, 90.0, 2.0);
+                self.sun_lon = slideropt("Sun Longitude:", "sunlon", self.sun_lon, 0.0, 360.0, 1.0);
+                self.sun_lat = slideropt("Sun Latitude:", "sunlat", self.sun_lat, -45.0, 45.0, 1.0);
             });
 
         let planet_opt_win_size = (260.0, 300.0 + 24.0 * self.select_channels.len() as f32);
