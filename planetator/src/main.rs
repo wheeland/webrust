@@ -145,7 +145,7 @@ impl webrunner::WebApp for MyApp {
             sun_lat: 0.0,
             renderer: earth::renderer::Renderer::new(),
             atmosphere: atmosphere::Atmosphere::new(),
-            shadows: shadowmap::ShadowMap::new(512, 100.0),
+            shadows: shadowmap::ShadowMap::new(1024, 100.0),
             postprocess: tinygl::Program::new_versioned("
                 in vec2 vertex;
                 out vec2 clipPos;
@@ -166,8 +166,11 @@ impl webrunner::WebApp for MyApp {
                     float depth;
                     mat4 mvp;
                 };
-                uniform ShadowMap shadowMaps[8];
+
+                #define MAX_SHADOW_MAPS 8
+                uniform ShadowMap shadowMapsPrevCurr[2 * MAX_SHADOW_MAPS];
                 uniform int shadowMapCount;
+                uniform float shadowMapProgress;
 
                 ")
                 + &atmosphere::Atmosphere::shader_source() +
@@ -183,25 +186,25 @@ impl webrunner::WebApp for MyApp {
                 }
 
                 bool getShadowForLevel(int level, vec3 pos, out float lit) {
-                    vec4 posInSunSpace = shadowMaps[level].mvp * vec4(pos, 1.0);
+                    vec4 posInSunSpace = shadowMapsPrevCurr[level].mvp * vec4(pos, 1.0);
                     posInSunSpace /= posInSunSpace.w;
                     posInSunSpace = 0.5 * posInSunSpace + vec4(0.5);
 
                     if (all(greaterThan(posInSunSpace.xy, vec2(0.0))) && all(lessThan(posInSunSpace.xy, vec2(1.0)))) {
-                        float shadowMapSample = texture(shadowMaps[level].map, posInSunSpace.xy).x;
+                        float shadowMapSample = texture(shadowMapsPrevCurr[level].map, posInSunSpace.xy).x;
                         float diff = shadowMapSample - posInSunSpace.z;
-                        lit = smoothstep(-1.0 / shadowMaps[level].depth, 0.0, diff);
+                        lit = smoothstep(-1.0, 0.0, diff * shadowMapsPrevCurr[level].depth);
                         return true;
                     } else {
                         return false;
                     }
                 }
 
-                float getShadow(vec3 pos, out vec3 color) {
+                float getShadow(vec3 pos, int start, out vec3 color) {
                     float lit = 0.0;
                     int i = shadowMapCount - 1;
                     while (i >= 0) {
-                        if (getShadowForLevel(i, pos, lit))
+                        if (getShadowForLevel(i + start, pos, lit))
                             break;
                         --i;
                     }
@@ -224,15 +227,25 @@ impl webrunner::WebApp for MyApp {
                     vec3 color = vec3(0.0);
 
                     if (length(normalFromTex) > 0.0) {
+                        //
+                        // Load position/normal/color from planet rendering textures
+                        //
                         vec3 normal = vec3(-1.0) + 2.0 * normalFromTex;
                         vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
                         vec3 pPos = texture(planetPosition, vec2(0.5) + 0.5 * clipPos).rgb;
 
-                        // Find out if we are shadowed by the terrain
-                        vec3 shadowMapDebugMask;
-                        float lit = getShadow(pPos, shadowMapDebugMask);
+                        //
+                        // Find out if we are shadowed by the terrain, and interpolate between last and curr sun position
+                        //
+                        vec3 shadowMapDebugPrev, shadowMapDebugCurr;
+                        float litPrev = getShadow(pPos, 0, shadowMapDebugPrev);
+                        float litNext = getShadow(pPos, MAX_SHADOW_MAPS, shadowMapDebugCurr);
+                        // interpolate..
+                        float lit = mix(litPrev, litNext, shadowMapProgress);
+                        vec3 shadowMapDebug = mix(shadowMapDebugPrev, shadowMapDebugCurr, shadowMapProgress);
+                        // assign..
                         float shadow = mix(0.7, 1.0, lit);
-                        pColor = mix(shadowMapDebugMask, vec3(shadow), 0.7);
+                        pColor = mix(shadowMapDebug, vec3(shadow), 0.7);
                         // pColor += (1.0 - lit) * vec3(1.0, 0.0, 0.0);
                         pColor *= max(0.7 + 0.3 * dot(normal, sunDirection), 0.0);
 
@@ -287,6 +300,8 @@ impl webrunner::WebApp for MyApp {
 
         // Move Sun
         self.sun_lon += dt * self.sun_speed;
+        if self.sun_lon > 360.0 { self.sun_lon -= 360.0 }
+        if self.sun_lon < 0.0 { self.sun_lon += 360.0 }
         let sun_lon = self.sun_lon * 3.14159 / 180.0;
         let sun_lat = self.sun_lat * 3.14159 / 180.0;
         let sun_direction = cgmath::Vector3::new(sun_lon.sin(), sun_lat.sin(), sun_lon.cos()).normalize();
@@ -295,31 +310,15 @@ impl webrunner::WebApp for MyApp {
         // Update Shadow Depth Cascades
         //
         self.shadows.set_radius(radius);
-        let to_render = self.shadows.collect_renderable_cascades(sun_direction, eye, look);
-        for cascade in to_render {
-            let mvp = self.shadows.prepare_render(cascade);
-            self.renderer.render_for(self.shadows.program(), sun_direction * radius * 2.0, mvp);
-        }
+        self.shadows.push_sun_direction(sun_direction);
+        let to_render = self.shadows.prepare_render(eye, look);
+        self.renderer.render_for(self.shadows.program(), sun_direction * radius * 2.0, to_render);
         self.shadows.finish_render();
 
         self.postprocess.bind();
-
-        // assign shadow map uniforms
-        let cascades = self.shadows.cascades();
-        for entry in cascades.iter().enumerate() {
-            let num = entry.0;
-            let entry = entry.1;
-
-            entry.0.bind_at((4 + num) as u32);
-            self.postprocess.uniform(&format!("shadowMaps[{}].map", num), tinygl::Uniform::Signed((4 + num) as i32));
-            self.postprocess.uniform(&format!("shadowMaps[{}].depth", num), tinygl::Uniform::Float(entry.2));
-            self.postprocess.uniform(&format!("shadowMaps[{}].mvp", num), tinygl::Uniform::Mat4(entry.1));
-        }
-        self.postprocess.uniform("shadowMapCount", tinygl::Uniform::Signed(cascades.len() as i32));
-
+        self.shadows.prepare_postprocess(&self.postprocess, 4);
         self.postprocess.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
         self.postprocess.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
-        self.postprocess.uniform("sunDirection", tinygl::Uniform::Vec3(sun_direction.normalize()));
         self.postprocess.uniform("planetColor", tinygl::Uniform::Signed(0));
         self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
         self.postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));

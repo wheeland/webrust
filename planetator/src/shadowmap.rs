@@ -12,7 +12,7 @@ struct ShadowCascade {
 
     // may change every time it's rendered:
     center: Vector3<f32>,
-    mvp: Matrix4<f32>,
+    projection: Matrix4<f32>,
 }
 
 impl ShadowCascade {
@@ -38,7 +38,7 @@ impl ShadowCascade {
             granularity: 2.0 * extent / size as f32,
             orthogonal_depth: extent * 20.0,
             center: Vector3::new(0.0, 0.0, 0.0),
-            mvp: Matrix4::from_scale(1.0)
+            projection: Matrix4::from_scale(1.0)
         }
     }
 
@@ -57,30 +57,74 @@ impl ShadowCascade {
         let translate = Matrix4::from_translation(-self.center);
         let sz_scale = 1.0 / self.extent;
         let depth_scale = 1.0 / self.orthogonal_depth;
-        self.mvp = Matrix4::from_nonuniform_scale(sz_scale, sz_scale, -depth_scale) * translate
+        self.projection = Matrix4::from_nonuniform_scale(sz_scale, sz_scale, -depth_scale) * translate
     }
 }
 
-pub struct ShadowMap {
-    size: u32,
-    radius: f32,
+struct SunPositionCascades {
+    sun_direction: Vector3<f32>,
+    sun_rotation: Matrix4<f32>,
     cascades: Vec<ShadowCascade>,
-    program: Program,
+    filled: usize,
 }
 
-static mut foo: usize = 0;
-
-impl ShadowMap {
-    pub fn new(size: u32, radius: f32) -> Self {
-        // Create FBOs
+impl SunPositionCascades {
+    fn new(size: u32, radius: f32) -> Self {
         let mut cascades = Vec::new();
         for i in 0..6 {
             cascades.push(ShadowCascade::new(size, i, radius * 1.1));
         }
 
-        ShadowMap {
-            size,
+        SunPositionCascades {
             cascades,
+            sun_direction: Vector3::new(0.0, 0.0, 1.0),
+            sun_rotation: Matrix4::from_scale(1.0),
+            filled: 0,
+        }
+    }
+
+    fn reset(&mut self, direction: Vector3<f32>) {
+        self.sun_direction = direction;
+
+        // Create Sun rotation matrix
+        let sun_lon = direction.x.atan2(direction.z);
+        let sun_lat = direction.y.asin();
+        self.sun_rotation = Matrix4::from_angle_x(Rad(sun_lat)) * Matrix4::from_angle_y(Rad(-sun_lon));
+
+        self.filled = 0;
+    }
+
+    fn is_complete(&self) -> bool {
+        self.filled == self.cascades.len()
+    }
+}
+
+#[derive(Clone, Copy)]
+enum CascadeType {
+    Prev,
+    Curr,
+    Next
+}
+
+#[derive(Clone, Copy)]
+pub struct CascadeInfo {
+    index: usize,
+    tp: CascadeType,
+}
+
+pub struct ShadowMap {
+    radius: f32,
+    program: Program,
+
+    prev: Option<SunPositionCascades>,
+    curr: Option<SunPositionCascades>,
+    next: Option<SunPositionCascades>,
+    next_sun_direction: Vector3<f32>,
+}
+
+impl ShadowMap {
+    pub fn new(size: u32, radius: f32) -> Self {
+        ShadowMap {
             radius,
             program: Program::new_versioned("
                 in vec4 posHeight;
@@ -93,67 +137,95 @@ impl ShadowMap {
                 }",
                 "void main() {}",
                 300
-            )
+            ),
+            prev: Some(SunPositionCascades::new(size, radius)),
+            curr: Some(SunPositionCascades::new(size, radius)),
+            next: Some(SunPositionCascades::new(size, radius)),
+            next_sun_direction: Vector3::new(0.0, 0.0, 1.0),
         }
     }
 
     pub fn set_radius(&mut self, radius: f32) {
         if self.radius != radius {
             self.radius = radius;
-            for mut cascade in &mut self.cascades {
-                cascade.set_radius(radius);
-            }
+            for mut cascade in &mut self.prev.as_mut().unwrap().cascades { cascade.set_radius(radius); }
+            for mut cascade in &mut self.curr.as_mut().unwrap().cascades { cascade.set_radius(radius); }
+            for mut cascade in &mut self.next.as_mut().unwrap().cascades { cascade.set_radius(radius); }
         }
     }
 
-    pub fn cascades(&self) -> Vec<(&Texture, Matrix4<f32>, f32)> {
-        self.cascades
-            .iter()
-            .map(|cascade| {
-                (cascade.fbo.depth_texture().unwrap(), cascade.mvp, cascade.orthogonal_depth)
-            })
-            .collect()
+    pub fn push_sun_direction(&mut self, direction: Vector3<f32>) {
+        self.next_sun_direction = direction;
     }
 
     pub fn program(&self) -> &Program {
         &self.program
     }
 
-    pub fn collect_renderable_cascades(
+    fn get_sun_cascades(&mut self, which: CascadeType) -> &mut SunPositionCascades {
+        match which {
+            CascadeType::Prev => self.prev.as_mut().unwrap(),
+            CascadeType::Curr => self.curr.as_mut().unwrap(),
+            CascadeType::Next => self.next.as_mut().unwrap(),
+            _ => self.next.as_mut().unwrap(),
+        }
+    }
+
+    fn get_cascade(&mut self, which: CascadeInfo) -> &mut ShadowCascade {
+        &mut self.get_sun_cascades(which.tp).cascades[which.index]
+    }
+
+    pub fn prepare_render(
         &mut self,
-        sun_direction: Vector3<f32>,
         eye: Vector3<f32>,
         look: Vector3<f32>,
-    ) -> Vec<usize>
+    ) -> Matrix4<f32>
     {
-        // Create Sun rotation matrix
-        let sun_lon = sun_direction.x.atan2(sun_direction.z);
-        let sun_lat = sun_direction.y.asin();
-        let sun_rotation = Matrix4::from_angle_x(Rad(sun_lat)) * Matrix4::from_angle_y(Rad(-sun_lon));
+        // if any of the cascades isn't filled yet, do that first
+        let to_render = if !self.prev.as_mut().unwrap().is_complete() {
+            CascadeInfo { index: self.prev.as_mut().unwrap().filled, tp: CascadeType::Prev }
+        }
+        else if !self.curr.as_mut().unwrap().is_complete() {
+            CascadeInfo { index: self.curr.as_mut().unwrap().filled, tp: CascadeType::Curr }
+        }
+        else if !self.next.as_mut().unwrap().is_complete() {
+            CascadeInfo { index: self.next.as_mut().unwrap().filled, tp: CascadeType::Next }
+        }
+        // if all cascades, inculding the last ones, have been filled, we can flip!
+        else {
+            let prev = self.prev.take();
+            let curr = self.curr.take();
+            let next = self.next.take();
 
-        // cheap for now: center on camera eye
+            self.prev = curr;
+            self.curr = next;
+
+            self.next = prev;
+            self.next.as_mut().unwrap().reset(self.next_sun_direction);
+
+            CascadeInfo { index: 0, tp: CascadeType::Next }
+        };
+
+        // select central point to render: cheap for now -: center on camera eye
+        let sun_rotation = self.get_sun_cascades(to_render.tp).sun_rotation;
         let look_surface_center = eye.normalize() * self.radius;
         let sunspace_center = sun_rotation.transform_vector(look_surface_center);
 
-        let count = self.cascades.len();
-        unsafe { foo += 1; }
+        let projection = {
+            // setup FBO
+            let cascade = self.get_cascade(to_render);
+            cascade.set_center(sunspace_center);
+            cascade.fbo.bind();
+            cascade.projection
+        };
 
-        let mut ret = Vec::new();
+        let mvp = projection * sun_rotation;
 
-        // go through all passes
-        for (num, mut cascade) in self.cascades.iter_mut().enumerate() {
-            let do_render = unsafe { foo % count == num };
-
-            if do_render {
-                println!("render {} {}", num, do_render);
-                cascade.set_center(sunspace_center);
-                cascade.mvp = cascade.mvp * sun_rotation;
-                ret.push(num);
-            }
-        }
+        // setup shader
+        self.program.bind();
+        self.program.uniform("mvp", Uniform::Mat4(mvp));
 
         // setup GL
-        self.program.bind();
         unsafe {
             gl::Clear(gl::DEPTH_BUFFER_BIT);
             gl::Enable(gl::POLYGON_OFFSET_FILL);
@@ -161,18 +233,9 @@ impl ShadowMap {
             gl::PolygonOffset(2.0, 2.0);
         }
 
-        ret
-    }
+        self.get_sun_cascades(to_render.tp).filled += 1;
 
-    pub fn prepare_render(&self, num: usize) -> Matrix4<f32> {
-        // configure program
-        self.program.uniform("mvp", Uniform::Mat4(self.cascades[num].mvp));
-
-        // render into depth map
-        self.cascades[num].fbo.bind();
-        unsafe { gl::Clear(gl::DEPTH_BUFFER_BIT); }
-
-        self.cascades[num].mvp
+        mvp
     }
 
     pub fn finish_render(&self) {
@@ -183,5 +246,37 @@ impl ShadowMap {
             gl::PolygonOffset(0.0, 0.0);
         }
         tinygl::OffscreenBuffer::unbind();
+    }
+
+    fn bind_shadow_map(program: &Program, index: usize, texunit: u32, sun_rotation: &Matrix4<f32>, cascade: &ShadowCascade) {
+        cascade.fbo.depth_texture().unwrap().bind_at(texunit);
+        program.uniform(&format!("shadowMapsPrevCurr[{}].map", index),   Uniform::Signed(texunit as i32));
+        program.uniform(&format!("shadowMapsPrevCurr[{}].depth", index), Uniform::Float(cascade.orthogonal_depth));
+        program.uniform(&format!("shadowMapsPrevCurr[{}].mvp", index),   Uniform::Mat4(cascade.projection * *sun_rotation));
+    }
+
+    pub fn prepare_postprocess(&self, program: &Program, texunit_start: u32) {
+        let mut texunit = texunit_start;
+
+        let sun_rotation = self.prev.as_ref().unwrap().sun_rotation;
+        for cascade in self.prev.as_ref().unwrap().cascades.iter().enumerate() {
+            Self::bind_shadow_map(program, cascade.0, texunit, &sun_rotation, cascade.1);
+            texunit += 1;
+        }
+
+        let sun_rotation = self.curr.as_ref().unwrap().sun_rotation;
+        for cascade in self.curr.as_ref().unwrap().cascades.iter().enumerate() {
+            Self::bind_shadow_map(program, cascade.0 + 8, texunit, &sun_rotation, cascade.1);
+            texunit += 1;
+        }
+
+        let count = self.prev.as_ref().unwrap().cascades.len();
+        let filled = self.next.as_ref().unwrap().filled;
+        let progress = filled as f32 / count as f32;
+
+        let sun_direction = (1.0 - progress) * self.prev.as_ref().unwrap().sun_direction + progress * self.curr.as_ref().unwrap().sun_direction;
+        program.uniform("sunDirection", Uniform::Vec3(sun_direction.normalize()));
+        program.uniform("shadowMapCount", Uniform::Signed(count as i32));
+        program.uniform("shadowMapProgress", Uniform::Float(progress));
     }
 }
