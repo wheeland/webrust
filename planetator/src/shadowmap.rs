@@ -230,7 +230,7 @@ impl ShadowMap {
             gl::Clear(gl::DEPTH_BUFFER_BIT);
             gl::Enable(gl::POLYGON_OFFSET_FILL);
             gl::DepthFunc(gl::LESS);
-            gl::PolygonOffset(2.0, 2.0);
+            gl::PolygonOffset(1.0, 1.0);
         }
 
         self.get_sun_cascades(to_render.tp).filled += 1;

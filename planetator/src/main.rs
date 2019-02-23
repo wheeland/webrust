@@ -192,8 +192,7 @@ impl webrunner::WebApp for MyApp {
 
                     if (all(greaterThan(posInSunSpace.xy, vec2(0.0))) && all(lessThan(posInSunSpace.xy, vec2(1.0)))) {
                         float shadowMapSample = texture(shadowMapsPrevCurr[level].map, posInSunSpace.xy).x;
-                        float diff = shadowMapSample - posInSunSpace.z;
-                        lit = smoothstep(-1.0, 0.0, diff * shadowMapsPrevCurr[level].depth);
+                        lit = smoothstep(-1.0, 0.0, (shadowMapSample - posInSunSpace.z) * shadowMapsPrevCurr[level].depth);
                         return true;
                     } else {
                         return false;
@@ -242,11 +241,10 @@ impl webrunner::WebApp for MyApp {
                         float litNext = getShadow(pPos, MAX_SHADOW_MAPS, shadowMapDebugCurr);
                         // interpolate..
                         float lit = mix(litPrev, litNext, shadowMapProgress);
+                        float shadow = mix(0.7, 1.0, lit);
                         vec3 shadowMapDebug = mix(shadowMapDebugPrev, shadowMapDebugCurr, shadowMapProgress);
                         // assign..
-                        float shadow = mix(0.7, 1.0, lit);
-                        pColor = mix(shadowMapDebug, vec3(shadow), 0.7);
-                        // pColor += (1.0 - lit) * vec3(1.0, 0.0, 0.0);
+                        pColor = mix(shadowMapDebug, vec3(shadow), 1.0);
                         pColor *= max(0.7 + 0.3 * dot(normal, sunDirection), 0.0);
 
                         // calc atmospheric depth along view ray
