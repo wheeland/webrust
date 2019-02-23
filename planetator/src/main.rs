@@ -48,6 +48,7 @@ struct MyApp {
     sun_speed: f32,
     sun_lon: f32,
     sun_lat: f32,
+    shadows: shadowmap::ShadowMap,
     renderer: earth::renderer::Renderer,
     atmosphere: atmosphere::Atmosphere,
     postprocess: tinygl::Program,
@@ -144,6 +145,7 @@ impl webrunner::WebApp for MyApp {
             sun_lat: 0.0,
             renderer: earth::renderer::Renderer::new(),
             atmosphere: atmosphere::Atmosphere::new(),
+            shadows: shadowmap::ShadowMap::new(512, 100.0),
             postprocess: tinygl::Program::new_versioned("
                 in vec2 vertex;
                 out vec2 clipPos;
@@ -257,6 +259,7 @@ impl webrunner::WebApp for MyApp {
 
     fn render(&mut self, dt: f32) {
         self.fps.push(dt);
+        let radius = self.renderer.radius();
 
         //
         // check for uploads
@@ -282,22 +285,28 @@ impl webrunner::WebApp for MyApp {
         self.renderer.render(self.windowsize);
         let fbo = self.renderer.fbo().unwrap();
 
-        //
-        // Render Depth Shadow Map
-        //
+        // Move Sun
         self.sun_lon += dt * self.sun_speed;
         let sun_lon = self.sun_lon * 3.14159 / 180.0;
         let sun_lat = self.sun_lat * 3.14159 / 180.0;
         let sun_direction = cgmath::Vector3::new(sun_lon.sin(), sun_lat.sin(), sun_lon.cos()).normalize();
-        let mut shadow = shadowmap::ShadowMap::new(512, self.renderer.radius());
-        let shadow_maps = shadow.render(self.renderer.radius(), sun_direction, eye, look, |prog, eye, mvp| {
-            self.renderer.render_for(prog, eye, mvp);
-        });
+
+        //
+        // Update Shadow Depth Cascades
+        //
+        self.shadows.set_radius(radius);
+        let to_render = self.shadows.collect_renderable_cascades(sun_direction, eye, look);
+        for cascade in to_render {
+            let mvp = self.shadows.prepare_render(cascade);
+            self.renderer.render_for(self.shadows.program(), sun_direction * radius * 2.0, mvp);
+        }
+        self.shadows.finish_render();
 
         self.postprocess.bind();
 
         // assign shadow map uniforms
-        for entry in shadow_maps.iter().enumerate() {
+        let cascades = self.shadows.cascades();
+        for entry in cascades.iter().enumerate() {
             let num = entry.0;
             let entry = entry.1;
 
@@ -306,7 +315,7 @@ impl webrunner::WebApp for MyApp {
             self.postprocess.uniform(&format!("shadowMaps[{}].depth", num), tinygl::Uniform::Float(entry.2));
             self.postprocess.uniform(&format!("shadowMaps[{}].mvp", num), tinygl::Uniform::Mat4(entry.1));
         }
-        self.postprocess.uniform("shadowMapCount", tinygl::Uniform::Signed(shadow_maps.len() as i32));
+        self.postprocess.uniform("shadowMapCount", tinygl::Uniform::Signed(cascades.len() as i32));
 
         self.postprocess.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
         self.postprocess.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
@@ -314,8 +323,8 @@ impl webrunner::WebApp for MyApp {
         self.postprocess.uniform("planetColor", tinygl::Uniform::Signed(0));
         self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
         self.postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));
-        self.postprocess.uniform("planetRadius", tinygl::Uniform::Float(self.renderer.radius()));
-        self.atmosphere.prepare_shader(&self.postprocess, self.renderer.radius(), 3);
+        self.postprocess.uniform("planetRadius", tinygl::Uniform::Float(radius));
+        self.atmosphere.prepare_shader(&self.postprocess, radius, 3);
 
         unsafe {
             gl::Viewport(0, 0, self.windowsize.0 as _, self.windowsize.1 as _);

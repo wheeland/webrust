@@ -42,6 +42,12 @@ impl ShadowCascade {
         }
     }
 
+    fn set_radius(&mut self, max_radius: f32) {
+        self.extent = max_radius * 0.4f32.powi(self.level as i32);
+        self.granularity = 2.0 * self.extent / self.fbo.size().0 as f32;
+        self.orthogonal_depth = self.extent * 20.0;
+    }
+
     fn set_center(&mut self, center: Vector3<f32>) {
         let cx = (center.x / self.granularity).round() * self.granularity;
         let cy = (center.y / self.granularity).round() * self.granularity;
@@ -57,9 +63,12 @@ impl ShadowCascade {
 
 pub struct ShadowMap {
     size: u32,
+    radius: f32,
     cascades: Vec<ShadowCascade>,
     program: Program,
 }
+
+static mut foo: usize = 0;
 
 impl ShadowMap {
     pub fn new(size: u32, radius: f32) -> Self {
@@ -72,6 +81,7 @@ impl ShadowMap {
         ShadowMap {
             size,
             cascades,
+            radius,
             program: Program::new_versioned("
                 in vec4 posHeight;
                 uniform float radius;
@@ -87,24 +97,62 @@ impl ShadowMap {
         }
     }
 
+    pub fn set_radius(&mut self, radius: f32) {
+        if self.radius != radius {
+            self.radius = radius;
+            for mut cascade in &mut self.cascades {
+                cascade.set_radius(radius);
+            }
+        }
+    }
+
+    pub fn cascades(&self) -> Vec<(&Texture, Matrix4<f32>, f32)> {
+        self.cascades
+            .iter()
+            .map(|cascade| {
+                (cascade.fbo.depth_texture().unwrap(), cascade.mvp, cascade.orthogonal_depth)
+            })
+            .collect()
+    }
+
     pub fn program(&self) -> &Program {
         &self.program
     }
 
-    pub fn render<T: Fn(&Program, Vector3<f32>, Matrix4<f32>)>(
+    pub fn collect_renderable_cascades(
         &mut self,
-        radius: f32,
         sun_direction: Vector3<f32>,
         eye: Vector3<f32>,
         look: Vector3<f32>,
-        render: T,
-    ) -> Vec<(&Texture, Matrix4<f32>, f32)> {
+    ) -> Vec<usize>
+    {
         // Create Sun rotation matrix
         let sun_lon = sun_direction.x.atan2(sun_direction.z);
         let sun_lat = sun_direction.y.asin();
         let sun_rotation = Matrix4::from_angle_x(Rad(sun_lat)) * Matrix4::from_angle_y(Rad(-sun_lon));
 
+        // cheap for now: center on camera eye
+        let look_surface_center = eye.normalize() * self.radius;
+        let sunspace_center = sun_rotation.transform_vector(look_surface_center);
+
+        let count = self.cascades.len();
+        unsafe { foo += 1; }
+
+        let mut ret = Vec::new();
+
+        // go through all passes
+        for (num, mut cascade) in self.cascades.iter_mut().enumerate() {
+            let do_render = unsafe { foo % count == num };
+
+            if do_render {
+                println!("render {} {}", num, do_render);
+                cascade.set_center(sunspace_center);
+                ret.push(num);
+            }
+        }
+
         // setup GL
+        self.program.bind();
         unsafe {
             gl::Clear(gl::DEPTH_BUFFER_BIT);
             gl::Enable(gl::POLYGON_OFFSET_FILL);
@@ -112,27 +160,21 @@ impl ShadowMap {
             gl::PolygonOffset(2.0, 2.0);
         }
 
-        let mut ret = Vec::new();
+        ret
+    }
 
-        // go through all passes
-        for (num, mut cascade) in self.cascades.iter_mut().enumerate() {
-            let look_surface_center = eye.normalize() * radius;
-            let sunspace_center = sun_rotation.transform_vector(look_surface_center);
+    pub fn prepare_render(&self, num: usize) -> Matrix4<f32> {
+        // configure program
+        self.program.uniform("mvp", Uniform::Mat4(self.cascades[num].mvp));
 
-            cascade.set_center(sunspace_center);
+        // render into depth map
+        self.cascades[num].fbo.bind();
+        unsafe { gl::Clear(gl::DEPTH_BUFFER_BIT); }
 
-            // configure program
-            self.program.bind();
-            self.program.uniform("mvp", Uniform::Mat4(cascade.mvp));
+        self.cascades[num].mvp
+    }
 
-            // render into depth map
-            cascade.fbo.bind();
-            unsafe { gl::Clear(gl::DEPTH_BUFFER_BIT); }
-            render(&self.program, sun_direction * radius * 2.0, cascade.mvp);
-
-            ret.push((cascade.fbo.depth_texture().unwrap(), cascade.mvp, cascade.orthogonal_depth));
-        }
-
+    pub fn finish_render(&self) {
         // reset GL
         unsafe {
             gl::Disable(gl::POLYGON_OFFSET_FILL);
@@ -140,7 +182,5 @@ impl ShadowMap {
             gl::PolygonOffset(0.0, 0.0);
         }
         tinygl::OffscreenBuffer::unbind();
-
-        ret
     }
 }
