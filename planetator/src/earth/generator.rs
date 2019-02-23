@@ -51,7 +51,6 @@ pub struct Result {
     pub height_extent: (f32, f32),
     pub heights: Vec<f32>,
     pub vertex_data: Vec<Vector4<f32>>,
-    pub merged_data: Vec<Vector4<f32>>,
     pub normals: Vec<u8>,
     pub channels: HashMap<String, Texture>,
     pub triangulation: Option<Triangulation>
@@ -61,17 +60,15 @@ impl Result {
     fn new(height_extent: (f32, f32),
            heights: Vec<f32>,
            vertex_data: Vec<Vector4<f32>>,
-           merged_data: Vec<Vector4<f32>>,
            normals: Vec<u8>,
            triangulation: Option<Triangulation>,
            channels: HashMap<String, Texture>
     ) -> Self {
-        add_mem_usage(heights.capacity() * 4 + (vertex_data.capacity() + merged_data.capacity()) * 16 + normals.capacity());
+        add_mem_usage(heights.capacity() * 4 + vertex_data.capacity() * 16 + normals.capacity());
         Result {
             height_extent,
             heights,
             vertex_data,
-            merged_data,
             normals,
             channels,
             triangulation
@@ -81,7 +78,7 @@ impl Result {
 
 impl Drop for Result {
     fn drop(&mut self) {
-        del_mem_usage(self.heights.capacity() * 4 + (self.vertex_data.capacity() + self.merged_data.capacity()) * 16 + self.normals.capacity());
+        del_mem_usage(self.heights.capacity() * 4 + self.vertex_data.capacity() * 16 + self.normals.capacity());
     }
 }
 
@@ -202,7 +199,6 @@ impl GeneratorBuffers {
 
         let mut normal_pass = OffscreenBuffer::new((size, size));
         normal_pass.add("normal", gl::RGBA, gl::RGBA, gl::UNSIGNED_BYTE);
-        normal_pass.add("merged", gl::RGBA32F, gl::RGBA, gl::FLOAT);
 
         GeneratorBuffers {
             position_pass,
@@ -295,7 +291,6 @@ pub fn compile_postvertex(channels: &super::Channels) -> Program {
             uniform sampler2D parentCoords;
 
             layout(location = 0) out vec4 normal;
-            layout(location = 1) out vec4 merged;
             "
         + &declarations +
         "
@@ -311,7 +306,6 @@ pub fn compile_postvertex(channels: &super::Channels) -> Program {
             void main()
             {
                 vec4 heightPosCenter = texture(positions, gl_FragCoord.xy / (size + 3.0));
-                vec3 pCenter = heightPosCenter.xyz * (radius + heightPosCenter.w);
                 vec3 xp = _pos(gl_FragCoord.xy + vec2(1.0,  0.0));
                 vec3 xn = _pos(gl_FragCoord.xy + vec2(-1.0, 0.0));
                 vec3 yp = _pos(gl_FragCoord.xy + vec2(0.0,  1.0));
@@ -323,27 +317,28 @@ pub fn compile_postvertex(channels: &super::Channels) -> Program {
 
                 // get position of parent vertices within this tile (range: [0..1])
                 vec4 parents = texture(parentCoords, (gl_FragCoord.xy - vec2(1.0)) / (size + 1.0));
-                float parentDist = length(parents.xy - parents.zw);
-
-                // read parent world positions
-                vec3 pparent1 = _pos(vec2(1.5) + parents.xy * size);
-                vec3 pparent2 = _pos(vec2(1.5) + parents.zw * size);
 
                 // calculate interpolated position
-                vec3 mid = 0.5 * (pparent1 + pparent2);
-                float midLen = length(mid);
-                float midHeight = midLen - radius;
+                float interpolation = 0.0;
+                if (parents.xy != parents.zw) {
 
-                // calculate relative difference to this position
-                float dParents = length(pparent1 - pparent2);
-                float dMid = length(mid - pCenter);
-                float interpolation = (pparent1 == pparent2) ? 0.0 : dMid / dParents;
+                    // read parent world positions
+                    vec3 pparent1 = _pos(vec2(1.5) + parents.xy * size);
+                    vec3 pparent2 = _pos(vec2(1.5) + parents.zw * size);
+                    vec3 mid = mix(pparent1, pparent2, 0.5);
 
-                normal = vec4(vec3(0.5) + 0.5 * norm, 5.0 * interpolation * sqrt(parentDist * size));
+                    vec3 pCenter = heightPosCenter.xyz * (radius + heightPosCenter.w);
+
+                    // calculate relative difference to this position
+                    float dParents = length(pparent1 - pparent2);
+                    float dMid = length(mid - pCenter);
+                    interpolation = dMid / dParents * sqrt(length(parents.xy - parents.zw));
+                }
+
+                normal = vec4(vec3(0.5) + 0.5 * norm, 5.0 * interpolation * sqrt(size));
             " +
         //+ if channels.source().is_empty() { "" } else { "generate(heightPosCenter.xyz, heightPosCenter.w, normal.xyz);" } +
         "
-                merged = vec4(mid / midLen, midHeight);
             }
             " + &super::noise::ShaderNoise::definitions();
 
@@ -616,11 +611,6 @@ impl Generator {
             data.normals[4 * (x + 1 +  tex_size * (y + 1)) + 3] < 255 - self.detail
         });
 
-        // merge interpolated vertices
-        for idx in optimized.merged_vertices {
-            vertices[idx as usize] = data.merged_data[idx as usize];
-        }
-
         Triangulation::new(self.detail, vertices, optimized.triangles, optimized.wireframe)
     }
 
@@ -638,10 +628,8 @@ impl Generator {
             let tex_size = (self.size + 3) as usize;
             let mut buf_positions = Vec::<Vector4<f32>>::with_capacity(tex_size * tex_size);
             let mut buf_heights = Vec::<f32>::with_capacity(tex_size * tex_size);
-            let mut buf_merged = Vec::<Vector4<f32>>::with_capacity(tex_size * tex_size);
             let mut buf_normals = Vec::<u8>::with_capacity(tex_size * tex_size);
             buf_positions.resize(tex_size * tex_size, Vector4::new(0.0, 0.0, 0.0, 0.0));
-            buf_merged.resize(tex_size * tex_size, Vector4::new(0.0, 0.0, 0.0, 0.0));
             buf_normals.resize(tex_size * tex_size * 4, 0);
             let mut channels = HashMap::new();
 
@@ -658,7 +646,6 @@ impl Generator {
                 }
 
                 fbos.normal_pass.read("normal", buf_normals.as_mut_ptr() as _);
-                fbos.normal_pass.read("merged", buf_merged.as_mut_ptr() as _);
             }
 
             //
@@ -677,9 +664,8 @@ impl Generator {
             // adjust ribbon heights and positions
             //
             self.postprocess_ribbons(&mut buf_positions, max - min);
-            self.postprocess_ribbons(&mut buf_merged, max - min);
 
-            let mut result = Result::new((min, max), buf_heights, buf_positions, buf_merged, buf_normals, None, channels);
+            let mut result = Result::new((min, max), buf_heights, buf_positions, buf_normals, None, channels);
             result.triangulation = Some(self.triangulate(&result));
 
             if self.framebuffer_cache.len() < self.max_framebuffer_cache {

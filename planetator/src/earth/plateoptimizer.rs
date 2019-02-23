@@ -14,10 +14,6 @@ pub struct PlateOptimizer {
 pub struct Result {
     pub triangles: Vec<Idx>,
     pub wireframe: Vec<Idx>,
-
-    // list of all vertices that have to be used in their interpolated form, not the original one.
-    // they'll need to be added after the initial vertex list
-    pub merged_vertices: Vec<Idx>,
 }
 
 #[derive(Copy)]
@@ -48,7 +44,6 @@ struct IndexBufferBuilder {
     rendered: Array2D<bool>,
     triangles: Vec<Idx>,
     wireframe: Vec<Idx>,
-    merged_vertices: Vec<Idx>,
 }
 
 struct QuadIndices {
@@ -90,7 +85,6 @@ impl IndexBufferBuilder {
             rendered,
             triangles: Vec::with_capacity(6 * size * size),
             wireframe: Vec::with_capacity(6 * size * size),
-            merged_vertices: Vec::with_capacity(size * size),
         };
 
         builder.process();
@@ -98,7 +92,6 @@ impl IndexBufferBuilder {
         Result {
             triangles: builder.triangles,
             wireframe: builder.wireframe,
-            merged_vertices: builder.merged_vertices,
         }
     }
 
@@ -299,25 +292,21 @@ impl IndexBufferBuilder {
                         //  (a) modify that middle vertex so that it's interpolated between the two corner ones
                         //  (b) add a little triangle that fills the hole, because otherwise there may be artifacts
                         if rendered[0] {
-                            self.merged_vertices.push(idx.i0m);
                             self.triangles.push(idx.i00);
                             self.triangles.push(idx.i0m);
                             self.triangles.push(idx.i01);
                         }
                         if rendered[1] {
-                            self.merged_vertices.push(idx.i1m);
                             self.triangles.push(idx.i10);
                             self.triangles.push(idx.i11);
                             self.triangles.push(idx.i1m);
                         }
                         if rendered[2] {
-                            self.merged_vertices.push(idx.im0);
                             self.triangles.push(idx.i00);
                             self.triangles.push(idx.i10);
                             self.triangles.push(idx.im0);
                         }
                         if rendered[3] {
-                            self.merged_vertices.push(idx.im1);
                             self.triangles.push(idx.i01);
                             self.triangles.push(idx.im1);
                             self.triangles.push(idx.i11);
