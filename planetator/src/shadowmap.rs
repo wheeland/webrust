@@ -147,6 +147,7 @@ impl ShadowMap {
             if do_render {
                 println!("render {} {}", num, do_render);
                 cascade.set_center(sunspace_center);
+                cascade.mvp = cascade.mvp * sun_rotation;
                 ret.push(num);
             }
         }
