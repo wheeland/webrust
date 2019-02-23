@@ -289,7 +289,7 @@ impl webrunner::WebApp for MyApp {
         let sun_lon = self.sun_lon * 3.14159 / 180.0;
         let sun_lat = self.sun_lat * 3.14159 / 180.0;
         let sun_direction = cgmath::Vector3::new(sun_lon.sin(), sun_lat.sin(), sun_lon.cos()).normalize();
-        let mut shadow = shadowmap::ShadowMap::new((512, 512));
+        let mut shadow = shadowmap::ShadowMap::new(512, self.renderer.radius());
         let shadow_maps = shadow.render(self.renderer.radius(), sun_direction, eye, look, |prog, eye, mvp| {
             self.renderer.render_for(prog, eye, mvp);
         });

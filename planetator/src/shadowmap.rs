@@ -2,93 +2,71 @@ use cgmath::prelude::*;
 use cgmath::*;
 use tinygl::{Program, Texture, Uniform, OffscreenBuffer};
 
-struct BoundingBox {
-    has_data: bool,
-    min: Vector3<f32>,
-    max: Vector3<f32>,
-}
-
-impl BoundingBox {
-    pub fn new() -> Self {
-        BoundingBox {
-            has_data: false,
-            min: Vector3::new(0.0, 0.0, 0.0),
-            max: Vector3::new(0.0, 0.0, 0.0),
-        }
-    }
-    pub fn add(&mut self, pt: Vector3<f32>) {
-        if self.has_data {
-            self.min.x = self.min.x.min(pt.x);
-            self.min.y = self.min.y.min(pt.y);
-            self.min.z = self.min.z.min(pt.z);
-            self.max.x = self.max.x.max(pt.x);
-            self.max.y = self.max.y.max(pt.y);
-            self.max.z = self.max.z.max(pt.z);
-        } else {
-            self.min = pt;
-            self.max = pt;
-            self.has_data = true;
-        }
-    }
-
-    pub fn size(&self) -> f32 {
-        let extent = self.max - self.min;
-        extent.x.max(extent.y).max(extent.z)
-    }
-
-    pub fn depth(&self) -> f32 {
-        self.size() * 20.0
-    }
-
-    pub fn matrix(&self) -> Matrix4<f32> {
-        let translate = Matrix4::from_translation(-0.5 * (self.min + self.max));
-        let sz_scale = 1.0 / self.size();
-        let depth_scale = 1.0 / self.depth();
-        Matrix4::from_nonuniform_scale(sz_scale, sz_scale, -depth_scale) * translate
-    }
-}
-
-struct Entry {
-    bounds: BoundingBox,
+struct ShadowCascade {
+    // constant:
+    level: i32,
     fbo: OffscreenBuffer,
-    mvp: Matrix4<f32>,
+    extent: f32,
     orthogonal_depth: f32,
+
+    // may change every time it's rendered:
+    center: Vector3<f32>,
+    mvp: Matrix4<f32>,
+}
+
+impl ShadowCascade {
+    fn new(size: u32, level: i32, max_radius: f32) -> Self {
+        // Create FBO
+        let mut fbo = OffscreenBuffer::new((size as _, size as _));
+        fbo.add_depth_texture();
+        {
+            let tex = fbo.depth_texture_mut().unwrap();
+            tex.bind();
+            tex.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
+            tex.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
+            tex.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
+            tex.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
+        }
+
+        let extent = max_radius * 0.4f32.powi(level as i32);
+
+        ShadowCascade {
+            level,
+            fbo,
+            extent,
+            orthogonal_depth: extent * 20.0,
+            center: Vector3::new(0.0, 0.0, 0.0),
+            mvp: Matrix4::from_scale(1.0)
+        }
+    }
+
+    fn set_center(&mut self, center: Vector3<f32>) {
+        self.center = center;
+
+        let translate = Matrix4::from_translation(-self.center);
+        let sz_scale = 1.0 / self.extent;
+        let depth_scale = 1.0 / self.orthogonal_depth;
+        self.mvp = Matrix4::from_nonuniform_scale(sz_scale, sz_scale, -depth_scale) * translate
+    }
 }
 
 pub struct ShadowMap {
-    size: (u32, u32),
-    entries: Vec<Entry>,
+    size: u32,
+    cascades: Vec<ShadowCascade>,
     program: Program,
 }
 
 impl ShadowMap {
-    pub fn new(size: (u32, u32)) -> Self {
+    pub fn new(size: u32, radius: f32) -> Self {
         // Create FBOs
-        let mut entries = Vec::new();
-        while entries.len() < 6 {
-            let mut buf = OffscreenBuffer::new((size.0 as _, size.1 as _));
-
-            buf.add_depth_texture();
-            {
-                let tex = buf.depth_texture_mut().unwrap();
-                tex.bind();
-                tex.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
-                tex.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
-                tex.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
-                tex.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
-            }
-
-            entries.push(Entry {
-                fbo: buf,
-                bounds: BoundingBox::new(),
-                mvp: Matrix4::from_scale(1.0),
-                orthogonal_depth: 0.0,
-            });
+        let mut cascades = Vec::new();
+        for i in 0..6 {
+            cascades.push(ShadowCascade::new(size, i, radius * 1.1));
         }
 
         ShadowMap {
             size,
-            entries,
+            cascades,
             program: Program::new_versioned("
                 in vec4 posHeight;
                 uniform float radius;
@@ -132,35 +110,22 @@ impl ShadowMap {
         let mut ret = Vec::new();
 
         // go through all passes
-        for (num, mut entry) in self.entries.iter_mut().enumerate() {
-            // bogo shadow bounds!
-            let cubesize = 1.1 * radius * 0.4f32.powi(num as i32);
-            let look_surface_center = eye.normalize() * radius * 1.1;
+        for (num, mut cascade) in self.cascades.iter_mut().enumerate() {
+            let look_surface_center = eye.normalize() * radius;
             let sunspace_center = sun_rotation.transform_vector(look_surface_center);
 
-            // calculate bounding box for this shadow map
-            // this stuff actually works! we just need to figure out where the center of the maze should be
-            let mut cube = BoundingBox::new();
-            cube.add(sunspace_center);
-            cube.add(sunspace_center + Vector3::new(-1.0, 0.0, 0.0) * cubesize);
-            cube.add(sunspace_center + Vector3::new(1.0, 0.0, 0.0)  * cubesize);
-            cube.add(sunspace_center + Vector3::new(0.0, -1.0, 0.0) * cubesize);
-            cube.add(sunspace_center + Vector3::new(0.0, 1.0, 0.0)  * cubesize);
-
-            entry.orthogonal_depth = cube.depth();
-            entry.bounds = cube;
-            entry.mvp = entry.bounds.matrix() * sun_rotation;
+            cascade.set_center(sunspace_center);
 
             // configure program
             self.program.bind();
-            self.program.uniform("mvp", Uniform::Mat4(entry.mvp));
+            self.program.uniform("mvp", Uniform::Mat4(cascade.mvp));
 
             // render into depth map
-            entry.fbo.bind();
+            cascade.fbo.bind();
             unsafe { gl::Clear(gl::DEPTH_BUFFER_BIT); }
-            render(&self.program, sun_direction * radius * 2.0, entry.mvp);
+            render(&self.program, sun_direction * radius * 2.0, cascade.mvp);
 
-            ret.push((entry.fbo.depth_texture().unwrap(), entry.mvp, entry.orthogonal_depth));
+            ret.push((cascade.fbo.depth_texture().unwrap(), cascade.mvp, cascade.orthogonal_depth));
         }
 
         // reset GL
