@@ -376,9 +376,10 @@ impl Renderer {
         program.uniform("normals", tinygl::Uniform::Signed(0));
         program.vertex_attrib_buffer("plateCoords", planet.plate_coords(), 2, gl::UNSIGNED_SHORT, true, 4, 0);
 
+        let camspeed = 2.0;
         let cameye = self.camera.eye();
         let camdir = super::plate::Direction::spherical_to_dir_and_square(&cameye);
-        self.camera.set_move_speed(2.0 * (cameye.magnitude() - self.planet_radius));
+        self.camera.set_move_speed(camspeed * (cameye.magnitude() - self.planet_radius));
 
         self.rendered_triangles = 0;
         let rendered_plates = planet.rendered_plates();
@@ -391,7 +392,7 @@ impl Renderer {
             if plate_pos.direction() == camdir.0 {
                 let local = plate_pos.square_from_root(&camdir.1);
                 if local.x > 0.0 && local.x < 1.0 && local.y > 0.0 && local.y < 1.0 {
-                    self.camera.set_move_speed(plate.borrow().distance(&cameye) * 2.0);
+                    self.camera.set_move_speed(plate.borrow().distance(&cameye) * camspeed);
                 }
             }
 
