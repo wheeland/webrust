@@ -146,8 +146,8 @@ fn glsl_render() -> String {
             float height = max(length(samplePosition) - planetRadius, 0.0);
 
             // compute optical depth for light
-            float hr = (atmosphereHr > 0.0) ? exp(-height / atmosphereHr) * segmentLength : 0.0;
-            float hm = (atmosphereHm > 0.0) ? exp(-height / atmosphereHm) * segmentLength : 0.0;
+            float hr = exp(-height / atmosphereHr) * segmentLength;
+            float hm = exp(-height / atmosphereHm) * segmentLength;
             opticalDepthR += hr;
             opticalDepthM += hm;
 
@@ -157,7 +157,7 @@ fn glsl_render() -> String {
             vec2 opticalDepthLight = texture(atmosphereOptDepth, vec2(relAtmHeight, angleToSun / 3.14159)).xy;
 
             vec3 tau = atmosphereBetaR * (opticalDepthR + opticalDepthLight.x) + atmosphereBetaM * 1.1 * (opticalDepthM + opticalDepthLight.y);
-            vec3 attenuation = vec3(exp(-tau.x), exp(-tau.y), exp(-tau.z));
+            vec3 attenuation = vec3(exp(-tau));
             sumR += attenuation * hr;
             sumM += attenuation * hm;
         }
@@ -165,7 +165,7 @@ fn glsl_render() -> String {
         vec3 ret = (sumR * atmosphereBetaR * phaseR + sumM * atmosphereBetaM * phaseM) * 20.0;
 
         vec3 tau = atmosphereBetaR * (opticalDepthR) + atmosphereBetaM * 1.1 * (opticalDepthM);
-        vec3 attenuation = vec3(exp(-tau.x), exp(-tau.y), exp(-tau.z));
+        vec3 attenuation = vec3(exp(tau));
         // TODO: it seems to me that the betaR/M should factor in the transmittance of the far-end color.
         ret += attenuation * color;
 
@@ -238,8 +238,8 @@ impl Atmosphere {
         program.uniform("atmosphereOptDepth", Uniform::Signed(tex_unit as i32));
         program.uniform("planetRadius", Uniform::Float(radius));
         program.uniform("atmosphereRadius", Uniform::Float(radius + self.atmosphere_height()));
-        program.uniform("atmosphereHr", Uniform::Float(self.hr));
-        program.uniform("atmosphereHm", Uniform::Float(self.hm));
+        program.uniform("atmosphereHr", Uniform::Float(self.hr.max(0.000001)));
+        program.uniform("atmosphereHm", Uniform::Float(self.hm.max(0.000001)));
         program.uniform("atmosphereBetaR", Uniform::Vec3(self.beta(self.beta_r, radius)));
         program.uniform("atmosphereBetaM", Uniform::Vec3(self.beta(self.beta_m, radius)));
     }
