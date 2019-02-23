@@ -28,12 +28,12 @@ impl FlyCamera {
             acceleration_look: 1.5,
             position: Vector3::new(0.0, 0.0, 2.0 * radius),
             position_normed: Vector3::new(0.0, 0.0, 1.0),
-            neutral_view_dir: Vector3::new(1.0, 0.0, 0.0),
+            neutral_view_dir: Vector3::new(0.0, 1.0, 0.0),
             vertical_angle: -0.4 * PI,
             view_matrix: Matrix4::identity(),
-            look: Vector3::new(1.0, 0.0, 0.0),
-            up: Vector3::new(0.0, 0.0, 1.0),
-            right: Vector3::new(0.0, -1.0, 0.0)
+            look: Vector3::new(0.0, 1.0, 0.0),
+            up: Vector3::new(0.0, 1.0, 0.0),
+            right: Vector3::new(1.0, 0.0, 0.0)
         };
         cam.update();
         cam
