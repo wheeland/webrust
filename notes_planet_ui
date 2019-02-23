@@ -1,3 +1,7 @@
 add some nice transparency and movement animations
     - windows that 'float and fade up' like in mac os
     - sub-menus that slide openw
+
+for all rendering options (atmosphere, shadow mapping, ...)
+    - enable/disable
+    - tune all parameters

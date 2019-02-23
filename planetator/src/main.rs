@@ -244,8 +244,10 @@ impl webrunner::WebApp for MyApp {
                         float shadow = mix(0.7, 1.0, lit);
                         vec3 shadowMapDebug = mix(shadowMapDebugPrev, shadowMapDebugCurr, shadowMapProgress);
                         // assign..
-                        pColor = mix(shadowMapDebug, vec3(shadow), 1.0);
-                        pColor *= max(0.7 + 0.3 * dot(normal, sunDirection), 0.0);
+                        float slopeShadow = max(0.7 + 0.3 * dot(normal, sunDirection), 0.0);
+                        shadow *= slopeShadow;
+                        // pColor = mix(shadowMapDebug, pColor, 0.7);
+                        pColor *= shadow;
 
                         // calc atmospheric depth along view ray
                         float dist = length(pPos - eyePosition);

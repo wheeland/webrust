@@ -1,0 +1,45 @@
+
+http://developer.download.nvidia.com/SDK/10.5/opengl/src/cascaded_shadow_maps/doc/cascaded_shadow_maps.pdf
+https://docs.microsoft.com/en-us/windows/desktop/DxTechArts/cascaded-shadow-maps
+http://ogldev.atspace.co.uk/www/tutorial47/tutorial47.html
+http://ogldev.atspace.co.uk/www/tutorial49/tutorial49.html
+https://www.gamedev.net/forums/topic/659150-csm-cascaded-shadow-maps-split-selection/
+http://advances.realtimerendering.com/s2012/insomniac/Acton-CSM_Scrolling(Siggraph2012).pdf
+http://dev.theomader.com/stable-csm/
+
+
+1. replace spot with directional light by projecting into rotated cube
+2. render into multiple cubes trivially
+3. align them optimally
+4. only move by pixel coords
+
+- render into multiple cubes with trivial selection
+- extend shaders to choose between multiple shadow maps
+- use frustum to choose regions
+- refine
+
+the weird strips for smaller volumes that go dark behind a certain threshold?
+    -> that's then far plane of the texture! everything behind that can only have a greater z!
+    
+predefine a series of shadow map sizes (in sun space), e.g.
+    radius
+    0.5 * radius
+    0.25 * radius, etc...
+only deal in these sizes. at each frame, we decide which of these to use
+and map these a multiple of shadow screen space
+
+when moving camera: blend between old camera and new camera, old+new = discrete steps
+
+only generate like 1 depth map per frame, do the rest by blending and interpolating (as long as the differences are not too big)
+
+there is a sun controller that maintains
+    - old, curr, new position
+    - it always interpolates from old -> curr
+    - when curr is met, all new ones have to be generated already, and it flips to the next cycle
+    - only cascades for the next generation are generated dynamically, the old ones just stay
+
+todo
+    - soft edges: http://codeflow.org/entries/2013/feb/15/soft-shadow-mapping/
+    - proper culling of the depth-rendered plates: need to do orthogonal culling (not frustum)
+        -> send own culler object, enum { Frustum(..), Orthogonal(..) }
+    - only use low-poly objects for depth pass
