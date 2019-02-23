@@ -45,7 +45,9 @@ struct MyApp {
     edit_js: guiutil::ShaderEditData,
     select_channels: Vec<(String, i32)>,
 
-    sun_angle: f32,
+    sun_speed: f32,
+    sun_lon: f32,
+    sun_lat: f32,
     renderer: earth::renderer::Renderer,
     atmosphere: atmosphere::Atmosphere,
     postprocess: tinygl::Program,
@@ -137,7 +139,9 @@ impl webrunner::WebApp for MyApp {
             edit_colorator: guiutil::ShaderEditData::new("Kolorator", &earth::renderer::default_colorator(), (250.0, 250.0), (600.0, 400.0)),
             edit_js: guiutil::ShaderEditData::new("JavaScript executor", "var elem = document.getElementById('state');", (250.0, 250.0), (600.0, 400.0)),
             select_channels: Vec::new(),
-            sun_angle: 0.0,
+            sun_speed: 0.0,
+            sun_lon: 0.0,
+            sun_lat: 0.0,
             renderer: earth::renderer::Renderer::new(),
             atmosphere: atmosphere::Atmosphere::new(),
             postprocess: tinygl::Program::new_versioned("
@@ -281,11 +285,10 @@ impl webrunner::WebApp for MyApp {
         //
         // Render Depth Shadow Map
         //
-        // self.sun_angle += dt * 0.5;
-        let sun_direction = cgmath::Vector3::new(self.sun_angle.sin(), 0.0 * (self.sun_angle * 0.3).sin(), self.sun_angle.cos()).normalize();
-        // let sun_direction = cgmath::Vector3::new(self.sun_angle.sin(), 0.7, self.sun_angle.cos()).normalize();
-        // let sun_direction = cgmath::Vector3::new(1.0, 1.0, 1.0).normalize();
-        // let sun_direction = cgmath::Vector3::new(0.0, 0.5 * self.sun_angle.sin(), 1.0).normalize();
+        self.sun_lon += dt * self.sun_speed;
+        let sun_lon = self.sun_lon * 3.14159 / 180.0;
+        let sun_lat = self.sun_lat * 3.14159 / 180.0;
+        let sun_direction = cgmath::Vector3::new(sun_lon.sin(), sun_lat.sin(), sun_lon.cos()).normalize();
         let mut shadow = shadowmap::ShadowMap::new((512, 512));
         let shadow_maps = shadow.render(self.renderer.radius(), sun_direction, eye, look, |prog, eye, mvp| {
             self.renderer.render_for(prog, eye, mvp);
@@ -332,7 +335,7 @@ impl webrunner::WebApp for MyApp {
 
         ui.window(im_str!("renderstats"))
             .flags(ImGuiWindowFlags::NoResize | ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoTitleBar | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar)
-            .size((150.0, 300.0), ImGuiCond::Always)
+            .size((150.0, 400.0), ImGuiCond::Always)
             .position((0.0, 80.0), ImGuiCond::Always)
             .build(|| {
                 ui.text(format!("Plates: {}", self.renderer.rendered_plates()));
@@ -376,6 +379,13 @@ impl webrunner::WebApp for MyApp {
                 self.atmosphere.set_hm(mie.0);
                 self.atmosphere.set_beta_r(raleigh.1);
                 self.atmosphere.set_beta_m(mie.1);
+
+                //
+                // Sun Settings
+                //
+                self.sun_speed = slideropt("Sun Rotation:", "sunrot", self.sun_speed, -90.0, 90.0);
+                self.sun_lon = slideropt("Sun Longitude:", "sunlon", self.sun_lon, 0.0, 360.0);
+                self.sun_lat = slideropt("Sun Latitude:", "sunlat", self.sun_lat, -45.0, 45.0);
             });
 
         let planet_opt_win_size = (260.0, 300.0 + 24.0 * self.select_channels.len() as f32);
