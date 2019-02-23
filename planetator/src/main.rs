@@ -160,7 +160,8 @@ impl webrunner::WebApp for MyApp {
                     float depth;
                     mat4 mvp;
                 };
-                uniform ShadowMap shadowMaps[4];
+                uniform ShadowMap shadowMaps[8];
+                uniform int shadowMapCount;
 
                 ")
                 + &atmosphere::Atmosphere::shader_source() +
@@ -168,19 +169,38 @@ impl webrunner::WebApp for MyApp {
                 in vec2 clipPos;
                 out vec4 outColor;
 
-                bool getShadowed(int n, vec3 pos, out float lit) {
-                    vec4 posInSunSpace = shadowMaps[n].mvp * vec4(pos, 1.0);
+                vec3 getDebugColor(float f) {
+                    f *= 3.0;
+                    if (f < 1.0) return mix(vec3(1.0, 0.0, 0.0), vec3(1.0, 1.0, 0.0), f);
+                    if (f < 2.0) return mix(vec3(1.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), f - 1.0);
+                    return mix(vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), f - 2.0);
+                }
+
+                bool getShadowForLevel(int level, vec3 pos, out float lit) {
+                    vec4 posInSunSpace = shadowMaps[level].mvp * vec4(pos, 1.0);
                     posInSunSpace /= posInSunSpace.w;
                     posInSunSpace = 0.5 * posInSunSpace + vec4(0.5);
 
                     if (all(greaterThan(posInSunSpace.xy, vec2(0.0))) && all(lessThan(posInSunSpace.xy, vec2(1.0)))) {
-                        float shadowMapSample = texture(shadowMaps[n].map, posInSunSpace.xy).x;
+                        float shadowMapSample = texture(shadowMaps[level].map, posInSunSpace.xy).x;
                         float diff = shadowMapSample - posInSunSpace.z;
-                        lit = smoothstep(-10.0 / shadowMaps[n].depth, 0.0, diff);
+                        lit = smoothstep(-1.0 / shadowMaps[level].depth, 0.0, diff);
                         return true;
                     } else {
                         return false;
                     }
+                }
+
+                float getShadow(vec3 pos, out vec3 color) {
+                    float lit = 0.0;
+                    int i = shadowMapCount - 1;
+                    while (i >= 0) {
+                        if (getShadowForLevel(i, pos, lit))
+                            break;
+                        --i;
+                    }
+                    color = getDebugColor(float(i) / float(shadowMapCount - 1));
+                    return lit;
                 }
 
                 void main() {
@@ -202,26 +222,13 @@ impl webrunner::WebApp for MyApp {
                         vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
                         vec3 pPos = texture(planetPosition, vec2(0.5) + 0.5 * clipPos).rgb;
 
-                        //
                         // Find out if we are shadowed by the terrain
-                        //
-                        float lit = 0.0;
-                        vec3 shadowMapColor = vec3(1.0, 0.0, 0.0);
-                        if (!getShadowed(3, pPos, lit)) {
-                            shadowMapColor = vec3(1.0, 1.0, 0.0);
-                            if (!getShadowed(2, pPos, lit)) {
-                                shadowMapColor = vec3(0.0, 1.0, 0.0);
-                                if (!getShadowed(1, pPos, lit)) {
-                                    shadowMapColor = vec3(0.0, 0.0, 1.0);
-                                    getShadowed(0, pPos, lit);
-                                }
-                            }
-                        }
+                        vec3 shadowMapDebugMask;
+                        float lit = getShadow(pPos, shadowMapDebugMask);
                         float shadow = mix(0.7, 1.0, lit);
-                        // pColor = mix(shadowMapColor, vec3(shadow), 0.8);
-                        // pColor *= shadow;
-                        pColor += (1.0 - lit) * vec3(1.0, 0.0, 0.0);
-                        pColor *= max(0.5 + 0.5 * dot(normal, sunDirection), 0.0);
+                        pColor = mix(shadowMapDebugMask, vec3(shadow), 0.7);
+                        // pColor += (1.0 - lit) * vec3(1.0, 0.0, 0.0);
+                        pColor *= max(0.7 + 0.3 * dot(normal, sunDirection), 0.0);
 
                         // calc atmospheric depth along view ray
                         float dist = length(pPos - eyePosition);
@@ -291,11 +298,12 @@ impl webrunner::WebApp for MyApp {
             let num = entry.0;
             let entry = entry.1;
 
-            entry.0.bind_at((3 + num) as u32);
-            self.postprocess.uniform(&format!("shadowMaps[{}].map", num), tinygl::Uniform::Signed((3 + num) as i32));
+            entry.0.bind_at((4 + num) as u32);
+            self.postprocess.uniform(&format!("shadowMaps[{}].map", num), tinygl::Uniform::Signed((4 + num) as i32));
             self.postprocess.uniform(&format!("shadowMaps[{}].depth", num), tinygl::Uniform::Float(entry.2));
             self.postprocess.uniform(&format!("shadowMaps[{}].mvp", num), tinygl::Uniform::Mat4(entry.1));
         }
+        self.postprocess.uniform("shadowMapCount", tinygl::Uniform::Signed(shadow_maps.len() as i32));
 
         self.postprocess.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
         self.postprocess.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
@@ -304,7 +312,7 @@ impl webrunner::WebApp for MyApp {
         self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
         self.postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));
         self.postprocess.uniform("planetRadius", tinygl::Uniform::Float(self.renderer.radius()));
-        self.atmosphere.prepare_shader(&self.postprocess, self.renderer.radius(), 7);
+        self.atmosphere.prepare_shader(&self.postprocess, self.renderer.radius(), 3);
 
         unsafe {
             gl::Viewport(0, 0, self.windowsize.0 as _, self.windowsize.1 as _);

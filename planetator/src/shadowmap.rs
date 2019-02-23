@@ -65,7 +65,7 @@ impl ShadowMap {
     pub fn new(size: (u32, u32)) -> Self {
         // Create FBOs
         let mut entries = Vec::new();
-        while entries.len() < 4 {
+        while entries.len() < 6 {
             let mut buf = OffscreenBuffer::new((size.0 as _, size.1 as _));
 
             buf.add_depth_texture();
@@ -135,7 +135,7 @@ impl ShadowMap {
         for (num, mut entry) in self.entries.iter_mut().enumerate() {
             // bogo shadow bounds!
             let cubesize = 1.1 * radius * 0.4f32.powi(num as i32);
-            let look_surface_center = eye.normalize() * radius;
+            let look_surface_center = eye.normalize() * radius * 1.1;
             let sunspace_center = sun_rotation.transform_vector(look_surface_center);
 
             // calculate bounding box for this shadow map
