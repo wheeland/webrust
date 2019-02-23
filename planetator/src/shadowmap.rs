@@ -179,9 +179,11 @@ impl ShadowMap {
         &mut self,
         eye: Vector3<f32>,
         look: Vector3<f32>,
-    ) -> Matrix4<f32>
+    ) -> (Matrix4<f32>, Vector3<f32>)
     {
+        //
         // if any of the cascades isn't filled yet, do that first
+        //
         let to_render = if !self.prev.as_mut().unwrap().is_complete() {
             CascadeInfo { index: self.prev.as_mut().unwrap().filled, tp: CascadeType::Prev }
         }
@@ -191,7 +193,9 @@ impl ShadowMap {
         else if !self.next.as_mut().unwrap().is_complete() {
             CascadeInfo { index: self.next.as_mut().unwrap().filled, tp: CascadeType::Next }
         }
+        //
         // if all cascades, inculding the last ones, have been filled, we can flip!
+        //
         else {
             let prev = self.prev.take();
             let curr = self.curr.take();
@@ -206,7 +210,9 @@ impl ShadowMap {
             CascadeInfo { index: 0, tp: CascadeType::Next }
         };
 
+        //
         // select central point to render: cheap for now -: center on camera eye
+        //
         let rel_idx = to_render.index as f32 / 6.0;
         let eye_height = eye.magnitude() - self.radius;
         let look_center = eye + look * eye_height * rel_idx;
@@ -239,7 +245,7 @@ impl ShadowMap {
 
         self.get_sun_cascades(to_render.tp).filled += 1;
 
-        mvp
+        (mvp, look_surface_center)
     }
 
     pub fn finish_render(&self) {

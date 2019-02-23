@@ -292,11 +292,15 @@ impl webrunner::WebApp for MyApp {
         let eye = self.renderer.camera().eye();
         let look = self.renderer.camera().look();
 
+        //
         // render planet into FBO
+        //
         self.renderer.render(self.windowsize);
         let fbo = self.renderer.fbo().unwrap();
 
+        //
         // Move Sun
+        //
         self.sun_lon += dt * self.sun_speed;
         if self.sun_lon > 360.0 { self.sun_lon -= 360.0 }
         if self.sun_lon < 0.0 { self.sun_lon += 360.0 }
@@ -310,9 +314,12 @@ impl webrunner::WebApp for MyApp {
         self.shadows.set_radius(radius);
         self.shadows.push_sun_direction(sun_direction);
         let to_render = self.shadows.prepare_render(eye, look);
-        self.renderer.render_for(self.shadows.program(), sun_direction * radius * 2.0, to_render);
+        self.renderer.render_for(self.shadows.program(), to_render.1, to_render.0);
         self.shadows.finish_render();
 
+        //
+        // Setup Post-processing shader
+        //
         self.postprocess.bind();
         self.shadows.prepare_postprocess(&self.postprocess, 4);
         self.postprocess.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
