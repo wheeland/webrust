@@ -2,6 +2,68 @@ use cgmath::prelude::*;
 use cgmath::*;
 use tinygl::{Program, Texture, Uniform, OffscreenBuffer};
 
+fn glsl() -> String {
+    String::from("
+    struct ShadowMap {
+        highp sampler2D map;
+        float depth;
+        mat4 mvp;
+    };
+
+    #define MAX_SHADOW_MAPS 8
+    uniform ShadowMap shadowMapsPrevCurr[2 * MAX_SHADOW_MAPS];
+    uniform int shadowMapCount;
+    uniform float shadowMapProgress;
+
+    vec3 shadow_getDebugColor(float f) {
+        f *= 3.0;
+        if (f < 1.0) return mix(vec3(1.0, 0.0, 0.0), vec3(1.0, 1.0, 0.0), f);
+        if (f < 2.0) return mix(vec3(1.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), f - 1.0);
+        return mix(vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), f - 2.0);
+    }
+
+    bool shadow_getShadowForLevel(int level, vec3 pos, out float lit) {
+        vec4 posInSunSpace = shadowMapsPrevCurr[level].mvp * vec4(pos, 1.0);
+        posInSunSpace /= posInSunSpace.w;
+        posInSunSpace = 0.5 * posInSunSpace + vec4(0.5);
+
+        if (all(greaterThan(posInSunSpace.xy, vec2(0.0))) && all(lessThan(posInSunSpace.xy, vec2(1.0)))) {
+            float shadowMapSample = texture(shadowMapsPrevCurr[level].map, posInSunSpace.xy).x;
+            lit = smoothstep(-1.0, 0.0, (shadowMapSample - posInSunSpace.z) * shadowMapsPrevCurr[level].depth);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    float shadow_getShadowWithOffset(vec3 pos, int start, out vec3 color) {
+        float lit = 0.0;
+        int i = shadowMapCount - 1;
+        while (i >= 0) {
+            if (shadow_getShadowForLevel(i + start, pos, lit))
+                break;
+            --i;
+        }
+        color = shadow_getDebugColor(float(i) / float(shadowMapCount - 1));
+        return lit;
+    }
+
+    float getShadow(vec3 pos, out vec3 debugColor) {
+        vec3 shadowMapDebugPrev, shadowMapDebugCurr;
+
+        float litPrev = shadow_getShadowWithOffset(pos, 0, shadowMapDebugPrev);
+        float litNext = shadow_getShadowWithOffset(pos, MAX_SHADOW_MAPS, shadowMapDebugCurr);
+
+        // interpolate..
+        float lit = mix(litPrev, litNext, shadowMapProgress);
+        float shadow = mix(0.7, 1.0, lit);
+        vec3 shadowMapDebug = mix(shadowMapDebugPrev, shadowMapDebugCurr, shadowMapProgress);
+
+        return shadow;
+    }
+    ")
+}
+
 struct ShadowCascade {
     // constant:
     level: i32,
@@ -123,6 +185,10 @@ pub struct ShadowMap {
 }
 
 impl ShadowMap {
+    pub fn glsl() -> String {
+        glsl()
+    }
+
     pub fn new(size: u32, radius: f32) -> Self {
         ShadowMap {
             radius,

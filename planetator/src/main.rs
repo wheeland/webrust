@@ -161,55 +161,12 @@ impl webrunner::WebApp for MyApp {
                 uniform sampler2D planetNormal;
                 uniform sampler2D planetPosition;
 
-                struct ShadowMap {
-                    highp sampler2D map;
-                    float depth;
-                    mat4 mvp;
-                };
-
-                #define MAX_SHADOW_MAPS 8
-                uniform ShadowMap shadowMapsPrevCurr[2 * MAX_SHADOW_MAPS];
-                uniform int shadowMapCount;
-                uniform float shadowMapProgress;
-
                 ")
-                + &atmosphere::Atmosphere::shader_source() +
+                + &atmosphere::Atmosphere::shader_source()
+                + &shadowmap::ShadowMap::glsl() +
                 "
                 in vec2 clipPos;
                 out vec4 outColor;
-
-                vec3 getDebugColor(float f) {
-                    f *= 3.0;
-                    if (f < 1.0) return mix(vec3(1.0, 0.0, 0.0), vec3(1.0, 1.0, 0.0), f);
-                    if (f < 2.0) return mix(vec3(1.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), f - 1.0);
-                    return mix(vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), f - 2.0);
-                }
-
-                bool getShadowForLevel(int level, vec3 pos, out float lit) {
-                    vec4 posInSunSpace = shadowMapsPrevCurr[level].mvp * vec4(pos, 1.0);
-                    posInSunSpace /= posInSunSpace.w;
-                    posInSunSpace = 0.5 * posInSunSpace + vec4(0.5);
-
-                    if (all(greaterThan(posInSunSpace.xy, vec2(0.0))) && all(lessThan(posInSunSpace.xy, vec2(1.0)))) {
-                        float shadowMapSample = texture(shadowMapsPrevCurr[level].map, posInSunSpace.xy).x;
-                        lit = smoothstep(-1.0, 0.0, (shadowMapSample - posInSunSpace.z) * shadowMapsPrevCurr[level].depth);
-                        return true;
-                    } else {
-                        return false;
-                    }
-                }
-
-                float getShadow(vec3 pos, int start, out vec3 color) {
-                    float lit = 0.0;
-                    int i = shadowMapCount - 1;
-                    while (i >= 0) {
-                        if (getShadowForLevel(i + start, pos, lit))
-                            break;
-                        --i;
-                    }
-                    color = getDebugColor(float(i) / float(shadowMapCount - 1));
-                    return lit;
-                }
 
                 void main() {
                     vec3 normalFromTex = texture(planetNormal, vec2(0.5) + 0.5 * clipPos).rgb;
@@ -236,14 +193,8 @@ impl webrunner::WebApp for MyApp {
                         //
                         // Find out if we are shadowed by the terrain, and interpolate between last and curr sun position
                         //
-                        vec3 shadowMapDebugPrev, shadowMapDebugCurr;
-                        float litPrev = getShadow(pPos, 0, shadowMapDebugPrev);
-                        float litNext = getShadow(pPos, MAX_SHADOW_MAPS, shadowMapDebugCurr);
-                        // interpolate..
-                        float lit = mix(litPrev, litNext, shadowMapProgress);
-                        float shadow = mix(0.7, 1.0, lit);
-                        vec3 shadowMapDebug = mix(shadowMapDebugPrev, shadowMapDebugCurr, shadowMapProgress);
-                        // assign..
+                        vec3 shadowMapDebugColor;
+                        float shadow = getShadow(pPos, shadowMapDebugColor);
                         float slopeShadow = max(0.7 + 0.3 * dot(normal, sunDirection), 0.0);
                         shadow *= slopeShadow;
                         // pColor = mix(shadowMapDebug, pColor, 0.7);
