@@ -84,8 +84,9 @@ impl ShadowCascade {
         // Create FBO
         let mut fbo = OffscreenBuffer::new((size as _, size as _));
         fbo.add_depth_texture();
+        fbo.add("depth", gl::R32F, gl::RED, gl::FLOAT);
         {
-            let tex = fbo.depth_texture_mut().unwrap();
+            let tex = fbo.texture_mut("depth").unwrap();
             tex.bind();
             tex.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
             tex.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
@@ -104,6 +105,10 @@ impl ShadowCascade {
         };
         ret.set_radius(max_radius);
         ret
+    }
+
+    fn depth_texture(&self) -> &Texture {
+        self.fbo.texture("depth").unwrap()
     }
 
     fn set_radius(&mut self, max_radius: f32) {
@@ -207,7 +212,11 @@ impl ShadowMap {
                     vec3 pos = posHeight.xyz * (posHeight.w + radius);
                     gl_Position = mvp * vec4(pos, 1.0);
                 }",
-                "void main() {}",
+                "out float depth;
+                void main()
+                {
+                    depth = gl_FragCoord.z;
+                }",
                 300
             ),
             prev: Some(SunPositionCascades::new(size, radius, levels)),
@@ -309,8 +318,9 @@ impl ShadowMap {
 
         // setup GL
         unsafe {
-            gl::Clear(gl::DEPTH_BUFFER_BIT);
+            gl::Clear(gl::DEPTH_BUFFER_BIT | gl::COLOR_BUFFER_BIT);
             gl::Enable(gl::POLYGON_OFFSET_FILL);
+            gl::Disable(gl::BLEND);
             gl::DepthFunc(gl::LESS);
             gl::PolygonOffset(1.0, 1.0);
         }
@@ -331,7 +341,7 @@ impl ShadowMap {
     }
 
     fn bind_shadow_map(program: &Program, index: usize, texunit: u32, sun_rotation: &Matrix4<f32>, cascade: &ShadowCascade) {
-        cascade.fbo.depth_texture().unwrap().bind_at(texunit);
+        cascade.depth_texture().bind_at(texunit);
         program.uniform(&format!("shadowMapsPrevCurr[{}].map", index),   Uniform::Signed(texunit as i32));
         program.uniform(&format!("shadowMapsPrevCurr[{}].depth", index), Uniform::Float(cascade.orthogonal_depth));
         program.uniform(&format!("shadowMapsPrevCurr[{}].mvp", index),   Uniform::Mat4(cascade.projection * *sun_rotation));
