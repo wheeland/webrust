@@ -40,6 +40,10 @@ there is a sun controller that maintains
 
 todo
     - soft edges: http://codeflow.org/entries/2013/feb/15/soft-shadow-mapping/
+        https://gamedev.stackexchange.com/questions/66030/exponential-variance-shadow-mapping-implementation
+        https://www.gamedev.net/forums/topic/678518-some-questions-about-cascaded-variance-shadow-mapping/
+        http://lousodrome.net/blog/light/2012/01/23/variance-shadow-maps/
+        https://mynameismjp.wordpress.com/2013/09/10/shadow-maps/  https://mynameismjp.wordpress.com/2015/02/18/shadow-sample-update/
     - proper culling of the depth-rendered plates: need to do orthogonal culling (not frustum)
         -> send own culler object, enum { Frustum(..), Orthogonal(..) }
     - only use low-poly objects for depth pass

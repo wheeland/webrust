@@ -2,6 +2,8 @@ use cgmath::prelude::*;
 use cgmath::*;
 use tinygl::{Program, Texture, Uniform, OffscreenBuffer};
 
+static MAX_SHADOW_MAPS: usize = 4;
+
 fn glsl() -> String {
     String::from("
     struct ShadowMap {
@@ -10,7 +12,7 @@ fn glsl() -> String {
         mat4 mvp;
     };
 
-    #define MAX_SHADOW_MAPS 8
+    #define MAX_SHADOW_MAPS ") + &MAX_SHADOW_MAPS.to_string() + "
     uniform ShadowMap shadowMapsPrevCurr[2 * MAX_SHADOW_MAPS];
     uniform int shadowMapCount;
     uniform float shadowMapProgress;
@@ -61,7 +63,7 @@ fn glsl() -> String {
 
         return shadow;
     }
-    ")
+    "
 }
 
 struct ShadowCascade {
@@ -105,7 +107,7 @@ impl ShadowCascade {
     }
 
     fn set_radius(&mut self, max_radius: f32) {
-        self.extent = max_radius * 0.6f32.powi(self.level as i32);
+        self.extent = max_radius * 0.45f32.powi(self.level as i32);
         self.granularity = 2.0 * self.extent / self.fbo.size().0 as f32;
         self.orthogonal_depth = self.extent * 20.0;
     }
@@ -131,9 +133,9 @@ struct SunPositionCascades {
 }
 
 impl SunPositionCascades {
-    fn new(size: u32, radius: f32) -> Self {
+    fn new(size: u32, radius: f32, levels: i32) -> Self {
         let mut cascades = Vec::new();
-        for i in 0..6 {
+        for i in 0..levels {
             cascades.push(ShadowCascade::new(size, i, radius * 1.1));
         }
 
@@ -175,6 +177,7 @@ pub struct CascadeInfo {
 }
 
 pub struct ShadowMap {
+    levels: i32,
     radius: f32,
     program: Program,
 
@@ -190,8 +193,11 @@ impl ShadowMap {
     }
 
     pub fn new(size: u32, radius: f32) -> Self {
+        let levels = 4;
+
         ShadowMap {
             radius,
+            levels,
             program: Program::new_versioned("
                 in vec4 posHeight;
                 uniform float radius;
@@ -204,9 +210,9 @@ impl ShadowMap {
                 "void main() {}",
                 300
             ),
-            prev: Some(SunPositionCascades::new(size, radius)),
-            curr: Some(SunPositionCascades::new(size, radius)),
-            next: Some(SunPositionCascades::new(size, radius)),
+            prev: Some(SunPositionCascades::new(size, radius, levels)),
+            curr: Some(SunPositionCascades::new(size, radius, levels)),
+            next: Some(SunPositionCascades::new(size, radius, levels)),
             next_sun_direction: Vector3::new(0.0, 0.0, 1.0),
         }
     }
@@ -342,17 +348,16 @@ impl ShadowMap {
 
         let sun_rotation = self.curr.as_ref().unwrap().sun_rotation;
         for cascade in self.curr.as_ref().unwrap().cascades.iter().enumerate() {
-            Self::bind_shadow_map(program, cascade.0 + 8, texunit, &sun_rotation, cascade.1);
+            Self::bind_shadow_map(program, cascade.0 + MAX_SHADOW_MAPS, texunit, &sun_rotation, cascade.1);
             texunit += 1;
         }
 
-        let count = self.prev.as_ref().unwrap().cascades.len();
         let filled = self.next.as_ref().unwrap().filled;
-        let progress = filled as f32 / count as f32;
+        let progress = filled as f32 / self.levels as f32;
 
         let sun_direction = (1.0 - progress) * self.prev.as_ref().unwrap().sun_direction + progress * self.curr.as_ref().unwrap().sun_direction;
         program.uniform("sunDirection", Uniform::Vec3(sun_direction.normalize()));
-        program.uniform("shadowMapCount", Uniform::Signed(count as i32));
+        program.uniform("shadowMapCount", Uniform::Signed(self.levels));
         program.uniform("shadowMapProgress", Uniform::Float(progress));
     }
 }
