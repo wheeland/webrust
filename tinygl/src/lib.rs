@@ -702,6 +702,10 @@ impl OffscreenBuffer {
         self.textures.get(name).map(|tex| tex.texture.as_ref().unwrap())
     }
 
+    pub fn texture_mut(&mut self, name: &str) -> Option<&mut Texture> {
+        self.textures.get_mut(name).map(|tex| tex.texture.as_mut().unwrap())
+    }
+
     pub fn take(&mut self, name: &str) -> Option<Texture> {
         let ret = self.textures.get_mut(name).map(|tex| tex.take());
         if let Some(new_tex) = self.textures.get(name).as_ref() {
