@@ -145,7 +145,7 @@ impl webrunner::WebApp for MyApp {
             sun_lat: 0.0,
             renderer: earth::renderer::Renderer::new(),
             atmosphere: atmosphere::Atmosphere::new(),
-            shadows: shadowmap::ShadowMap::new(1024, 100.0),
+            shadows: shadowmap::ShadowMap::new(256, 100.0),
             postprocess: tinygl::Program::new_versioned("
                 in vec2 vertex;
                 out vec2 clipPos;
@@ -189,19 +189,20 @@ impl webrunner::WebApp for MyApp {
                         vec3 normal = vec3(-1.0) + 2.0 * normalFromTex;
                         vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
                         vec3 pPos = texture(planetPosition, vec2(0.5) + 0.5 * clipPos).rgb;
+                        float dist = length(pPos - eyePosition);
+                        float dotSun = dot(normal, sunDirection);
 
                         //
                         // Find out if we are shadowed by the terrain, and interpolate between last and curr sun position
                         //
                         vec3 shadowMapDebugColor;
-                        float shadow = getShadow(pPos, shadowMapDebugColor);
-                        float slopeShadow = max(0.7 + 0.3 * dot(normal, sunDirection), 0.0);
+                        float shadow = 0.6 + 0.4 * getShadow(pPos, dotSun, dist, shadowMapDebugColor);
+                        float slopeShadow = max(0.7 + 0.3 * dotSun, 0.0);
                         shadow *= slopeShadow;
-                        // pColor = mix(shadowMapDebug, pColor, 0.7);
+                        pColor = mix(shadowMapDebugColor, pColor, 0.7);
                         pColor *= shadow;
 
                         // calc atmospheric depth along view ray
-                        float dist = length(pPos - eyePosition);
                         color = computeIncidentLight(eyePosition, eyeDir, max(t0, 0.0), dist, sunDirection, pColor);
                     }
                     else {

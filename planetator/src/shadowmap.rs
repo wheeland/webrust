@@ -2,7 +2,7 @@ use cgmath::prelude::*;
 use cgmath::*;
 use tinygl::{Program, Texture, Uniform, OffscreenBuffer};
 
-static MAX_SHADOW_MAPS: usize = 4;
+static MAX_SHADOW_MAPS: usize = 6;
 
 fn glsl() -> String {
     String::from("
@@ -24,40 +24,65 @@ fn glsl() -> String {
         return mix(vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), f - 2.0);
     }
 
-    float shadow_litness(int level, vec2 tc, float compare) {
-        float depthSample = texture(shadowMapsPrevCurr[level].map, tc).x;
-        return smoothstep(-1.0, 0.0, (depthSample - compare) * shadowMapsPrevCurr[level].depth);
+    #define TEXSZ 256.0
+
+    float shadow_compare(sampler2D depths, vec2 uv, vec2 compare) {
+        float depth = texture2D(depths, uv).r;
+        return smoothstep(compare.x, compare.y, depth);
     }
 
-    bool shadow_getShadowForLevel(int level, vec3 pos, out float lit) {
+    float shadow_lerp(sampler2D depths, vec2 uv, vec2 compare) {
+        vec2 texelSize = vec2(1.0 / TEXSZ);
+        vec2 f = fract(uv * TEXSZ + 0.5);
+        vec2 centroidUV = floor(uv * TEXSZ + 0.5) / TEXSZ;
+
+        float lb = shadow_compare(depths, centroidUV + texelSize * vec2(0.0, 0.0), compare);
+        float lt = shadow_compare(depths, centroidUV + texelSize * vec2(0.0, 1.0), compare);
+        float rb = shadow_compare(depths, centroidUV + texelSize * vec2(1.0, 0.0), compare);
+        float rt = shadow_compare(depths, centroidUV + texelSize * vec2(1.0, 1.0), compare);
+        float a = mix(lb, lt, f.y);
+        float b = mix(rb, rt, f.y);
+        float c = mix(a, b, f.x);
+        return c;
+    }
+
+    bool shadow_getShadowForLevel(int level, vec3 pos, float dotSunNormal, int kernelSize, out float lit) {
         vec4 posInSunSpace = shadowMapsPrevCurr[level].mvp * vec4(pos, 1.0);
         posInSunSpace /= posInSunSpace.w;
         posInSunSpace = 0.5 * posInSunSpace + vec4(0.5);
 
-        if (all(greaterThan(posInSunSpace.xy, vec2(0.0))) && all(lessThan(posInSunSpace.xy, vec2(1.0)))) {
-            float kernel = 0.001;
+        vec2 compare = vec2(posInSunSpace.z - 0.1 / shadowMapsPrevCurr[level].depth, posInSunSpace.z);
+
+        if (all(greaterThan(posInSunSpace.xy, vec2(0.05))) && all(lessThan(posInSunSpace.xy, vec2(0.95)))) {
+            float kernelRadius = 0.5 / shadowMapsPrevCurr[level].depth;
+            kernelRadius = 1.0 / TEXSZ;
+
+            lit = shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
+            // lit = shadow_compare(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
+
             lit = 0.25 * (
-                1.0  * shadow_litness(level, posInSunSpace.xy + vec2( 0.0,  0.0) * kernel, posInSunSpace.z) +
-                0.5  * shadow_litness(level, posInSunSpace.xy + vec2(-1.0,  0.0) * kernel, posInSunSpace.z) +
-                0.5  * shadow_litness(level, posInSunSpace.xy + vec2( 1.0,  0.0) * kernel, posInSunSpace.z) +
-                0.5  * shadow_litness(level, posInSunSpace.xy + vec2( 0.0, -1.0) * kernel, posInSunSpace.z) +
-                0.5  * shadow_litness(level, posInSunSpace.xy + vec2( 0.0,  1.0) * kernel, posInSunSpace.z) +
-                0.25 * shadow_litness(level, posInSunSpace.xy + vec2( 1.0,  1.0) * kernel, posInSunSpace.z) +
-                0.25 * shadow_litness(level, posInSunSpace.xy + vec2( 1.0, -1.0) * kernel, posInSunSpace.z) +
-                0.25 * shadow_litness(level, posInSunSpace.xy + vec2(-1.0,  1.0) * kernel, posInSunSpace.z) +
-                0.25 * shadow_litness(level, posInSunSpace.xy + vec2(-1.0, -1.0) * kernel, posInSunSpace.z)
+                1.0  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 0.0,  0.0) * kernelRadius, compare) +
+                0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2(-1.0,  0.0) * kernelRadius, compare) +
+                0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 1.0,  0.0) * kernelRadius, compare) +
+                0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 0.0, -1.0) * kernelRadius, compare) +
+                0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 0.0,  1.0) * kernelRadius, compare) +
+                0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 1.0,  1.0) * kernelRadius, compare) +
+                0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 1.0, -1.0) * kernelRadius, compare) +
+                0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2(-1.0,  1.0) * kernelRadius, compare) +
+                0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2(-1.0, -1.0) * kernelRadius, compare)
             );
+
             return true;
         } else {
             return false;
         }
     }
 
-    float shadow_getShadowWithOffset(vec3 pos, int start, out vec3 color) {
+    float shadow_getShadowWithOffset(vec3 pos, float dotSunNormal, int start, int kernelSize, out vec3 color) {
         float lit = 0.0;
         int i = shadowMapCount - 1;
         while (i >= 0) {
-            if (shadow_getShadowForLevel(i + start, pos, lit))
+            if (shadow_getShadowForLevel(i + start, pos, dotSunNormal, kernelSize, lit))
                 break;
             --i;
         }
@@ -65,16 +90,20 @@ fn glsl() -> String {
         return lit;
     }
 
-    float getShadow(vec3 pos, out vec3 debugColor) {
+    float getShadow(vec3 pos, float dotSunNormal, float dist, out vec3 debugColor) {
         vec3 shadowMapDebugPrev, shadowMapDebugCurr;
 
-        float litPrev = shadow_getShadowWithOffset(pos, 0, shadowMapDebugPrev);
-        float litNext = shadow_getShadowWithOffset(pos, MAX_SHADOW_MAPS, shadowMapDebugCurr);
+        int kernelSize = clamp(int(log(1000.0 / dist)), 1, 2);
 
-        // interpolate..
-        float lit = mix(litPrev, litNext, shadowMapProgress);
-        float shadow = mix(0.7, 1.0, lit);
-        vec3 shadowMapDebug = mix(shadowMapDebugPrev, shadowMapDebugCurr, shadowMapProgress);
+        float litPrev = shadow_getShadowWithOffset(pos, dotSunNormal, 0, kernelSize, shadowMapDebugPrev);
+        float litNext = shadow_getShadowWithOffset(pos, dotSunNormal, MAX_SHADOW_MAPS, kernelSize, shadowMapDebugCurr);
+
+        debugColor = mix(shadowMapDebugPrev, shadowMapDebugCurr, shadowMapProgress);
+        float shadow = mix(litPrev, litNext, shadowMapProgress);
+
+        float sunCutOff = 0.2;
+        if (dotSunNormal < sunCutOff)
+            shadow *= max(dotSunNormal / sunCutOff, 0.0);
 
         return shadow;
     }
@@ -213,7 +242,7 @@ impl ShadowMap {
     }
 
     pub fn new(size: u32, radius: f32) -> Self {
-        let levels = 4;
+        let levels = 6;
 
         ShadowMap {
             radius,
