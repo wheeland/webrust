@@ -24,14 +24,29 @@ fn glsl() -> String {
         return mix(vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), f - 2.0);
     }
 
+    float shadow_litness(int level, vec2 tc, float compare) {
+        float depthSample = texture(shadowMapsPrevCurr[level].map, tc).x;
+        return smoothstep(-1.0, 0.0, (depthSample - compare) * shadowMapsPrevCurr[level].depth);
+    }
+
     bool shadow_getShadowForLevel(int level, vec3 pos, out float lit) {
         vec4 posInSunSpace = shadowMapsPrevCurr[level].mvp * vec4(pos, 1.0);
         posInSunSpace /= posInSunSpace.w;
         posInSunSpace = 0.5 * posInSunSpace + vec4(0.5);
 
         if (all(greaterThan(posInSunSpace.xy, vec2(0.0))) && all(lessThan(posInSunSpace.xy, vec2(1.0)))) {
-            float shadowMapSample = texture(shadowMapsPrevCurr[level].map, posInSunSpace.xy).x;
-            lit = smoothstep(-1.0, 0.0, (shadowMapSample - posInSunSpace.z) * shadowMapsPrevCurr[level].depth);
+            float kernel = 0.001;
+            lit = 0.25 * (
+                1.0  * shadow_litness(level, posInSunSpace.xy + vec2( 0.0,  0.0) * kernel, posInSunSpace.z) +
+                0.5  * shadow_litness(level, posInSunSpace.xy + vec2(-1.0,  0.0) * kernel, posInSunSpace.z) +
+                0.5  * shadow_litness(level, posInSunSpace.xy + vec2( 1.0,  0.0) * kernel, posInSunSpace.z) +
+                0.5  * shadow_litness(level, posInSunSpace.xy + vec2( 0.0, -1.0) * kernel, posInSunSpace.z) +
+                0.5  * shadow_litness(level, posInSunSpace.xy + vec2( 0.0,  1.0) * kernel, posInSunSpace.z) +
+                0.25 * shadow_litness(level, posInSunSpace.xy + vec2( 1.0,  1.0) * kernel, posInSunSpace.z) +
+                0.25 * shadow_litness(level, posInSunSpace.xy + vec2( 1.0, -1.0) * kernel, posInSunSpace.z) +
+                0.25 * shadow_litness(level, posInSunSpace.xy + vec2(-1.0,  1.0) * kernel, posInSunSpace.z) +
+                0.25 * shadow_litness(level, posInSunSpace.xy + vec2(-1.0, -1.0) * kernel, posInSunSpace.z)
+            );
             return true;
         } else {
             return false;
