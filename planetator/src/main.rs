@@ -52,6 +52,7 @@ struct MyApp {
     renderer: earth::renderer::Renderer,
     atmosphere: atmosphere::Atmosphere,
     postprocess: tinygl::Program,
+    blur_size: f32,
 
     fsquad: tinygl::shapes::FullscreenQuad,
 }
@@ -143,6 +144,7 @@ impl webrunner::WebApp for MyApp {
             sun_speed: 0.0,
             sun_lon: 0.0,
             sun_lat: 0.0,
+            blur_size: 1.0,
             renderer: earth::renderer::Renderer::new(),
             atmosphere: atmosphere::Atmosphere::new(),
             shadows: shadowmap::ShadowMap::new(256, 100.0),
@@ -277,6 +279,7 @@ impl webrunner::WebApp for MyApp {
         self.postprocess.bind();
         self.shadows.prepare_postprocess(&self.postprocess, 4);
         self.postprocess.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
+        self.postprocess.uniform("blurSize", tinygl::Uniform::Float(self.blur_size));
         self.postprocess.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
         self.postprocess.uniform("planetColor", tinygl::Uniform::Signed(0));
         self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
@@ -353,6 +356,7 @@ impl webrunner::WebApp for MyApp {
                 self.sun_speed = slideropt("Sun Rotation:", "sunrot", self.sun_speed, -90.0, 90.0, 2.0);
                 self.sun_lon = slideropt("Sun Longitude:", "sunlon", self.sun_lon, 0.0, 360.0, 1.0);
                 self.sun_lat = slideropt("Sun Latitude:", "sunlat", self.sun_lat, -45.0, 45.0, 1.0);
+                self.blur_size = slideropt("Shadow blur:", "shadowblur", self.blur_size, 1.0, 5.0, 1.0);
             });
 
         let planet_opt_win_size = (260.0, 300.0 + 24.0 * self.select_channels.len() as f32);

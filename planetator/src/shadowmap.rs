@@ -17,6 +17,8 @@ fn glsl() -> String {
     uniform int shadowMapCount;
     uniform float shadowMapProgress;
 
+    uniform float blurSize;
+
     vec3 shadow_getDebugColor(float f) {
         f *= 3.0;
         if (f < 1.0) return mix(vec3(1.0, 0.0, 0.0), vec3(1.0, 1.0, 0.0), f);
@@ -29,6 +31,37 @@ fn glsl() -> String {
     float shadow_compare(sampler2D depths, vec2 uv, vec2 compare) {
         float depth = texture2D(depths, uv).r;
         return smoothstep(compare.x, compare.y, depth);
+    }
+
+    // TODO: do kinda the same thing as in lerp, but not only 2x2, but with a proper wandering
+    // kernel of 3x3 or 4x4
+    // it doesnt have to be -1/+1, but can also be e.g. -2/+2 or be twisted around to acoomodate for
+    // the angle that the depth-cube was oriented
+    // problem: this must
+
+    // 4x4 kernel:
+    // each texel has a range of 2, not 1
+    // that means that for the interval ]0..1[, 4 pixels come into play, whose sum is 1.0
+    float shadow_blur(sampler2D depths, vec2 uv, vec2 compare) {
+        vec2 texelSize = vec2(1.0 / TEXSZ);
+        vec2 f = fract(uv * TEXSZ + 0.5);
+        vec2 centroidUV = floor(uv * TEXSZ + 0.5) / TEXSZ;
+
+        float total = 0.0;
+        float sum = 0.0;
+        int bound = int(ceil(blurSize)) - 1;
+
+        for (int i = -bound; i < 2 + bound; ++i) {
+            for (int j = -bound; j < 2 + bound; ++j) {
+                float shadowSample = shadow_compare(depths, centroidUV + texelSize * vec2(float(i), float(j)), compare);
+                float dx = max(1.0 - abs(float(i) - f.x) / blurSize, 0.0);
+                float dy = max(1.0 - abs(float(j) - f.y) / blurSize, 0.0);
+                total += dx * dy;
+                sum += shadowSample * dx * dy;
+            }
+        }
+
+        return sum / total;
     }
 
     float shadow_lerp(sampler2D depths, vec2 uv, vec2 compare) {
@@ -57,20 +90,21 @@ fn glsl() -> String {
             float kernelRadius = 0.5 / shadowMapsPrevCurr[level].depth;
             kernelRadius = 1.0 / TEXSZ;
 
-            lit = shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
+            // lit = shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
+            lit = shadow_blur(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
             // lit = shadow_compare(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
 
-            lit = 0.25 * (
-                1.0  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 0.0,  0.0) * kernelRadius, compare) +
-                0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2(-1.0,  0.0) * kernelRadius, compare) +
-                0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 1.0,  0.0) * kernelRadius, compare) +
-                0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 0.0, -1.0) * kernelRadius, compare) +
-                0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 0.0,  1.0) * kernelRadius, compare) +
-                0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 1.0,  1.0) * kernelRadius, compare) +
-                0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 1.0, -1.0) * kernelRadius, compare) +
-                0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2(-1.0,  1.0) * kernelRadius, compare) +
-                0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2(-1.0, -1.0) * kernelRadius, compare)
-            );
+            // lit = 0.25 * (
+            //     1.0  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 0.0,  0.0) * kernelRadius, compare) +
+            //     0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2(-1.0,  0.0) * kernelRadius, compare) +
+            //     0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 1.0,  0.0) * kernelRadius, compare) +
+            //     0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 0.0, -1.0) * kernelRadius, compare) +
+            //     0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 0.0,  1.0) * kernelRadius, compare) +
+            //     0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 1.0,  1.0) * kernelRadius, compare) +
+            //     0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 1.0, -1.0) * kernelRadius, compare) +
+            //     0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2(-1.0,  1.0) * kernelRadius, compare) +
+            //     0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2(-1.0, -1.0) * kernelRadius, compare)
+            // );
 
             return true;
         } else {
