@@ -47,3 +47,20 @@ todo
     - proper culling of the depth-rendered plates: need to do orthogonal culling (not frustum)
         -> send own culler object, enum { Frustum(..), Orthogonal(..) }
     - only use low-poly objects for depth pass
+
+- conceptually, this can be seen as a huge texture (seen from the sun) with different texture LODs
+- the different LODs can, but must not overlapt. they should not have spaces in between them, though
+- when rendering the final scene, we are moving inside this multi-layer 2D space
+- the only thing we can do here is to navigate this space
+- we start with a vec2f into this texture! there can be minification and magnification, just like normal textures
+- and in the end, it's a bool texture! either texel is either IN or OUT, given a specific depth to compare against
+- that means for each rendered pixel, we get a new IN/OUT map (with like a vaying depth-threshold applied to it)
+- imagine looking at the terrain with a (distorted) grid on top, where each grid-cell is BLACK or WHITE
+- all the filtering, interpolating etc. that we do would equally have to work on a regular 2D texture.
+    examples: gauss blur, linear filtering.
+-> it has to be continuous when switching from int(coords) -> int(coords) + 1!
+- look at quadrilear filtering (christoph)
+- can we use the second sun texture? it's just a different bool-map tho...
+
+-> step 1: make sure that the BLACK/WHITE texture is tight! no weird artifacts, depth offsets correctly, etc.
+-> the smaller sunDotN, the larger the offset
