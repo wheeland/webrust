@@ -148,7 +148,7 @@ impl webrunner::WebApp for MyApp {
             sun_lat: 0.0,
             renderer: earth::renderer::Renderer::new(),
             atmosphere: atmosphere::Atmosphere::new(),
-            shadows: shadowmap::ShadowMap::new(256, 100.0),
+            shadows: shadowmap::ShadowMap::new(1024, 100.0),
             shadows_size_step: 8,
             postprocess: tinygl::Program::new_versioned("
                 in vec2 vertex;
@@ -203,7 +203,7 @@ impl webrunner::WebApp for MyApp {
                         float shadow = 0.6 + 0.4 * getShadow(pPos, dotSun, dist, shadowMapDebugColor);
                         float slopeShadow = max(0.7 + 0.3 * dotSun, 0.0);
                         shadow *= slopeShadow;
-                        pColor = mix(shadowMapDebugColor, pColor, 0.7);
+                        // pColor = mix(shadowMapDebugColor, pColor, 0.7);
                         pColor *= shadow;
 
                         // calc atmospheric depth along view ray
@@ -364,7 +364,7 @@ impl webrunner::WebApp for MyApp {
                 //
                 ui.text("Shadow Map Size:");
                 ui.push_item_width(-1.0);
-                ui.slider_int(im_str!("##shadowmapsizeslider"), &mut self.shadows_size_step, 6, 11)
+                ui.slider_int(im_str!("##shadowmapsizeslider"), &mut self.shadows_size_step, 8, 12)
                         .display_format(im_str!("%.0f ({}x{})", self.shadows.size(), self.shadows.size()))
                         .build();
                 ui.pop_item_width();

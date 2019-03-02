@@ -41,7 +41,12 @@ fn glsl() -> String {
     the step-size
 
     the problem is that we definitely need a variable-sized filter kernel, as otherwise the areas between levels will look
-    distorted, because the one filter size is double the other
+    distorted, because the one filter size is double the other.
+
+    and if we do want to do that properly, and the camera is very close to the ground, and there are a lot of shadow-texels
+    covering the ground, then we need a filter kernel that iterates over a large swath of texel-space, so we need some
+    mechanism that does this _consistently_, meaning that it approximates a stable kernel filter function, e.g. by only
+    sampling every texel mod (4,4). this would give it stability w.r.t. movement
     */
     float shadow_blur(sampler2D depths, vec2 uv, vec2 compare, float radius) {
         vec2 texelSize = vec2(1.0 / shadowMapSize);
@@ -89,9 +94,7 @@ fn glsl() -> String {
         vec2 compare = vec2(posInSunSpace.z - 1.0 / shadowMapsPrevCurr[level].depth, posInSunSpace.z);
 
         if (all(greaterThan(posInSunSpace.xy, vec2(0.05))) && all(lessThan(posInSunSpace.xy, vec2(0.95)))) {
-            if (shadowBlurRadius < 0.5)
-                lit = shadow_compare(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
-            else if (shadowBlurRadius < 1.0)
+            if (shadowBlurRadius <= 1.0)
                 lit = shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
             else
                 lit = shadow_blur(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare, shadowBlurRadius);
