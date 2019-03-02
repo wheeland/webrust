@@ -17,8 +17,7 @@ fn glsl() -> String {
     uniform int shadowMapCount;
     uniform float shadowMapSize;
     uniform float shadowMapProgress;
-
-    uniform float blurSize;
+    uniform float shadowBlurRadius;
 
     vec3 shadow_getDebugColor(float f) {
         f *= 3.0;
@@ -40,21 +39,25 @@ fn glsl() -> String {
     after gathering all the distances, we can adjust the size of the kernel depending on that
     if the distances are very large, they will surely still be 4 texels away, so we can gradually increase
     the step-size
+
+    the problem is that we definitely need a variable-sized filter kernel, as otherwise the areas between levels will look
+    distorted, because the one filter size is double the other
     */
-    float shadow_blur(sampler2D depths, vec2 uv, vec2 compare) {
+    float shadow_blur(sampler2D depths, vec2 uv, vec2 compare, float radius) {
         vec2 texelSize = vec2(1.0 / shadowMapSize);
         vec2 f = fract(uv * shadowMapSize + 0.5);
         vec2 centroidUV = floor(uv * shadowMapSize + 0.5) / shadowMapSize;
 
         float total = 0.0;
         float sum = 0.0;
-        int bound = int(ceil(blurSize)) - 1;
+        int bound = int(ceil(radius)) - 1;
 
         for (int i = -bound; i < 2 + bound; ++i) {
+            float dx = max(1.0 - abs(float(i) - f.x) / radius, 0.0);
+
             for (int j = -bound; j < 2 + bound; ++j) {
                 float shadowSample = shadow_compare(depths, centroidUV + texelSize * vec2(float(i), float(j)), compare);
-                float dx = max(1.0 - abs(float(i) - f.x) / blurSize, 0.0);
-                float dy = max(1.0 - abs(float(j) - f.y) / blurSize, 0.0);
+                float dy = max(1.0 - abs(float(j) - f.y) / radius, 0.0);
                 total += dx * dy;
                 sum += shadowSample * dx * dy;
             }
@@ -78,32 +81,20 @@ fn glsl() -> String {
         return c;
     }
 
-    bool shadow_getShadowForLevel(int level, vec3 pos, float dotSunNormal, int kernelSize, out float lit) {
+    bool shadow_getShadowForLevel(int level, vec3 pos, float dotSunNormal, out float lit) {
         vec4 posInSunSpace = shadowMapsPrevCurr[level].mvp * vec4(pos, 1.0);
         posInSunSpace /= posInSunSpace.w;
         posInSunSpace = 0.5 * posInSunSpace + vec4(0.5);
 
-        vec2 compare = vec2(posInSunSpace.z - 0.1 / shadowMapsPrevCurr[level].depth, posInSunSpace.z);
+        vec2 compare = vec2(posInSunSpace.z - 1.0 / shadowMapsPrevCurr[level].depth, posInSunSpace.z);
 
         if (all(greaterThan(posInSunSpace.xy, vec2(0.05))) && all(lessThan(posInSunSpace.xy, vec2(0.95)))) {
-            float kernelRadius = 0.5 / shadowMapsPrevCurr[level].depth;
-            kernelRadius = 1.0 / shadowMapSize;
-
-            // lit = shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
-            lit = shadow_blur(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
-            // lit = shadow_compare(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
-
-            // lit = 0.25 * (
-            //     1.0  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 0.0,  0.0) * kernelRadius, compare) +
-            //     0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2(-1.0,  0.0) * kernelRadius, compare) +
-            //     0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 1.0,  0.0) * kernelRadius, compare) +
-            //     0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 0.0, -1.0) * kernelRadius, compare) +
-            //     0.5  * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 0.0,  1.0) * kernelRadius, compare) +
-            //     0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 1.0,  1.0) * kernelRadius, compare) +
-            //     0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2( 1.0, -1.0) * kernelRadius, compare) +
-            //     0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2(-1.0,  1.0) * kernelRadius, compare) +
-            //     0.25 * shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy + vec2(-1.0, -1.0) * kernelRadius, compare)
-            // );
+            if (shadowBlurRadius < 0.5)
+                lit = shadow_compare(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
+            else if (shadowBlurRadius < 1.0)
+                lit = shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
+            else
+                lit = shadow_blur(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare, shadowBlurRadius);
 
             return true;
         } else {
@@ -111,11 +102,11 @@ fn glsl() -> String {
         }
     }
 
-    float shadow_getShadowWithOffset(vec3 pos, float dotSunNormal, int start, int kernelSize, out vec3 color) {
+    float shadow_getShadowWithOffset(vec3 pos, float dotSunNormal, int start, out vec3 color) {
         float lit = 0.0;
         int i = shadowMapCount - 1;
         while (i >= 0) {
-            if (shadow_getShadowForLevel(i + start, pos, dotSunNormal, kernelSize, lit))
+            if (shadow_getShadowForLevel(i + start, pos, dotSunNormal, lit))
                 break;
             --i;
         }
@@ -124,12 +115,14 @@ fn glsl() -> String {
     }
 
     float getShadow(vec3 pos, float dotSunNormal, float dist, out vec3 debugColor) {
+        // if the surface is not facing the sun, it's shadow anyway.
+        if (dotSunNormal < 0.0)
+            return 0.0;
+
         vec3 shadowMapDebugPrev, shadowMapDebugCurr;
 
-        int kernelSize = clamp(int(log(1000.0 / dist)), 1, 2);
-
-        float litPrev = shadow_getShadowWithOffset(pos, dotSunNormal, 0, kernelSize, shadowMapDebugPrev);
-        float litNext = shadow_getShadowWithOffset(pos, dotSunNormal, MAX_SHADOW_MAPS, kernelSize, shadowMapDebugCurr);
+        float litPrev = shadow_getShadowWithOffset(pos, dotSunNormal, 0, shadowMapDebugPrev);
+        float litNext = shadow_getShadowWithOffset(pos, dotSunNormal, MAX_SHADOW_MAPS, shadowMapDebugCurr);
 
         debugColor = mix(shadowMapDebugPrev, shadowMapDebugCurr, shadowMapProgress);
         float shadow = mix(litPrev, litNext, shadowMapProgress);
@@ -157,39 +150,43 @@ struct ShadowCascade {
 }
 
 impl ShadowCascade {
-    fn new(size: u32, level: i32, max_radius: f32) -> Self {
+    fn new(size: u32, level: i32, extent: f32) -> Self {
         // Create FBO
         let mut fbo = OffscreenBuffer::new((size as _, size as _));
         fbo.add_depth_texture();
-        fbo.add("depth", gl::R32F, gl::RED, gl::FLOAT);
+        // fbo.add("depth", gl::R32F, gl::RED, gl::FLOAT);
         {
-            let tex = fbo.texture_mut("depth").unwrap();
+            // let tex = fbo.texture_mut("depth").unwrap();
+            let tex = fbo.depth_texture_mut().unwrap();
             tex.bind();
             tex.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
             tex.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
             tex.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
             tex.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
+            // tex.filter(gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
+            // tex.filter(gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
         }
 
         let mut ret = ShadowCascade {
             level,
             fbo,
-            extent: 0.0,
+            extent,
             granularity: 0.0,
             orthogonal_depth: 0.0,
             center: Vector3::new(0.0, 0.0, 0.0),
             projection: Matrix4::from_scale(1.0)
         };
-        ret.set_radius(max_radius);
+        ret.set_extent(extent);
         ret
     }
 
     fn depth_texture(&self) -> &Texture {
-        self.fbo.texture("depth").unwrap()
+        // self.fbo.texture("depth").unwrap()
+        self.fbo.depth_texture().unwrap()
     }
 
-    fn set_radius(&mut self, max_radius: f32) {
-        self.extent = max_radius * 0.45f32.powi(self.level as i32);
+    fn set_extent(&mut self, extent: f32) {
+        self.extent = extent;
         self.granularity = 2.0 * self.extent / self.fbo.size().0 as f32;
         self.orthogonal_depth = self.extent * 20.0;
     }
@@ -261,7 +258,9 @@ pub struct CascadeInfo {
 pub struct ShadowMap {
     size: u32,
     levels: i32,
+    level_scale: f32,
     radius: f32,
+    blur_radius: f32,
     program: Program,
 
     prev: Option<SunPositionCascades>,
@@ -277,11 +276,14 @@ impl ShadowMap {
 
     pub fn new(size: u32, radius: f32) -> Self {
         let levels = 6;
+        let level_scale = 0.4;
 
-        ShadowMap {
+        let mut ret = ShadowMap {
             size,
             radius,
+            blur_radius: 1.0,
             levels,
+            level_scale,
             program: Program::new_versioned("
                 in vec4 posHeight;
                 uniform float radius;
@@ -291,10 +293,10 @@ impl ShadowMap {
                     vec3 pos = posHeight.xyz * (posHeight.w + radius);
                     gl_Position = mvp * vec4(pos, 1.0);
                 }",
-                "out float depth;
+                "//out float depth;
                 void main()
                 {
-                    depth = gl_FragCoord.z;
+                    //depth = gl_FragCoord.z;
                 }",
                 300
             ),
@@ -302,7 +304,26 @@ impl ShadowMap {
             curr: Some(SunPositionCascades::new(size, radius, levels)),
             next: Some(SunPositionCascades::new(size, radius, levels)),
             next_sun_direction: Vector3::new(0.0, 0.0, 1.0),
+        };
+
+        ret.scale_cascades();
+
+        ret
+    }
+
+    fn scale_cascades(&mut self) {
+        for lvl in 0..self.levels {
+            let extent = self.radius * 1.1 * self.level_scale.powi(lvl);
+            self.prev.as_mut().unwrap().cascades[lvl as usize].set_extent(extent);
+            self.curr.as_mut().unwrap().cascades[lvl as usize].set_extent(extent);
+            self.next.as_mut().unwrap().cascades[lvl as usize].set_extent(extent);
         }
+    }
+
+    fn create_cascades(&mut self) {
+        self.prev = Some(SunPositionCascades::new(self.size, self.radius, self.levels));
+        self.curr = Some(SunPositionCascades::new(self.size, self.radius, self.levels));
+        self.next = Some(SunPositionCascades::new(self.size, self.radius, self.levels));
     }
 
     pub fn size(&self) -> u32 {
@@ -312,19 +333,47 @@ impl ShadowMap {
     pub fn set_size(&mut self, size: u32) {
         if self.size != size {
             self.size = size;
-            self.prev = Some(SunPositionCascades::new(size, self.radius, self.levels));
-            self.curr = Some(SunPositionCascades::new(size, self.radius, self.levels));
-            self.next = Some(SunPositionCascades::new(size, self.radius, self.levels));
+            self.create_cascades();
+            self.scale_cascades();
         }
     }
 
     pub fn set_radius(&mut self, radius: f32) {
         if self.radius != radius {
             self.radius = radius;
-            for mut cascade in &mut self.prev.as_mut().unwrap().cascades { cascade.set_radius(radius); }
-            for mut cascade in &mut self.curr.as_mut().unwrap().cascades { cascade.set_radius(radius); }
-            for mut cascade in &mut self.next.as_mut().unwrap().cascades { cascade.set_radius(radius); }
+            self.scale_cascades();
         }
+    }
+
+    pub fn levels(&self) -> i32 {
+        self.levels
+    }
+
+    pub fn set_levels(&mut self, levels: i32) {
+        if self.levels != levels {
+            self.levels = levels;
+            self.create_cascades();
+            self.scale_cascades();
+        }
+    }
+
+    pub fn level_scale(&self) -> f32 {
+        self.level_scale
+    }
+
+    pub fn set_level_scale(&mut self, level_scale: f32) {
+        if self.level_scale != level_scale {
+            self.level_scale = level_scale;
+            self.scale_cascades();
+        }
+    }
+
+    pub fn blur_radius(&self) -> f32 {
+        self.blur_radius
+    }
+
+    pub fn set_blur_radius(&mut self, blur_radius: f32) {
+        self.blur_radius = blur_radius;
     }
 
     pub fn push_sun_direction(&mut self, direction: Vector3<f32>) {
@@ -348,6 +397,8 @@ impl ShadowMap {
         &mut self.get_sun_cascades(which.tp).cascades[which.index]
     }
 
+    // TODO: make this dependent on the time passed. i.e. make sure to render 1 new texture every N ms, so
+    // that the movement of the sun is stable
     pub fn prepare_render(
         &mut self,
         eye: Vector3<f32>,
@@ -462,5 +513,6 @@ impl ShadowMap {
         program.uniform("shadowMapCount", Uniform::Signed(self.levels));
         program.uniform("shadowMapSize", Uniform::Float(self.size as f32));
         program.uniform("shadowMapProgress", Uniform::Float(progress));
+        program.uniform("shadowBlurRadius", Uniform::Float(self.blur_radius));
     }
 }

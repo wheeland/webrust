@@ -51,7 +51,6 @@ struct MyApp {
 
     shadows: shadowmap::ShadowMap,
     shadows_size_step: i32,
-    blur_size: f32,
 
     renderer: earth::renderer::Renderer,
     atmosphere: atmosphere::Atmosphere,
@@ -147,7 +146,6 @@ impl webrunner::WebApp for MyApp {
             sun_speed: 0.0,
             sun_lon: 0.0,
             sun_lat: 0.0,
-            blur_size: 1.0,
             renderer: earth::renderer::Renderer::new(),
             atmosphere: atmosphere::Atmosphere::new(),
             shadows: shadowmap::ShadowMap::new(256, 100.0),
@@ -284,7 +282,6 @@ impl webrunner::WebApp for MyApp {
         self.postprocess.bind();
         self.shadows.prepare_postprocess(&self.postprocess, 4);
         self.postprocess.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
-        self.postprocess.uniform("blurSize", tinygl::Uniform::Float(self.blur_size));
         self.postprocess.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
         self.postprocess.uniform("planetColor", tinygl::Uniform::Signed(0));
         self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
@@ -310,7 +307,7 @@ impl webrunner::WebApp for MyApp {
 
         ui.window(im_str!("renderstats"))
             .flags(ImGuiWindowFlags::NoResize | ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoTitleBar | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar)
-            .size((150.0, 430.0), ImGuiCond::Always)
+            .size((150.0, 530.0), ImGuiCond::Always)
             .position((0.0, 80.0), ImGuiCond::Always)
             .build(|| {
                 ui.text(format!("Plates: {}", self.renderer.rendered_plates()));
@@ -321,7 +318,7 @@ impl webrunner::WebApp for MyApp {
                 ui.checkbox(im_str!("No Update"), &mut self.renderer.no_update_plates);
                 ui.checkbox(im_str!("Cull Backside"), &mut self.renderer.hide_backside);
 
-                let slideropt = |text, id, value, min, max, power| -> f32 {
+                let slideroptf = |text, id, value, min, max, power| -> f32 {
                     let mut value = value;
                     ui.text(text);
                     ui.push_item_width(-1.0);
@@ -330,7 +327,7 @@ impl webrunner::WebApp for MyApp {
                     value
                 };
 
-                let detail = slideropt("Vertex Detail:", "vertexdetail", self.renderer.vertex_detail(), 0.0, 1.0, 1.0);
+                let detail = slideroptf("Vertex Detail:", "vertexdetail", self.renderer.vertex_detail(), 0.0, 1.0, 1.0);
                 self.renderer.set_vertex_detail(detail);
 
                 //
@@ -358,13 +355,12 @@ impl webrunner::WebApp for MyApp {
                 //
                 // Sun Settings
                 //
-                self.sun_speed = slideropt("Sun Rotation:", "sunrot", self.sun_speed, -90.0, 90.0, 2.0);
-                self.sun_lon = slideropt("Sun Longitude:", "sunlon", self.sun_lon, 0.0, 360.0, 1.0);
-                self.sun_lat = slideropt("Sun Latitude:", "sunlat", self.sun_lat, -45.0, 45.0, 1.0);
-                self.blur_size = slideropt("Shadow blur:", "shadowblur", self.blur_size, 1.0, 5.0, 1.0);
+                self.sun_speed = slideroptf("Sun Rotation:", "sunrot", self.sun_speed, -90.0, 90.0, 2.0);
+                self.sun_lon = slideroptf("Sun Longitude:", "sunlon", self.sun_lon, 0.0, 360.0, 1.0);
+                self.sun_lat = slideroptf("Sun Latitude:", "sunlat", self.sun_lat, -45.0, 45.0, 1.0);
 
                 //
-                // shadow map size
+                // shadow map settings
                 //
                 ui.text("Shadow Map Size:");
                 ui.push_item_width(-1.0);
@@ -373,6 +369,17 @@ impl webrunner::WebApp for MyApp {
                         .build();
                 ui.pop_item_width();
                 self.shadows.set_size(2u32.pow(self.shadows_size_step as u32));
+
+                ui.text("Shadow Map Levels:");
+                let mut smlcount = self.shadows.levels();
+                let mut smlscale = self.shadows.level_scale();
+                ui.slider_int(im_str!("Count##shadowmaplevels"), &mut smlcount, 2, 6).build();
+                ui.slider_float(im_str!("Scale##shadowmaplevels"), &mut smlscale, 0.2, 0.8).build();
+                self.shadows.set_levels(smlcount);
+                self.shadows.set_level_scale(smlscale);
+
+                let smblur = slideroptf("Shadow Blur:", "shadowblurradius", self.shadows.blur_radius(), 0.0, 5.0, 1.0);
+                self.shadows.set_blur_radius(smblur);
             });
 
         let planet_opt_win_size = (260.0, 300.0 + 24.0 * self.select_channels.len() as f32);
