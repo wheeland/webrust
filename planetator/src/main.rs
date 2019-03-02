@@ -371,7 +371,10 @@ impl webrunner::WebApp for MyApp {
                 // Slider for Plate Size and Planet Radius
                 //
                 let mut depth = self.renderer.depth();
-                if ui.slider_int(im_str!("Plate Size##platesizeslider"), &mut depth, 3, 7).build() {
+                let platesz = 2i32.pow(self.renderer.depth() as u32);
+                if ui.slider_int(im_str!("Plate Size##platesizeslider"), &mut depth, 3, 7)
+                        .display_format(im_str!("%.0f ({}x{})", platesz, platesz))
+                        .build() {
                     self.renderer.set_depth(depth);
                 }
 
