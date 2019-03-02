@@ -185,7 +185,7 @@ impl Renderer {
             wireframe: false,
             reduce_poly_count: true,
             no_update_plates: false,
-            hide_backside: true,
+            hide_backside: false,
             vertex_detail: 0.5,
 
             rendered_plates: 0,

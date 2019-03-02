@@ -4,6 +4,7 @@ texturing
 
 TODO
     - reduce raleigh backscattering 
+    - fix back culling
 
 graphical effects
     - general:
@@ -15,7 +16,7 @@ graphical effects
         https://nlguillemot.wordpress.com/2016/12/07/reversed-z-in-opengl/
     - color terrain based on average incoming sun color (based on optical depth texture)
     - (fog)
-    - shadows: do the 'ol classic shadow mapping, but LODdy
+    x shadows: do the 'ol classic shadow mapping, but LODdy
     - clouds
     - depth of field blur
     - final tone mapping / HDR-to-RGB8
