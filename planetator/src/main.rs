@@ -2,6 +2,7 @@ extern crate gl;
 extern crate tinygl;
 extern crate sdl2;
 extern crate imgui;
+extern crate imgui_sys;
 extern crate cgmath;
 extern crate lru_cache;
 extern crate appbase;
@@ -304,9 +305,10 @@ impl webrunner::WebApp for MyApp {
         self.fps.render(ui, (0.0, 0.0), (200.0, 80.0));
 
         ui.window(im_str!("renderstats"))
-            .flags(ImGuiWindowFlags::NoResize | ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoTitleBar | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar)
-            .size((150.0, 530.0), ImGuiCond::Always)
+            .flags(ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoTitleBar | ImGuiWindowFlags::NoSavedSettings)
+            .size((200.0, 300.0), ImGuiCond::Appearing)
             .position((0.0, 80.0), ImGuiCond::Always)
+            .constraints((200.0, 200.0), (1000.0, 1000.0))
             .build(|| {
                 // Triangulation settings
                 if ui.collapsing_header(im_str!("Triangulation")).default_open(false).build() {
