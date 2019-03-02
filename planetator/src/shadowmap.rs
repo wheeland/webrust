@@ -305,6 +305,19 @@ impl ShadowMap {
         }
     }
 
+    pub fn size(&self) -> u32 {
+        self.size
+    }
+
+    pub fn set_size(&mut self, size: u32) {
+        if self.size != size {
+            self.size = size;
+            self.prev = Some(SunPositionCascades::new(size, self.radius, self.levels));
+            self.curr = Some(SunPositionCascades::new(size, self.radius, self.levels));
+            self.next = Some(SunPositionCascades::new(size, self.radius, self.levels));
+        }
+    }
+
     pub fn set_radius(&mut self, radius: f32) {
         if self.radius != radius {
             self.radius = radius;

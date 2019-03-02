@@ -48,11 +48,14 @@ struct MyApp {
     sun_speed: f32,
     sun_lon: f32,
     sun_lat: f32,
+
     shadows: shadowmap::ShadowMap,
+    shadows_size_step: i32,
+    blur_size: f32,
+
     renderer: earth::renderer::Renderer,
     atmosphere: atmosphere::Atmosphere,
     postprocess: tinygl::Program,
-    blur_size: f32,
 
     fsquad: tinygl::shapes::FullscreenQuad,
 }
@@ -148,6 +151,7 @@ impl webrunner::WebApp for MyApp {
             renderer: earth::renderer::Renderer::new(),
             atmosphere: atmosphere::Atmosphere::new(),
             shadows: shadowmap::ShadowMap::new(256, 100.0),
+            shadows_size_step: 8,
             postprocess: tinygl::Program::new_versioned("
                 in vec2 vertex;
                 out vec2 clipPos;
@@ -306,7 +310,7 @@ impl webrunner::WebApp for MyApp {
 
         ui.window(im_str!("renderstats"))
             .flags(ImGuiWindowFlags::NoResize | ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoTitleBar | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar)
-            .size((150.0, 400.0), ImGuiCond::Always)
+            .size((150.0, 430.0), ImGuiCond::Always)
             .position((0.0, 80.0), ImGuiCond::Always)
             .build(|| {
                 ui.text(format!("Plates: {}", self.renderer.rendered_plates()));
@@ -358,6 +362,17 @@ impl webrunner::WebApp for MyApp {
                 self.sun_lon = slideropt("Sun Longitude:", "sunlon", self.sun_lon, 0.0, 360.0, 1.0);
                 self.sun_lat = slideropt("Sun Latitude:", "sunlat", self.sun_lat, -45.0, 45.0, 1.0);
                 self.blur_size = slideropt("Shadow blur:", "shadowblur", self.blur_size, 1.0, 5.0, 1.0);
+
+                //
+                // shadow map size
+                //
+                ui.text("Shadow Map Size:");
+                ui.push_item_width(-1.0);
+                ui.slider_int(im_str!("##shadowmapsizeslider"), &mut self.shadows_size_step, 6, 11)
+                        .display_format(im_str!("%.0f ({}x{})", self.shadows.size(), self.shadows.size()))
+                        .build();
+                ui.pop_item_width();
+                self.shadows.set_size(2u32.pow(self.shadows_size_step as u32));
             });
 
         let planet_opt_win_size = (260.0, 300.0 + 24.0 * self.select_channels.len() as f32);
