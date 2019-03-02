@@ -15,6 +15,7 @@ fn glsl() -> String {
     #define MAX_SHADOW_MAPS ") + &MAX_SHADOW_MAPS.to_string() + "
     uniform ShadowMap shadowMapsPrevCurr[2 * MAX_SHADOW_MAPS];
     uniform int shadowMapCount;
+    uniform float shadowMapSize;
     uniform float shadowMapProgress;
 
     uniform float blurSize;
@@ -26,26 +27,24 @@ fn glsl() -> String {
         return mix(vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), f - 2.0);
     }
 
-    #define TEXSZ 256.0
-
     float shadow_compare(sampler2D depths, vec2 uv, vec2 compare) {
         float depth = texture2D(depths, uv).r;
         return smoothstep(compare.x, compare.y, depth);
     }
 
-    // TODO: do kinda the same thing as in lerp, but not only 2x2, but with a proper wandering
-    // kernel of 3x3 or 4x4
-    // it doesnt have to be -1/+1, but can also be e.g. -2/+2 or be twisted around to acoomodate for
-    // the angle that the depth-cube was oriented
-    // problem: this must
-
-    // 4x4 kernel:
-    // each texel has a range of 2, not 1
-    // that means that for the interval ]0..1[, 4 pixels come into play, whose sum is 1.0
+    /*
+    TODO:
+    we look at our filter region (may be small initially) and gather all the distances (sample / shadowmap.depth)
+    if the distances are large, that means that we want to draw a smooth shadow = large radius
+    if the distances are small, we want a sharp shadow = small radius
+    after gathering all the distances, we can adjust the size of the kernel depending on that
+    if the distances are very large, they will surely still be 4 texels away, so we can gradually increase
+    the step-size
+    */
     float shadow_blur(sampler2D depths, vec2 uv, vec2 compare) {
-        vec2 texelSize = vec2(1.0 / TEXSZ);
-        vec2 f = fract(uv * TEXSZ + 0.5);
-        vec2 centroidUV = floor(uv * TEXSZ + 0.5) / TEXSZ;
+        vec2 texelSize = vec2(1.0 / shadowMapSize);
+        vec2 f = fract(uv * shadowMapSize + 0.5);
+        vec2 centroidUV = floor(uv * shadowMapSize + 0.5) / shadowMapSize;
 
         float total = 0.0;
         float sum = 0.0;
@@ -65,9 +64,9 @@ fn glsl() -> String {
     }
 
     float shadow_lerp(sampler2D depths, vec2 uv, vec2 compare) {
-        vec2 texelSize = vec2(1.0 / TEXSZ);
-        vec2 f = fract(uv * TEXSZ + 0.5);
-        vec2 centroidUV = floor(uv * TEXSZ + 0.5) / TEXSZ;
+        vec2 texelSize = vec2(1.0 / shadowMapSize);
+        vec2 f = fract(uv * shadowMapSize + 0.5);
+        vec2 centroidUV = floor(uv * shadowMapSize + 0.5) / shadowMapSize;
 
         float lb = shadow_compare(depths, centroidUV + texelSize * vec2(0.0, 0.0), compare);
         float lt = shadow_compare(depths, centroidUV + texelSize * vec2(0.0, 1.0), compare);
@@ -88,7 +87,7 @@ fn glsl() -> String {
 
         if (all(greaterThan(posInSunSpace.xy, vec2(0.05))) && all(lessThan(posInSunSpace.xy, vec2(0.95)))) {
             float kernelRadius = 0.5 / shadowMapsPrevCurr[level].depth;
-            kernelRadius = 1.0 / TEXSZ;
+            kernelRadius = 1.0 / shadowMapSize;
 
             // lit = shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
             lit = shadow_blur(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
@@ -260,6 +259,7 @@ pub struct CascadeInfo {
 }
 
 pub struct ShadowMap {
+    size: u32,
     levels: i32,
     radius: f32,
     program: Program,
@@ -279,6 +279,7 @@ impl ShadowMap {
         let levels = 6;
 
         ShadowMap {
+            size,
             radius,
             levels,
             program: Program::new_versioned("
@@ -446,6 +447,7 @@ impl ShadowMap {
         let sun_direction = (1.0 - progress) * self.prev.as_ref().unwrap().sun_direction + progress * self.curr.as_ref().unwrap().sun_direction;
         program.uniform("sunDirection", Uniform::Vec3(sun_direction.normalize()));
         program.uniform("shadowMapCount", Uniform::Signed(self.levels));
+        program.uniform("shadowMapSize", Uniform::Float(self.size as f32));
         program.uniform("shadowMapProgress", Uniform::Float(progress));
     }
 }
