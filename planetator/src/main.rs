@@ -330,27 +330,7 @@ impl webrunner::WebApp for MyApp {
                 let detail = slideroptf("Vertex Detail:", "vertexdetail", self.renderer.vertex_detail(), 0.0, 1.0, 1.0);
                 self.renderer.set_vertex_detail(detail);
 
-                //
-                // Atmoshpere Settings
-                //
-                let atmopt = |label, id, max, mut h, mut beta: [f32;3]| {
-                    ui.text(label);
-                    ui.color_edit(im_str!("#{}color", id), &mut beta)
-                        .inputs(false)
-                        .label(false)
-                        .build();
-                    ui.same_line(40.0);
-                    ui.push_item_width(-1.0);
-                    ui.slider_float(im_str!("#{}slider", id), &mut h, 0.0, max).build();
-                    ui.pop_item_width();
-                    (h, beta)
-                };
-                let raleigh = atmopt("Atmosphere Raleigh", "raleigh", 10.0, self.atmosphere.hr(), self.atmosphere.beta_r().into());
-                let mie = atmopt("Atmosphere Mie", "mie", 1.0, self.atmosphere.hm(), self.atmosphere.beta_m().into());
-                self.atmosphere.set_hr(raleigh.0);
-                self.atmosphere.set_hm(mie.0);
-                self.atmosphere.set_beta_r(raleigh.1);
-                self.atmosphere.set_beta_m(mie.1);
+                self.atmosphere.options(ui);
 
                 //
                 // Sun Settings

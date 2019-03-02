@@ -1,6 +1,7 @@
 use imgui::*;
 use cgmath::{Vector3};
 use tinygl::{Program, Texture, Uniform, OffscreenBuffer};
+use super::guiutil;
 
 pub struct Atmosphere {
     hr: f32,
@@ -10,8 +11,12 @@ pub struct Atmosphere {
     beta_mul: f32,
     beta_exp: f32,
 
+    num_samples: i32,
+
     sun_optical_depth: (f32, Option<Texture>),
+    sun_optical_depth_size: i32,
     sun_optical_depth_program: Program,
+
     fsquad: tinygl::shapes::FullscreenQuad,
 }
 
@@ -120,14 +125,14 @@ fn glsl_render() -> String {
     uniform vec3 atmosphereBetaM;
     uniform sampler2D atmosphereOptDepth;
 
+    uniform int atmosphereNumSamples;
+
     ")
     + &glsl_utils() +
     "
 
     vec3 computeIncidentLight(vec3 orig, vec3 dir, float tmin, float tmax, vec3 sunDirection, vec3 color)
     {
-        int numSamples = 16;
-
         // mie and rayleigh contribution
         vec3 sumR = vec3(0.0);
         vec3 sumM = vec3(0.0);
@@ -138,9 +143,9 @@ fn glsl_render() -> String {
         float g = 0.76;
         float phaseM = 3.0 / (8.0 * 3.14159) * ((1.0 - g * g) * (1.0 + mu * mu)) / ((2.0 + g * g) * pow(1.0 + g * g - 2.0 * g * mu, 1.5));
 
-        for (int i = 0; i < numSamples; ++i) {
-            float t = mix(tmin, tmax, (float(i) + 0.5) / float(numSamples));
-            float segmentLength = (tmax - tmin) / float(numSamples);
+        for (int i = 0; i < atmosphereNumSamples; ++i) {
+            float t = mix(tmin, tmax, (float(i) + 0.5) / float(atmosphereNumSamples));
+            float segmentLength = (tmax - tmin) / float(atmosphereNumSamples);
 
             vec3 samplePosition = orig + t * dir;
             float height = max(length(samplePosition) - planetRadius, 0.0);
@@ -212,7 +217,9 @@ impl Atmosphere {
             beta_m: Vector3::new(0.4, 0.4, 0.4),
             beta_mul: 40.0,
             beta_exp: 2.0,
+            num_samples: 16,
             sun_optical_depth: (0.0, None),
+            sun_optical_depth_size: 7,
             sun_optical_depth_program: Program::new(&glsl_depthgen_vs(), &glsl_depthgen_fs()),
             fsquad: tinygl::shapes::FullscreenQuad::new(),
         }
@@ -229,7 +236,9 @@ impl Atmosphere {
     pub fn prepare_shader(&mut self, program: &Program, radius: f32, tex_unit: u32) {
         // (Create and) bind optical depth texture
         if self.sun_optical_depth.0 != radius || self.sun_optical_depth.1.is_none() {
-            self.sun_optical_depth = (radius, Some(self.generate_optical_depth_texture(radius, (128, 128))));
+            let texsz = 2i32.pow(self.sun_optical_depth_size as _);
+            let tex = self.generate_optical_depth_texture(radius, (texsz, texsz));
+            self.sun_optical_depth = (radius, Some(tex));
         }
         self.sun_optical_depth.1.as_mut().unwrap().bind_at(tex_unit);
 
@@ -242,6 +251,7 @@ impl Atmosphere {
         program.uniform("atmosphereHm", Uniform::Float(self.hm.max(0.000001)));
         program.uniform("atmosphereBetaR", Uniform::Vec3(self.beta(self.beta_r, radius)));
         program.uniform("atmosphereBetaM", Uniform::Vec3(self.beta(self.beta_m, radius)));
+        program.uniform("atmosphereNumSamples", Uniform::Signed(self.num_samples));
     }
 
     pub fn shader_source() -> String {
@@ -252,9 +262,19 @@ impl Atmosphere {
     pub fn hm(&self) -> f32 { self.hm }
     pub fn beta_r(&self) -> Vector3<f32> { self.beta_r }
     pub fn beta_m(&self) -> Vector3<f32>  { self.beta_m }
+    pub fn num_samples(&self) -> i32 { self.num_samples }
+    pub fn texture_size(&self) -> i32 { self.sun_optical_depth_size }
 
     pub fn set_beta_r<V: Into<Vector3<f32>>>(&mut self, v: V) { self.beta_r = v.into(); }
     pub fn set_beta_m<V: Into<Vector3<f32>>>(&mut self, v: V) { self.beta_m = v.into(); }
+    pub fn set_num_samples(&mut self, samples: i32) { self.num_samples = samples; }
+
+    pub fn set_texture_size(&mut self, size: i32) {
+        if self.sun_optical_depth_size != size {
+            self.sun_optical_depth_size = size;
+            self.sun_optical_depth = (0.0, None);
+        }
+    }
 
     pub fn set_hr(&mut self, hr: f32) {
         if self.hr != hr {
@@ -268,5 +288,36 @@ impl Atmosphere {
             self.hm = hm;
             self.sun_optical_depth = (0.0, None);
         }
+    }
+
+    pub fn options_size() -> f32 {
+        200.0
+    }
+
+    pub fn options(&mut self, ui: &imgui::Ui) {
+        let atmopt = |label, id, max, mut h, mut beta: [f32;3]| {
+            ui.text(label);
+            ui.color_edit(im_str!("##{}color", id), &mut beta)
+                .inputs(false)
+                .label(false)
+                .build();
+            ui.same_line(40.0);
+            ui.push_item_width(-1.0);
+            ui.slider_float(im_str!("##{}slider", id), &mut h, 0.0, max).build();
+            ui.pop_item_width();
+            (h, beta)
+        };
+
+        let raleigh = atmopt("Raleigh Scattering", "raleigh", 10.0, self.hr(), self.beta_r().into());
+        let mie = atmopt("Mie Scattering", "mie", 1.0, self.hm(), self.beta_m().into());
+        self.set_hr(raleigh.0);
+        self.set_hm(mie.0);
+        self.set_beta_r(raleigh.1);
+        self.set_beta_m(mie.1);
+
+        let texsz = guiutil::slider_exp2int(ui, "Texture Size", self.sun_optical_depth_size, (6, 10));
+        self.set_texture_size(texsz);
+
+        self.num_samples = guiutil::slider_int(ui, "Samples", self.num_samples, (4, 64));
     }
 }
