@@ -32,6 +32,15 @@ pub fn slider_int(ui: &imgui::Ui, id: &str, value: i32, minmax: (i32, i32)) -> i
     value
 }
 
+pub fn slider_float(ui: &imgui::Ui, text: &str, value: f32, minmax: (f32, f32), power: f32) -> f32 {
+    let mut value = value;
+    ui.text(text);
+    ui.push_item_width(-1.0);
+    ui.slider_float(im_str!("##{}slider", text), &mut value, minmax.0, minmax.1).power(power).build();
+    ui.pop_item_width();
+    value
+}
+
 struct ShaderEditCallbackData {
     keymod: sdl2::keyboard::Mod,
     pos_line: usize,

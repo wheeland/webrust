@@ -50,7 +50,6 @@ struct MyApp {
     sun_lat: f32,
 
     shadows: shadowmap::ShadowMap,
-    shadows_size_step: i32,
 
     renderer: earth::renderer::Renderer,
     atmosphere: atmosphere::Atmosphere,
@@ -148,8 +147,7 @@ impl webrunner::WebApp for MyApp {
             sun_lat: 0.0,
             renderer: earth::renderer::Renderer::new(),
             atmosphere: atmosphere::Atmosphere::new(),
-            shadows: shadowmap::ShadowMap::new(1024, 100.0),
-            shadows_size_step: 8,
+            shadows: shadowmap::ShadowMap::new(100.0),
             postprocess: tinygl::Program::new_versioned("
                 in vec2 vertex;
                 out vec2 clipPos;
@@ -310,56 +308,36 @@ impl webrunner::WebApp for MyApp {
             .size((150.0, 530.0), ImGuiCond::Always)
             .position((0.0, 80.0), ImGuiCond::Always)
             .build(|| {
-                ui.text(format!("Plates: {}", self.renderer.rendered_plates()));
-                ui.text(format!("Triangles: {}", guiutil::format_number( self.renderer.rendered_triangles() as _)));
-                ui.separator();
+                // Triangulation settings
+                if ui.collapsing_header(im_str!("Triangulation")).default_open(false).build() {
+                    ui.text(format!("Plates: {}", self.renderer.rendered_plates()));
+                    ui.text(format!("Triangles: {}", guiutil::format_number( self.renderer.rendered_triangles() as _)));
+                    ui.separator();
 
-                ui.checkbox(im_str!("Wireframe"), &mut self.renderer.wireframe);
-                ui.checkbox(im_str!("No Update"), &mut self.renderer.no_update_plates);
-                ui.checkbox(im_str!("Cull Backside"), &mut self.renderer.hide_backside);
+                    ui.checkbox(im_str!("Wireframe"), &mut self.renderer.wireframe);
+                    ui.checkbox(im_str!("No Update"), &mut self.renderer.no_update_plates);
+                    ui.checkbox(im_str!("Cull Backside"), &mut self.renderer.hide_backside);
 
-                let slideroptf = |text, id, value, min, max, power| -> f32 {
-                    let mut value = value;
-                    ui.text(text);
-                    ui.push_item_width(-1.0);
-                    ui.slider_float(im_str!("##{}", id), &mut value, min, max).power(power).build();
-                    ui.pop_item_width();
-                    value
-                };
+                    let detail = guiutil::slider_float(ui, "Vertex Detail:", self.renderer.vertex_detail(), (0.0, 1.0), 1.0);
+                    self.renderer.set_vertex_detail(detail);
+                }
 
-                let detail = slideroptf("Vertex Detail:", "vertexdetail", self.renderer.vertex_detail(), 0.0, 1.0, 1.0);
-                self.renderer.set_vertex_detail(detail);
+                // Atmosphere settings
+                if ui.collapsing_header(im_str!("Atmosphere")).default_open(false).build() {
+                    self.atmosphere.options(ui);
+                }
 
-                self.atmosphere.options(ui);
-
-                //
                 // Sun Settings
-                //
-                self.sun_speed = slideroptf("Sun Rotation:", "sunrot", self.sun_speed, -90.0, 90.0, 2.0);
-                self.sun_lon = slideroptf("Sun Longitude:", "sunlon", self.sun_lon, 0.0, 360.0, 1.0);
-                self.sun_lat = slideroptf("Sun Latitude:", "sunlat", self.sun_lat, -45.0, 45.0, 1.0);
+                if ui.collapsing_header(im_str!("Sun")).default_open(false).build() {
+                    self.sun_speed = guiutil::slider_float(ui, "Rotation:", self.sun_speed, (-90.0, 90.0), 2.0);
+                    self.sun_lon = guiutil::slider_float(ui, "Longitude:", self.sun_lon, (0.0, 360.0), 1.0);
+                    self.sun_lat = guiutil::slider_float(ui, "Latitude:", self.sun_lat, (-45.0, 45.0), 1.0);
+                }
 
-                //
                 // shadow map settings
-                //
-                ui.text("Shadow Map Size:");
-                ui.push_item_width(-1.0);
-                ui.slider_int(im_str!("##shadowmapsizeslider"), &mut self.shadows_size_step, 8, 12)
-                        .display_format(im_str!("%.0f ({}x{})", self.shadows.size(), self.shadows.size()))
-                        .build();
-                ui.pop_item_width();
-                self.shadows.set_size(2u32.pow(self.shadows_size_step as u32));
-
-                ui.text("Shadow Map Levels:");
-                let mut smlcount = self.shadows.levels();
-                let mut smlscale = self.shadows.level_scale();
-                ui.slider_int(im_str!("Count##shadowmaplevels"), &mut smlcount, 2, 6).build();
-                ui.slider_float(im_str!("Scale##shadowmaplevels"), &mut smlscale, 0.2, 0.8).build();
-                self.shadows.set_levels(smlcount);
-                self.shadows.set_level_scale(smlscale);
-
-                let smblur = slideroptf("Shadow Blur:", "shadowblurradius", self.shadows.blur_radius(), 0.0, 5.0, 1.0);
-                self.shadows.set_blur_radius(smblur);
+                if ui.collapsing_header(im_str!("Shadow Mapping")).default_open(false).build() {
+                    self.shadows.options(ui);
+                }
             });
 
         let planet_opt_win_size = (260.0, 300.0 + 24.0 * self.select_channels.len() as f32);

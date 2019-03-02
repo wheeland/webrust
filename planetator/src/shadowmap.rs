@@ -1,6 +1,7 @@
 use cgmath::prelude::*;
 use cgmath::*;
 use tinygl::{Program, Texture, Uniform, OffscreenBuffer};
+use super::guiutil;
 
 static MAX_SHADOW_MAPS: usize = 6;
 
@@ -260,7 +261,7 @@ pub struct CascadeInfo {
 }
 
 pub struct ShadowMap {
-    size: u32,
+    size_step: u32,
     levels: i32,
     level_scale: f32,
     radius: f32,
@@ -278,12 +279,14 @@ impl ShadowMap {
         glsl()
     }
 
-    pub fn new(size: u32, radius: f32) -> Self {
+    pub fn new(radius: f32) -> Self {
         let levels = 6;
         let level_scale = 0.4;
 
+        let size = 2u32.pow(8);
+
         let mut ret = ShadowMap {
-            size,
+            size_step: 8,
             radius,
             blur_radius: 1.0,
             levels,
@@ -325,18 +328,20 @@ impl ShadowMap {
     }
 
     fn create_cascades(&mut self) {
-        self.prev = Some(SunPositionCascades::new(self.size, self.radius, self.levels));
-        self.curr = Some(SunPositionCascades::new(self.size, self.radius, self.levels));
-        self.next = Some(SunPositionCascades::new(self.size, self.radius, self.levels));
+        let size = 2u32.pow(self.size_step as _);
+        self.prev = Some(SunPositionCascades::new(size, self.radius, self.levels));
+        self.curr = Some(SunPositionCascades::new(size, self.radius, self.levels));
+        self.next = Some(SunPositionCascades::new(size, self.radius, self.levels));
     }
 
-    pub fn size(&self) -> u32 {
-        self.size
+    pub fn size_step(&self) -> u32 {
+        self.size_step
     }
 
-    pub fn set_size(&mut self, size: u32) {
-        if self.size != size {
-            self.size = size;
+    pub fn set_size_step(&mut self, size: u32) {
+        if self.size_step != size {
+            self.size_step = size;
+            let size = 2u32.pow(self.size_step as _);
             self.create_cascades();
             self.scale_cascades();
         }
@@ -515,8 +520,24 @@ impl ShadowMap {
         let sun_direction = (1.0 - progress) * self.prev.as_ref().unwrap().sun_direction + progress * self.curr.as_ref().unwrap().sun_direction;
         program.uniform("sunDirection", Uniform::Vec3(sun_direction.normalize()));
         program.uniform("shadowMapCount", Uniform::Signed(self.levels));
-        program.uniform("shadowMapSize", Uniform::Float(self.size as f32));
+        program.uniform("shadowMapSize", Uniform::Float(2u32.pow(self.size_step as _) as f32));
         program.uniform("shadowMapProgress", Uniform::Float(progress));
         program.uniform("shadowBlurRadius", Uniform::Float(self.blur_radius));
+    }
+
+    pub fn options(&mut self, ui: &imgui::Ui) {
+        let mapsz = guiutil::slider_exp2int(ui, "Shadow Map Size:", self.size_step as _, (8, 12));
+        self.set_size_step(mapsz as _);
+
+        ui.text("Shadow Map Levels:");
+        let mut smlcount = self.levels();
+        let mut smlscale = self.level_scale();
+        ui.slider_int(imgui::im_str!("Count##shadowmaplevels"), &mut smlcount, 2, 6).build();
+        ui.slider_float(imgui::im_str!("Scale##shadowmaplevels"), &mut smlscale, 0.2, 0.8).build();
+        self.set_levels(smlcount);
+        self.set_level_scale(smlscale);
+
+        let smblur = guiutil::slider_float(ui, "Shadow Blur:", self.blur_radius(), (0.0, 5.0), 1.0);
+        self.set_blur_radius(smblur);
     }
 }
