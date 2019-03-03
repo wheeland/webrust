@@ -9,6 +9,16 @@ enum Move {
     Right,
 }
 
+impl Move {
+    fn direction(&self) -> i32 {
+        match self {
+            Move::None => 0,
+            Move::Left => -1,
+            Move::Right => 1,
+        }
+    }
+}
+
 pub enum Outcome {
     HorizonalMove,
     Merge,
@@ -30,11 +40,13 @@ pub struct Game {
     timestamp: i32,
     lost: Option<(i32, i32)>,
 
+    are: bool,
     drop_timer: i32,
     left: bool,
     right: bool,
+
     movekey: Move,
-    just_moved: bool,
+    new_movekey: Move,
     das: i32,
 
     down_pressed: bool,
@@ -72,12 +84,14 @@ impl Game {
             timestamp,
             lost: None,
 
+            are: false,
             drop_timer: -90,
-            movekey: Move::None,
             left: false,
             right: false,
+
+            movekey: Move::None,
+            new_movekey: Move::None,
             das: 0,
-            just_moved: false,
 
             down: 0,
             down_pressed: false,
@@ -110,26 +124,13 @@ impl Game {
     }
 
     fn update_move(&mut self) {
-        let movekey = if self.left && !self.right {
+        self.new_movekey = if self.left && !self.right {
             Move::Left
         } else if !self.left && self.right {
             Move::Right
         } else {
             Move::None
         };
-
-        if movekey != self.movekey {
-            self.movekey = movekey;
-
-            // try move piece
-            if movekey != Move::None {
-                let direction = if movekey == Move::Left { -1 } else { 1 };
-                self.just_moved = self.try_move(None, direction, 0);
-
-                // init DAS
-                self.das = if self.just_moved { self.config.das_initial } else { 0 };
-            }
-        }
     }
 
     pub fn left(&mut self, pressed: bool) {
@@ -181,6 +182,7 @@ impl Game {
 
             // adjust timers
             self.drop_timer = -self.state.snapshot().are_duration().unwrap();
+            self.are = true;
             self.down = 0;
 
             let animation = self.state.snapshot().animation();
@@ -196,43 +198,83 @@ impl Game {
     pub fn frame(&mut self) -> Option<Outcome> {
         self.timestamp += 1;
 
-        let mut ret = if self.just_moved { Some(Outcome::HorizonalMove) } else { None };
-        self.just_moved = false;
+        let mut outcome = None;
 
-        // update DAS movement
-        if self.movekey != Move::None && self.das <= 0 {
-            let direction = if self.movekey == Move::Left { -1 } else { 1 };
-            if self.try_move(None, direction, 0) {
-                self.das = self.config.das_step;
-                ret = Some(Outcome::HorizonalMove);
-            }
-        }
-        self.das -= 1;
+        //
+        // ARE: we only really allow changing the DAS direction and count down
+        //
+        if self.are {
+            self.movekey = self.new_movekey;
 
-        // If we ARE in ARE, count down and possibly start next tile
-        // only move tiles down if ARE is finished
-        let are_start = self.state.snapshot().timestamp();
-        let mut are_we_are = false;
-        if let Some(duration) = self.state.snapshot().are_duration() {
-            if are_start + duration < self.timestamp {
+            let are_start = self.state.snapshot().timestamp();
+            let are_duration = self.state.snapshot().are_duration().expect("We should be in ARE");
+
+            let new_are = if are_start + are_duration < self.timestamp {
                 self.replay.add_new_piece(self.timestamp);
+
                 if !self.state.start_new_piece(self.timestamp) {
                     let last_breath = self.state.snapshot();
                     self.lost = Some((last_breath.score(), last_breath.level()));
-                    ret = Some(Outcome::Death);
+                    outcome = Some(Outcome::Death);
                 }
+
                 self.drop_timer = 0;   // re-set gravity timer
-            } else {
-                are_we_are = true;
+                false
+            }
+            else {
+                true
+            };
+
+            self.are = new_are;
+            return outcome;
+        }
+
+        //
+        // Non-ARE: Pressed Lef/Right down? -> Horizontal tile movement and update DAS
+        //
+        if self.movekey != self.new_movekey {
+            self.movekey = self.new_movekey;
+            let direction = self.movekey.direction();
+
+            if direction != 0 {
+                self.das = if self.try_move(None, direction, 0) {
+                    outcome = Some(Outcome::HorizonalMove);
+                    0
+                } else {
+                    self.config.das_initial
+                };
+            }
+        }
+        //
+        // DAS Horizontal Movement
+        //
+        else {
+            let direction = self.movekey.direction();
+
+            // DAS += 1
+            if direction != 0 {
+                self.das = (self.das + 1).min(self.config.das_initial);
+            }
+
+            // Try to move, if DAS is full
+            if direction != 0 && self.das == self.config.das_initial {
+                if self.try_move(None, direction, 0) {
+                    outcome = Some(Outcome::HorizonalMove);
+                    self.das = self.config.das_initial - self.config.das_step;
+                }
             }
         }
 
+        //
         // Compute gravity for current level
+        //
         let gravity = self.state.snapshot().level();
         let gravity = gravity.min(self.config.gravity.len() as i32 - 1);
         let gravity = *self.config.gravity.get(gravity as usize).unwrap();
 
+        //
         // update soft drop
+        //
         let mut move_down = false;
         if self.down > 0 && self.down_das <= 0 {
             self.drop_timer = gravity;
@@ -242,23 +284,22 @@ impl Game {
         }
         self.down_das -= 1;
 
-        if !are_we_are {
-            self.drop_timer += 1;
+        // drop piece by gravity?
+        self.drop_timer += 1;
 
-            // If down is not pressed, we might want to move down becaue of gravity
-            if !self.down_pressed && self.drop_timer >= gravity {
-                move_down = true;
-            }
-
-            if move_down {
-                if let Some(downret) = self.move_down() {
-                    ret = Some(downret);
-                }
-                self.drop_timer = 0;
-            }
+        // If down is not pressed, we might want to move down becaue of gravity
+        if !self.down_pressed && self.drop_timer >= gravity {
+            move_down = true;
         }
 
-        ret
+        if move_down {
+            if let Some(downret) = self.move_down() {
+                outcome = Some(downret);
+            }
+            self.drop_timer = 0;
+        }
+
+        outcome
     }
 
     pub fn snapshot(&self) -> &Snapshot {
