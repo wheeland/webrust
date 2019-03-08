@@ -34,6 +34,7 @@ use cgmath::prelude::*;
 
 struct MyApp {
     windowsize: (u32, u32),
+    errors: Vec<String>,
 
     keyboard: HashMap<Keycode, bool>,
     current_mouse_press: Option<(i32, i32)>,
@@ -96,7 +97,7 @@ impl MyApp {
                     self.select_channels = select_channels.clone();
                 }
                 _ => {
-                    println!("Couldn't parse savegame");
+                    self.errors.push(String::from("Couldn't parse planet data"));
                     return;
                 }
             }
@@ -107,6 +108,8 @@ impl MyApp {
             let new_channels = earth::Channels::new(&self.select_channels);
             self.renderer.set_generator_and_channels(&self.edit_generator.to_str(), &new_channels);
             self.renderer.set_colorator(&self.edit_colorator.to_str());
+        } else {
+            self.errors.push(String::from("Couldn't deserialize planet data"));
         }
     }
 }
@@ -135,6 +138,7 @@ impl webrunner::WebApp for MyApp {
 
         MyApp {
             windowsize,
+            errors: Vec::new(),
             keyboard: HashMap::new(),
             savegame,
             current_mouse_press: None,
@@ -476,6 +480,16 @@ impl webrunner::WebApp for MyApp {
         if self.edit_colorator.render(ui, self.renderer.errors_colorator(), keymod) {
             if self.renderer.set_colorator(&self.edit_colorator.to_str()) {
                 self.edit_colorator.works();
+            }
+        }
+
+        //
+        // show Errors Pop-ups
+        //
+        let err = self.errors.first().map(|strref| strref.to_string());
+        if let Some(err) = err {
+            if guiutil::error_popup(ui, &err, self.windowsize) {
+                self.errors.remove(0);
             }
         }
     }
