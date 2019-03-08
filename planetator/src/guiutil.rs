@@ -41,6 +41,37 @@ pub fn slider_float(ui: &imgui::Ui, text: &str, value: f32, minmax: (f32, f32), 
     value
 }
 
+pub fn error_popup(ui: &imgui::Ui, message: &str, windowsize: (u32, u32)) -> bool {
+    let sx = 240.0;
+    let sy = 120.0;
+
+    let mut imstring = ImString::with_capacity(message.len() * 4);
+    imstring.push_str(message);
+
+    let mut ret = false;
+
+    ui.window(im_str!("##errorwindow"))
+        .title_bar(false)
+        .resizable(false)
+        .movable(false)
+        .save_settings(false)
+        .scroll_bar(false)
+        .size((sx, sy), ImGuiCond::Always)
+        .position((0.5 * (windowsize.0 as f32 - sx), 0.5 * (windowsize.1 as f32 - sy)), ImGuiCond::Always)
+        .build(|| {
+            ui.set_cursor_pos((10.0, 10.0));
+            ui.input_text_multiline(im_str!("##errorwindowtext"), &mut imstring, (sx - 20.0, sy - 50.0 ))
+                .read_only(true)
+                .build();
+            ui.set_cursor_pos((0.5 * sx - 50.0, sy - 30.0));
+            if ui.button(im_str!("Okay.."), (100.0, 20.0)) {
+                ret = true;
+            }
+        });
+
+    ret
+}
+
 struct ShaderEditCallbackData {
     keymod: sdl2::keyboard::Mod,
     pos_line: usize,
