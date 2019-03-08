@@ -35,6 +35,7 @@ pub fn run_javascript(code: &str) {
     #[cfg(target_os = "emscripten")]
         {
             let code = code.replace("\n", " ");
+            let code = code.replace("\"", "\\\"");
             let code = String::from("try { eval(\"") + &code + "\"); } catch (error) { console.log('Error: ' + error); }";
             let code = std::ffi::CString::new(code).unwrap();
 
