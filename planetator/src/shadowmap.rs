@@ -28,7 +28,7 @@ fn glsl() -> String {
     }
 
     float shadow_compare(sampler2D depths, vec2 uv, vec2 compare) {
-        float depth = texture2D(depths, uv).r;
+        float depth = texture(depths, uv).r;
         return smoothstep(compare.x, compare.y, depth);
     }
 
@@ -165,11 +165,11 @@ impl ShadowCascade {
             tex.bind();
             tex.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
             tex.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
-            tex.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
-            tex.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
+            // tex.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
+            // tex.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
             unsafe { gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_COMPARE_MODE, gl::NONE as _) }
-            // tex.filter(gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
-            // tex.filter(gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
+            tex.filter(gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
+            tex.filter(gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
         }
 
         let mut ret = ShadowCascade {
