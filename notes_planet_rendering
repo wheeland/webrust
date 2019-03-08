@@ -15,8 +15,11 @@ graphical effects
     - proper depth and shit
         https://nlguillemot.wordpress.com/2016/12/07/reversed-z-in-opengl/
     - color terrain based on average incoming sun color (based on optical depth texture)
+        - this can be a simple cubemap!
+        - could also be used as input for PBR rendering materials?
     - (fog)
     x shadows: do the 'ol classic shadow mapping, but LODdy
+    - external textures, and compute 2D UV mapping in postprocess generator already
     - clouds
     - depth of field blur
     - final tone mapping / HDR-to-RGB8
@@ -24,6 +27,7 @@ graphical effects
     - water rendering
     - stars
     - rain/snow with splashes
+    - sort planes according to Z value to prevent overdraw
 
 references
     http://advances.realtimerendering.com
@@ -31,3 +35,9 @@ references
 
 examples
     https://www.youtube.com/watch?v=-L_C3VMt4wM
+
+textures
+    - additional entries in planet window
+    - add from URL or upload, give name
+    - list them, with name and image
+    - access them in shader via name

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use cgmath::prelude::*;
 use cgmath::*;
 use super::super::culling;
@@ -28,8 +29,9 @@ pub struct Renderer {
     generator: String,
     channels: Channels,
 
-    // the colorator may fail to compile (this may happen after removing a channel), but we'll just fall-back
+    // the colorator may fail to compile (this may happen after removing a channel or texture), but we'll just fall-back
     colorator: String,
+    textures: HashMap<String, tinygl::Texture>,
 
     fbo: Option<tinygl::OffscreenBuffer>,
 
@@ -39,7 +41,7 @@ pub struct Renderer {
     errors_colorator: Option<String>,
 }
 
-fn create_render_program(colorator: &str, channels: &Channels) -> tinygl::Program {
+fn create_render_program(colorator: &str, channels: &Channels, textures: &HashMap<String, tinygl::Texture>) -> tinygl::Program {
     let vert_source = "
             uniform mat4 mvp;
             uniform float radius;
@@ -79,6 +81,12 @@ fn create_render_program(colorator: &str, channels: &Channels) -> tinygl::Progra
             acc + x.0 + " = texture(texture_" + x.0 + ", tc)" + &swizzler + ";\n"
         });
 
+    let tex_declarations = textures
+        .iter()
+        .fold(String::new(), |acc, tex| {
+            acc + "uniform sampler2D " + tex.0 + ";\n"
+        });
+
     let frag_source = String::from("
             uniform float wf;
             uniform sampler2D normals;
@@ -90,7 +98,8 @@ fn create_render_program(colorator: &str, channels: &Channels) -> tinygl::Progra
             layout(location = 2) out vec4 outPosition;
 
             ") + &super::noise::ShaderNoise::declarations() + "\n"
-            + &chan_declarations + "
+            + &chan_declarations
+            + &tex_declarations + "
             \n#line 1\n" + colorator + "
 
             " + &super::noise::ShaderNoise::definitions() + "
@@ -176,7 +185,7 @@ impl Renderer {
         let mut ret = Renderer {
             camera: FlyCamera::new(100.0),
             program: None,
-            default_program: create_render_program(&colorator, &channels),
+            default_program: create_render_program(&colorator, &channels, &HashMap::new()),
 
             planet: None,
             planet_depth: 6,
@@ -196,6 +205,7 @@ impl Renderer {
             generator: default_generator(),
             channels,
             colorator,
+            textures: HashMap::new(),
 
             errors_generator: None,
             errors_channels: None,
@@ -269,7 +279,7 @@ impl Renderer {
     }
 
     pub fn set_colorator(&mut self, colorator: &str) -> bool {
-        let new_program = create_render_program(colorator, &self.channels);
+        let new_program = create_render_program(colorator, &self.channels, &self.textures);
         let ret = new_program.valid();
 
         if ret {
@@ -300,25 +310,42 @@ impl Renderer {
         ret
     }
 
+    fn recreate_proram(&mut self) {
+        // need to check if our colorator still fits with all those new channels and textures coming in
+        let new_program = create_render_program(&self.colorator, &self.channels, &self.textures);
+
+        if new_program.valid() {
+            self.errors_colorator = None;
+            self.program = Some(new_program);
+        } else {
+            self.errors_colorator = Some(new_program.fragment_log());
+            self.program = None;
+        }
+    }
+
     pub fn set_channels(&mut self, channels: &Channels, generator: &str) -> bool {
         let ret = self.create_planet(generator, channels, true);
 
         if ret {
             self.generator = generator.to_string();
             self.channels = channels.clone();
-
-            // need to check if our colorator still fits with all those new channels coming in
-            let new_program = create_render_program(&self.colorator, &self.channels);
-
-            if new_program.valid() {
-                self.errors_colorator = None;
-                self.program = Some(new_program);
-            } else {
-                self.errors_colorator = Some(new_program.fragment_log());
-                self.program = None;
-            }
+            self.recreate_proram();
         }
         ret
+    }
+
+    pub fn add_texture(&mut self, name: &str, texture: tinygl::Texture) {
+        self.textures.insert(name.to_string(), texture);
+        self.recreate_proram();
+    }
+
+    pub fn remove_texture(&mut self, name: &str) {
+        self.textures.remove(name);
+        self.recreate_proram();
+    }
+
+    pub fn textures(&self) -> &HashMap<String, tinygl::Texture> {
+        &self.textures
     }
 
     pub fn render(&mut self, windowsize: (u32, u32)){
