@@ -43,6 +43,16 @@ pub fn run_javascript(code: &str) {
         }
 }
 
+pub fn set_overlay_position(name: &str, pos: (f32, f32), size: (f32, f32)) {
+    run_javascript(&format!("
+        var state = document.getElementById('{}');
+        state.style.left = '{}px';
+        state.style.top = '{}px';
+        state.style.width = '{}px';
+        state.style.height = '{}px';
+    ", name, pos.0 as i32, pos.1 as i32, size.0 as i32, size.1 as i32));
+}
+
 #[cfg(target_os = "emscripten")]
 unsafe extern fn loop_wrapper<T: WebApp>(arg: *mut c_void) {
     let runner = arg as *mut AppRunner<T>;

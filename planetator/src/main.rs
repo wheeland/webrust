@@ -134,7 +134,7 @@ impl webrunner::WebApp for MyApp {
                     }
                 }
             }
-        fileloading_web::start_upload("state");
+        fileloading_web::start_upload("input_loadsavegame");
 
         MyApp {
             windowsize,
@@ -236,10 +236,10 @@ impl webrunner::WebApp for MyApp {
         //
         // check for uploads
         //
-        let state_data = fileloading_web::get_result("state");
+        let state_data = fileloading_web::get_result("input_loadsavegame");
         if let Some(state_data) = state_data {
             let serialized = unsafe { String::from_utf8_unchecked(state_data.1) };
-            self.savegame = Some((state_data.0.clone(), serialized));
+            self.restore_state(&serialized);
         }
 
         //
@@ -379,15 +379,9 @@ impl webrunner::WebApp for MyApp {
                     fileloading_web::download("planet.json", &self.save_state());
                 }
                 ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
-                if let Some(savegame) = self.savegame.take() {
-                    if ui.button(im_str!("Load: {}##planet", savegame.0), (160.0, 20.0)) {
-                        self.restore_state(&savegame.1);
-                    } else {
-                        self.savegame = Some(savegame);
-                    }
-                } else {
-                    ui.button(im_str!("Load##planet"), (160.0, 20.0));
-                }
+                let curr_pos = ui.get_cursor_screen_pos();
+                webrunner::set_overlay_position("input_loadsavegame", curr_pos, (160.0, 20.0));
+                ui.button(im_str!("Load##planet"), (160.0, 20.0));
                 ui.spacing(); ui.separator();
 
                 //

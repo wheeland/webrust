@@ -4,7 +4,6 @@
         <meta charset="utf-8"/>
         <title></title>
         <style>
-            canvas { width: 100vw; height: 100vh; border: 0px none; background-color: black; }
             body {    
                 margin: 0 !important;
                 padding: 0 !important;
@@ -12,16 +11,49 @@
             html {
                overflow-y: hidden;
             }
+            canvas { 
+                width: 100%;
+                height: 100%;
+                position: absolute;
+                top: 0;
+                left: 0;
+            }
+            #container {
+                width: 100vw
+                height: 100vh
+                border: 0px none
+              position: relative;
+            }   
+            #canvdiv
+            #overlaydiv {
+              width: 100%;
+              height: 100%;
+              position: absolute;
+              top: 0;
+              left: 0;
+            }
+            #overlaydiv {
+              z-index: 10
+            }
         </style>
     </head>
     <body>
-        <input type="file" id="state"/>
-        <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+        <div id="container">
+            <div id="canvdiv">
+                <canvas id="canvelem" class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+            </div>
+            <div id="overlaydiv">
+                <input type="file" id="input_texupload" style="width: 0px; height: 0px; position: absolute; top: 0; left: 0; opacity: 0.0"/>
+                <input type="file" id="input_loadsavegame" style="width: 0px; height: 0px; position: absolute; top: 0; left: 0; opacity: 0.0"/>
+            </div>
+        </div>
+        
         <script>
             var Module = {
             canvas: document.querySelector('canvas')
             }
         </script>
+        
         <script type="text/javascript" src="target/asmjs-unknown-emscripten/release/planetator.js"></script>
     </body>
 </html>
