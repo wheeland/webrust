@@ -41,6 +41,18 @@ pub fn slider_float(ui: &imgui::Ui, text: &str, value: f32, minmax: (f32, f32), 
     value
 }
 
+pub fn textinput(ui: &imgui::Ui, id: &str, value: &mut String, capacity: usize) -> bool {
+    let mut entry = ImString::with_capacity(capacity);
+    entry.push_str(&value);
+
+    let ret = ui.input_text(im_str!("{}", id), &mut entry).build();
+    if ret {
+        value.clear();
+        value.push_str(entry.to_str());
+    }
+    ret
+}
+
 pub fn error_popup(ui: &imgui::Ui, message: &str, windowsize: (u32, u32)) -> bool {
     let sx = 240.0;
     let sy = 120.0;

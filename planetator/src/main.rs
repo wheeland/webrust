@@ -421,12 +421,9 @@ impl webrunner::WebApp for MyApp {
                 let mut changed = false;
                 for chan in self.select_channels.iter_mut().enumerate() {
                     ui.push_item_width(-1.0);
-                    let mut entry = ImString::with_capacity(16);
-                    entry.push_str(&(chan.1).0);
-                    if ui.input_text(im_str!("##channame{}", chan.0), &mut entry).build() {
+                    if guiutil::textinput(ui, &format!("##channame{}", chan.0), &mut (chan.1).0, 16) {
                         changed = true;
                     }
-                    (chan.1).0 = entry.to_str().to_string();
                     ui.pop_item_width();
                     ui.next_column();
 
