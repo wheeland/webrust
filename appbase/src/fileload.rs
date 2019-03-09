@@ -1,3 +1,5 @@
+extern crate base64;
+
 use std::ffi::{CStr, CString};
 use std::io::Write;
 use std::os::raw::{c_char, c_int};
@@ -62,8 +64,6 @@ pub fn get_result(element: &str) -> Option<(String, Vec<u8>)> {
 }
 
 pub fn download(name: &str, data: &str) {
-    let encoded = base64::encode(data);
-
     #[cfg(not(target_os = "emscripten"))]
         {
             std::fs::write(name, data);
@@ -71,6 +71,8 @@ pub fn download(name: &str, data: &str) {
 
     #[cfg(target_os = "emscripten")]
         {
+            let encoded = base64::encode(data);
+
             let command = format!("
                 var element = document.createElement('a');
                 element.setAttribute('href', 'data:application/octet-stream;charset=utf-8;base64,{}');

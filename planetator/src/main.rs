@@ -13,12 +13,12 @@ extern crate serde_json;
 #[macro_use] extern crate serde_derive;
 
 use appbase::webrunner;
+use appbase::fileload;
 use appbase::imgui_renderer;
 
 mod earth;
 mod culling;
 mod guiutil;
-mod fileloading_web;
 mod atmosphere;
 mod shadowmap;
 mod savegames;
@@ -136,7 +136,9 @@ impl webrunner::WebApp for MyApp {
                     }
                 }
             }
-        fileloading_web::start_upload(HTML_INPUT_PLANET);
+
+        fileload::start_upload(HTML_INPUT_PLANET);
+        fileload::start_upload(HTML_INPUT_TEXTURE);
 
         MyApp {
             windowsize,
@@ -369,7 +371,7 @@ impl webrunner::WebApp for MyApp {
                 //
                 ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
                 if ui.button(im_str!("Save##planet"), (160.0, 20.0)) {
-                    fileloading_web::download("planet.json", &self.save_state());
+                    fileload::download("planet.json", &self.save_state());
                 }
                 ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
                 let curr_pos = ui.get_cursor_screen_pos();
@@ -378,7 +380,7 @@ impl webrunner::WebApp for MyApp {
                 ui.spacing(); ui.separator();
 
                 // check for uploads
-                if let Some(state_data) = fileloading_web::get_result(HTML_INPUT_PLANET) {
+                if let Some(state_data) = fileload::get_result(HTML_INPUT_PLANET) {
                     let serialized = unsafe { String::from_utf8_unchecked(state_data.1) };
                     self.restore_state(&serialized);
                 }
