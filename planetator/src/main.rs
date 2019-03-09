@@ -32,6 +32,8 @@ use imgui::*;
 use appbase::fpswidget::FpsWidget;
 use cgmath::prelude::*;
 
+const HTML_INPUT_PLANET: &str = "input_loadsavegame";
+
 struct MyApp {
     windowsize: (u32, u32),
     errors: Vec<String>,
@@ -134,7 +136,7 @@ impl webrunner::WebApp for MyApp {
                     }
                 }
             }
-        fileloading_web::start_upload("input_loadsavegame");
+        fileloading_web::start_upload(HTML_INPUT_PLANET);
 
         MyApp {
             windowsize,
@@ -232,15 +234,6 @@ impl webrunner::WebApp for MyApp {
     fn render(&mut self, dt: f32) {
         self.fps.push(dt);
         let radius = self.renderer.radius();
-
-        //
-        // check for uploads
-        //
-        let state_data = fileloading_web::get_result("input_loadsavegame");
-        if let Some(state_data) = state_data {
-            let serialized = unsafe { String::from_utf8_unchecked(state_data.1) };
-            self.restore_state(&serialized);
-        }
 
         //
         // advance camera
@@ -380,9 +373,15 @@ impl webrunner::WebApp for MyApp {
                 }
                 ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
                 let curr_pos = ui.get_cursor_screen_pos();
-                webrunner::set_overlay_position("input_loadsavegame", curr_pos, (160.0, 20.0));
+                webrunner::set_overlay_position(HTML_INPUT_PLANET, curr_pos, (160.0, 20.0));
                 ui.button(im_str!("Load##planet"), (160.0, 20.0));
                 ui.spacing(); ui.separator();
+
+                // check for uploads
+                if let Some(state_data) = fileloading_web::get_result(HTML_INPUT_PLANET) {
+                    let serialized = unsafe { String::from_utf8_unchecked(state_data.1) };
+                    self.restore_state(&serialized);
+                }
 
                 //
                 // Button to show/hide Shader Generator Windows
