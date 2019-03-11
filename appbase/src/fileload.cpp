@@ -3,6 +3,8 @@
 #include <vector>
 #include <string>
 
+#include <emscripten.h>
+
 struct Upload
 {
     std::string inputItem;
@@ -13,7 +15,7 @@ struct Upload
 static std::vector<Upload*> s_uploaded;
 static std::vector<std::string> s_installedHandlers;
 
-extern "C" char *UploadStart(const char *inputItem)
+extern "C" void UploadStart(const char *inputItem)
 {
     static char commandBuffer[1024];
 
@@ -22,30 +24,30 @@ extern "C" char *UploadStart(const char *inputItem)
     // make sure the handler is installed
     for (auto &h : s_installedHandlers) {
         if (h == input) {
-            commandBuffer[0] = 0;
-            return commandBuffer;
+            return;
         }
     }
 
     s_installedHandlers.push_back(input);
 
-    // execute JS functor
-    sprintf(commandBuffer, "\
-        var elem = document.getElementById('%s'); \
-        elem.addEventListener('input', function() { \
-            console.log('Input element changed: %s'); \
-            var reader = new FileReader(); \
-            reader.addEventListener('loadend', function() { \
-                console.log('Upload finished for: %s'); \
-                var view = new Uint8Array(reader.result); \
-                Module.ccall('UploadFinished', 'void', ['string', 'string', 'array','number'], ['%s', elem.files[0].name, view, view.length]); \
-            }); \
-            reader.readAsArrayBuffer(elem.files[0]); \
-        }); \
-        console.log('Installed Event Handler for input element: %s'); \
-    ", inputItem, inputItem, inputItem, inputItem, inputItem);
+     sprintf(commandBuffer,
+        "try { "
+            "var elem = document.getElementById('%s'); "
+            "elem.addEventListener('input', function() { "
+            "    console.log('Input element changed: %s'); "
+            "    var reader = new FileReader(); "
+            "    reader.addEventListener('loadend', function() { "
+            "        console.log('Upload finished for: %s'); "
+            "        var view = new Uint8Array(reader.result); "
+            "        Module.ccall('UploadFinished', 'void', ['string', 'string', 'array','number'], ['%s', elem.files[0].name, view, view.length]); "
+            "    }); "
+            "    reader.readAsArrayBuffer(elem.files[0]); "
+            "}); "
+            "console.log('Installed Event Handler for input element: %s'); "
+        "} catch (error) { console.log('Error running JS: ' + error); } "
+    , inputItem, inputItem, inputItem, inputItem, inputItem);
 
-    return commandBuffer;
+    emscripten_run_script(commandBuffer);
 }
 
 extern "C" void UploadFinished(const char *input, const char *filename, const unsigned char *data, int length)

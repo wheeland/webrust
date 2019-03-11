@@ -5,7 +5,7 @@ use std::io::Write;
 use std::os::raw::{c_char, c_int};
 
 extern "C" {
-    fn UploadStart(element: *const c_char) -> *const c_char;
+    fn UploadStart(element: *const c_char);
     fn UploadResultSize(element: *const c_char) -> c_int;
     fn UploadFilenameSize(element: *const c_char) -> c_int;
     fn UploadGetData(element: *const c_char, data: *mut u8, len: c_int) -> c_int;
@@ -22,16 +22,7 @@ pub fn start_upload(element: &str) {
     let element = CString::new(element).unwrap();
 
     // call
-    let ret = unsafe { UploadStart(element.as_ptr()) };
-
-    if ret != 0 as _ {
-        // convert
-        let command = unsafe { CStr::from_ptr(ret) };
-        let command = command.to_str().unwrap().to_string();
-
-        // start upload
-        super::webrunner::run_javascript(&command);
-    }
+    unsafe { UploadStart(element.as_ptr()) };
 }
 
 pub fn get_result(element: &str) -> Option<(String, Vec<u8>)> {
