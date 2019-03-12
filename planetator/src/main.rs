@@ -7,14 +7,15 @@ extern crate cgmath;
 extern crate lru_cache;
 extern crate appbase;
 extern crate array2d;
+#[cfg(target_os = "emscripten")] extern crate emscripten_util;
 
 extern crate serde;
 extern crate serde_json;
 #[macro_use] extern crate serde_derive;
 
 use appbase::webrunner;
-use appbase::fileload;
-use appbase::imgui_renderer;
+#[cfg(target_os = "emscripten")] use emscripten_util::fileload;
+#[cfg(target_os = "emscripten")] use emscripten_util::imgdecode;
 
 mod earth;
 mod culling;
@@ -24,7 +25,6 @@ mod shadowmap;
 mod savegames;
 
 use std::collections::HashMap;
-use std::io::Read;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
 use sdl2::event::{Event};
@@ -41,7 +41,6 @@ struct MyApp {
 
     keyboard: HashMap<Keycode, bool>,
     current_mouse_press: Option<(i32, i32)>,
-    savegame: Option<(String, String)>,
 
     fps: FpsWidget,
 
@@ -49,6 +48,7 @@ struct MyApp {
     edit_colorator: guiutil::ShaderEditData,
     edit_js: guiutil::ShaderEditData,
     select_channels: Vec<(String, i32)>,
+    texuploads: Vec<i32>,
 
     sun_speed: f32,
     sun_lon: f32,
@@ -119,39 +119,21 @@ impl MyApp {
 
 impl webrunner::WebApp for MyApp {
     fn new(windowsize: (u32, u32)) -> Self {
-        let mut savegame = None;
-
         // check for loading savegame files
-        #[cfg(not(target_os = "emscripten"))]
-            {
-                // check for default savegame in 'planet.json'
-                savegame = std::fs::read_to_string("planet.json")
-                    .ok().map(|data| (String::from("planet.json"), data));
-
-                // check if a savegame was passed through the command line
-                for arg in std::env::args().enumerate() {
-                    if arg.0 > 0 {
-                        if let Ok(s) = std::fs::read_to_string(&arg.1) {
-                            savegame = Some((arg.1, s));
-                        }
-                    }
-                }
-            }
-
-        fileload::start_upload(HTML_INPUT_PLANET);
-        fileload::start_upload(HTML_INPUT_TEXTURE);
+        #[cfg(target_os = "emscripten")] fileload::start_upload(HTML_INPUT_PLANET);
+        #[cfg(target_os = "emscripten")] fileload::start_upload(HTML_INPUT_TEXTURE);
 
         MyApp {
             windowsize,
             errors: Vec::new(),
             keyboard: HashMap::new(),
-            savegame,
             current_mouse_press: None,
             fps: FpsWidget::new(150),
             edit_generator: guiutil::ShaderEditData::new("Generator", &earth::renderer::default_generator(), (250.0, 250.0), (600.0, 400.0)),
             edit_colorator: guiutil::ShaderEditData::new("Kolorator", &earth::renderer::default_colorator(), (250.0, 250.0), (600.0, 400.0)),
             edit_js: guiutil::ShaderEditData::new("JavaScript executor", "var elem = document.getElementById('state');", (250.0, 250.0), (600.0, 400.0)),
             select_channels: Vec::new(),
+            texuploads: Vec::new(),
             sun_speed: 0.0,
             sun_lon: 0.0,
             sun_lat: 0.0,
@@ -372,18 +354,20 @@ impl webrunner::WebApp for MyApp {
                 //
                 ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
                 if ui.button(im_str!("Save##planet"), (160.0, 20.0)) {
-                    fileload::download("planet.json", &self.save_state());
+                    #[cfg(target_os = "emscripten")] fileload::download("planet.json", &self.save_state());
                 }
                 ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
                 let curr_pos = ui.get_cursor_screen_pos();
-                webrunner::set_overlay_position(HTML_INPUT_PLANET, curr_pos, (160.0, 20.0));
+                #[cfg(target_os = "emscripten")] emscripten_util::set_overlay_position(HTML_INPUT_PLANET, curr_pos, (160.0, 20.0));
                 ui.button(im_str!("Load##planet"), (160.0, 20.0));
                 ui.spacing(); ui.separator();
 
                 // check for uploads
-                if let Some(state_data) = fileload::get_result(HTML_INPUT_PLANET) {
-                    let serialized = unsafe { String::from_utf8_unchecked(state_data.1) };
-                    self.restore_state(&serialized);
+                #[cfg(target_os = "emscripten")] {
+                    if let Some(state_data) = fileload::get_result(HTML_INPUT_PLANET) {
+                        let serialized = unsafe { String::from_utf8_unchecked(state_data.1) };
+                        self.restore_state(&serialized);
+                    }
                 }
 
                 //
@@ -458,11 +442,21 @@ impl webrunner::WebApp for MyApp {
                 // List of Textures
                 //
                 ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
-                webrunner::set_overlay_position(HTML_INPUT_TEXTURE, ui.get_cursor_screen_pos(), (160.0, 20.0));
+                #[cfg(target_os = "emscripten")] emscripten_util::set_overlay_position(HTML_INPUT_TEXTURE, ui.get_cursor_screen_pos(), (160.0, 20.0));
                 ui.button(im_str!("Add Texture"), (120.0, 20.0));
-                // check for uploads
-                if let Some(tex_data) = fileload::get_result(HTML_INPUT_TEXTURE) {
-                    // appbase::imgdecode::start(tex_data.1);
+                // start new uploads?
+                #[cfg(target_os = "emscripten")] {
+                    if let Some(tex_data) =  fileload::get_result(HTML_INPUT_TEXTURE) {
+                        self.texuploads.push(imgdecode::start(tex_data.1));
+                    }
+                    // start new image parsing?
+                    if let Some(texupload) = self.texuploads.pop() {
+                        if let Some(texdata) = imgdecode::get(texupload) {
+                            self.renderer.add_texture("FOOO", tinygl::Texture::from_data_2d(&texdata.1, texdata.0));
+                        } else {
+                            self.texuploads.push(texupload);
+                        }
+                    }
                 }
 
                 ui.spacing();
@@ -491,14 +485,19 @@ impl webrunner::WebApp for MyApp {
                         }
                         ui.next_column();
                     }
+
+                    remove
                 };
+                if let Some(remove) = remove {
+                    self.renderer.remove_texture(&remove);
+                }
             });
 
         #[cfg(target_os = "emscripten")]
             {
 //                if !self.edit_js.is_open() { self.edit_js.toggle()  }
                 if self.edit_js.render(ui, None, keymod) {
-                    webrunner::run_javascript(&self.edit_js.to_str());
+                    emscripten_util::run_javascript(&self.edit_js.to_str());
                 }
             }
 

@@ -42,7 +42,7 @@ extern "C" void UploadStart(const char *inputItem)
             "    reader.readAsArrayBuffer(elem.files[0]); "
             "}); "
         "} catch (error) { console.log('Error running JS: ' + error); } "
-    , inputItem, inputItem, inputItem, inputItem, inputItem);
+    , inputItem, inputItem, inputItem, inputItem);
 
     emscripten_run_script(commandBuffer);
 }

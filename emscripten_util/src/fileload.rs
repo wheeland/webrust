@@ -1,7 +1,6 @@
 extern crate base64;
 
-use std::ffi::{CStr, CString};
-use std::io::Write;
+use std::ffi::{CString};
 use std::os::raw::{c_char, c_int};
 
 extern "C" {
@@ -55,25 +54,17 @@ pub fn get_result(element: &str) -> Option<(String, Vec<u8>)> {
 }
 
 pub fn download(name: &str, data: &str) {
-    #[cfg(not(target_os = "emscripten"))]
-        {
-            std::fs::write(name, data);
-        }
+    let encoded = base64::encode(data);
 
-    #[cfg(target_os = "emscripten")]
-        {
-            let encoded = base64::encode(data);
+    let command = format!("
+        var element = document.createElement('a');
+        element.setAttribute('href', 'data:application/octet-stream;charset=utf-8;base64,{}');
+        element.setAttribute('download', '{}');
+        element.style.display = 'none';
+        document.body.appendChild(element);
+        element.click();
+        document.body.removeChild(element);
+    ", encoded, name);
 
-            let command = format!("
-                var element = document.createElement('a');
-                element.setAttribute('href', 'data:application/octet-stream;charset=utf-8;base64,{}');
-                element.setAttribute('download', '{}');
-                element.style.display = 'none';
-                document.body.appendChild(element);
-                element.click();
-                document.body.removeChild(element);
-            ", encoded, name);
-
-            super::webrunner::run_javascript(&command);
-        }
+    super::run_javascript(&command);
 }

@@ -32,3 +32,4 @@ webutil = { version = "0.1.0", path = "../webutil" }
 
 [target.'cfg(target_os = "emscripten")'.dependencies]
 emscripten-sys = "0.3.2"
+emscripten-util = { version = "^0", path = "../emscripten_util" }
