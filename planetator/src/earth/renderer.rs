@@ -400,8 +400,14 @@ impl Renderer {
         program.uniform("Far", tinygl::Uniform::Float(self.camera.far()));
         program.uniform("eye", tinygl::Uniform::Vec3(self.camera.eye()));
         program.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
-        program.uniform("normals", tinygl::Uniform::Signed(0));
+        program.uniform("normals", tinygl::Uniform::Signed(self.textures.len() as _));
         program.vertex_attrib_buffer("plateCoords", planet.plate_coords(), 2, gl::UNSIGNED_SHORT, true, 4, 0);
+
+        // Bind Textures
+        for tex in self.textures.iter().enumerate() {
+            (tex.1).1.bind_at(tex.0 as _);
+            program.uniform((tex.1).0, tinygl::Uniform::Signed(tex.0 as _));
+        }
 
         let camspeed = 2.0;
         let cameye = self.camera.eye();
@@ -412,7 +418,7 @@ impl Renderer {
         let rendered_plates = planet.rendered_plates();
 
         for plate in &rendered_plates {
-            plate.borrow().bind_render_data(program);
+            plate.borrow().bind_render_data(program, self.textures.len());
 
             // See if this is the plate under the camera
             let plate_pos = plate.borrow().position();
