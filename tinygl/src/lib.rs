@@ -537,6 +537,10 @@ impl Texture {
         gl::TexImage2D(self.target, 0, internal as _, size.0, size.1, 0, format, datatype, data);
         self.size = Some(size);
     }
+
+    pub fn size(&self) -> Option<(GLsizei, GLsizei)> {
+        self.size
+    }
 }
 
 impl Drop for Texture {

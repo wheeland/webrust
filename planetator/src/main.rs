@@ -33,6 +33,7 @@ use appbase::fpswidget::FpsWidget;
 use cgmath::prelude::*;
 
 const HTML_INPUT_PLANET: &str = "input_loadsavegame";
+const HTML_INPUT_TEXTURE: &str = "input_texupload";
 
 struct MyApp {
     windowsize: (u32, u32),
@@ -341,7 +342,7 @@ impl webrunner::WebApp for MyApp {
                 }
             });
 
-        let planet_opt_win_size = (260.0, 300.0 + 24.0 * self.select_channels.len() as f32);
+        let planet_opt_win_size = (260.0, 390.0 + 24.0 * self.select_channels.len() as f32);
 
         ui.window(im_str!("Planet Options"))
             .flags(ImGuiWindowFlags::NoResize | ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar)
@@ -452,6 +453,45 @@ impl webrunner::WebApp for MyApp {
                 }
                 ui.columns(1, im_str!("Channels"), true);
                 ui.separator();
+
+                //
+                // List of Textures
+                //
+                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
+                webrunner::set_overlay_position(HTML_INPUT_TEXTURE, ui.get_cursor_screen_pos(), (160.0, 20.0));
+                ui.button(im_str!("Add Texture"), (120.0, 20.0));
+                // check for uploads
+                if let Some(tex_data) = fileload::get_result(HTML_INPUT_TEXTURE) {
+                    // appbase::imgdecode::start(tex_data.1);
+                }
+
+                ui.spacing();
+                ui.columns(3, im_str!("Textures"), true);
+                // 1: image, 2: name, nextline: size, 3: X
+                ui.set_column_width(0, 125.0);
+                ui.set_column_width(1, 90.0);
+                ui.set_column_width(2, 25.0);
+                ui.separator();
+                ui.separator();
+
+                let remove = {
+                    let textures = self.renderer.textures();
+                    let mut remove = None;
+
+                    for tex in textures.iter() {
+                        let sz = tex.1.size().map(|sz| format!("{}x{}", sz.0, sz.1)).unwrap_or(String::from("???"));
+                        ui.next_column();
+                        ui.text(tex.0);
+                        ui.new_line();
+                        ui.text(sz);
+                        ui.next_column();
+
+                        if ui.button(im_str!("X##texdelete{}", tex.0), (20.0, 20.0)) {
+                            remove = Some(tex.0.clone());
+                        }
+                        ui.next_column();
+                    }
+                };
             });
 
         #[cfg(target_os = "emscripten")]
