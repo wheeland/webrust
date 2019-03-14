@@ -39,5 +39,9 @@ pub fn get(id: i32) -> Option<((i32, i32), Vec<u8>)> {
     retbuf.resize(retsz as _, 0);
     unsafe { DecodeGetResult(id, retbuf.as_mut_ptr(), retsz, &mut width, &mut height); }
 
-    Some(((width as _, height as _), retbuf))
+    if width > 0 && height > 0 && retsz > 0 {
+        Some(((width as _, height as _), retbuf))
+    } else {
+        None
+    }
 }
