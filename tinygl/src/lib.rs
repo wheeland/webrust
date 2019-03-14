@@ -505,8 +505,9 @@ impl Texture {
     pub fn from_data_2d(data: &Vec<u8>, size: (i32, i32)) -> Self {
         let mut ret = Self::new(gl::TEXTURE_2D);
         unsafe { ret.teximage((size.0 as _, size.1 as _), gl::RGBA, gl::RGBA, gl::UNSIGNED_BYTE, data.as_ptr() as _) }
-        ret.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR);
+        ret.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR_MIPMAP_LINEAR);
         ret.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR);
+        ret.gen_mipmaps();
         ret
     }
 
