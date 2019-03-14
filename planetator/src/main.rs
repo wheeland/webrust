@@ -406,11 +406,9 @@ impl webrunner::WebApp for MyApp {
                 let mut remove = None;
                 let mut changed = false;
                 for chan in self.select_channels.iter_mut().enumerate() {
-                    ui.push_item_width(-1.0);
-                    if guiutil::textinput(ui, &format!("##channame{}", chan.0), &mut (chan.1).0, 16) {
+                    if guiutil::textinput(ui, &format!("##channame{}", chan.0), &mut (chan.1).0, 16, true) {
                         changed = true;
                     }
-                    ui.pop_item_width();
                     ui.next_column();
 
                     let items = vec!(im_str!("1"), im_str!("2"), im_str!("3"), im_str!("4"));
@@ -463,32 +461,46 @@ impl webrunner::WebApp for MyApp {
                 ui.columns(3, im_str!("Textures"), true);
                 // 1: image, 2: name, nextline: size, 3: X
                 let maximgsz = 100.0;
-                ui.set_column_width(0, 125.0);
-                ui.set_column_width(1, 90.0);
+                ui.set_column_width(0, 110.0);
+                ui.set_column_width(1, 105.0);
                 ui.set_column_width(2, 25.0);
                 ui.separator();
 
-                let mut remove = None;
+                let mut change = None;
                 {
                     for tex in self.renderer.textures().iter().enumerate() {
                         let sz = (tex.1).1.size().unwrap();
-                        let szstr = format!("{}x{}", sz.0, sz.1);
                         let maxsz = sz.0.max(sz.1) as f32;
-                        ui.image((tex.1).1.handle() as _, (maximgsz * sz.0 as f32 / maxsz, maximgsz * sz.1 as f32 / maxsz));
+                        let imgsz = (maximgsz * sz.0 as f32 / maxsz, maximgsz * sz.1 as f32 / maxsz);
+
+                        ui.image((tex.1).1.handle() as _, imgsz);
                         ui.next_column();
-                        ui.text(&(tex.1).0);
-                        ui.new_line();
+
+                        let ofs = (0.5 * (imgsz.1 - 50.0)).max(0.0);
+                        ui.dummy((1.0, ofs));
+                        let mut texname = (tex.1).0.clone();
+                        if guiutil::textinput(ui, &format!("##texname{}", tex.0), &mut texname, 16, true) {
+                            change = Some((tex.0, Some(texname)));
+                        }
+                        ui.dummy((1.0, 2.0));
+                        let szstr = format!("{}x{}", sz.0, sz.1);
                         ui.text(szstr);
                         ui.next_column();
 
+                        let ofs = (0.5 * (imgsz.1 - 15.0)).max(0.0);
+                        ui.dummy((1.0, ofs));
                         if ui.button(im_str!("X##texdelete{}", tex.0), (20.0, 20.0)) {
-                            remove = Some(tex.0);
+                            change = Some((tex.0, None));
                         }
                         ui.next_column();
                     }
                 }
-                if let Some(remove) = remove {
-                    self.renderer.remove_texture(remove as _);
+                if let Some(change) = change {
+                    if let Some(new_name) = change.1 {
+                        self.renderer.rename_texture(change.0 as _, &new_name);
+                    } else {
+                        self.renderer.remove_texture(change.0 as _);
+                    }
                 }
             });
 

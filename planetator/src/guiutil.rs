@@ -41,11 +41,13 @@ pub fn slider_float(ui: &imgui::Ui, text: &str, value: f32, minmax: (f32, f32), 
     value
 }
 
-pub fn textinput(ui: &imgui::Ui, id: &str, value: &mut String, capacity: usize) -> bool {
+pub fn textinput(ui: &imgui::Ui, id: &str, value: &mut String, capacity: usize, fullwidth: bool) -> bool {
     let mut entry = ImString::with_capacity(capacity);
     entry.push_str(&value);
 
+    if fullwidth { ui.push_item_width(-1.0) }
     let ret = ui.input_text(im_str!("{}", id), &mut entry).build();
+    if fullwidth { ui.pop_item_width() }
     if ret {
         value.clear();
         value.push_str(entry.to_str());

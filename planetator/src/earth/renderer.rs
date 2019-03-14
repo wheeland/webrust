@@ -339,6 +339,13 @@ impl Renderer {
         self.recreate_proram();
     }
 
+    pub fn rename_texture(&mut self, index: usize, new_name: &str) {
+        if index < self.textures.len() {
+            self.textures[index].0 = new_name.to_string();
+            self.recreate_proram();
+        }
+    }
+
     pub fn remove_texture(&mut self, index: usize) {
         if index < self.textures.len() {
             self.textures.remove(index);
