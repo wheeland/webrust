@@ -462,6 +462,7 @@ impl webrunner::WebApp for MyApp {
                 ui.spacing();
                 ui.columns(3, im_str!("Textures"), true);
                 // 1: image, 2: name, nextline: size, 3: X
+                let maximgsz = 100.0;
                 ui.set_column_width(0, 125.0);
                 ui.set_column_width(1, 90.0);
                 ui.set_column_width(2, 25.0);
@@ -470,14 +471,17 @@ impl webrunner::WebApp for MyApp {
                 let mut remove = None;
                 {
                     for tex in self.renderer.textures().iter().enumerate() {
-                        let sz = (tex.1).1.size().map(|sz| format!("{}x{}", sz.0, sz.1)).unwrap_or(String::from("???"));
+                        let sz = (tex.1).1.size().unwrap();
+                        let szstr = format!("{}x{}", sz.0, sz.1);
+                        let maxsz = sz.0.max(sz.1) as f32;
+                        ui.image((tex.1).1.handle() as _, (maximgsz * sz.0 as f32 / maxsz, maximgsz * sz.1 as f32 / maxsz));
                         ui.next_column();
                         ui.text(&(tex.1).0);
                         ui.new_line();
-                        ui.text(sz);
+                        ui.text(szstr);
                         ui.next_column();
 
-                        if ui.button(im_str!("X##texdelete{}", (tex.1).0), (20.0, 20.0)) {
+                        if ui.button(im_str!("X##texdelete{}", tex.0), (20.0, 20.0)) {
                             remove = Some(tex.0);
                         }
                         ui.next_column();
