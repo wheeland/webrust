@@ -466,30 +466,25 @@ impl webrunner::WebApp for MyApp {
                 ui.set_column_width(1, 90.0);
                 ui.set_column_width(2, 25.0);
                 ui.separator();
-                ui.separator();
 
-                let remove = {
-                    let textures = self.renderer.textures();
-                    let mut remove = None;
-
-                    for tex in textures.iter() {
-                        let sz = tex.1.size().map(|sz| format!("{}x{}", sz.0, sz.1)).unwrap_or(String::from("???"));
+                let mut remove = None;
+                {
+                    for tex in self.renderer.textures().iter().enumerate() {
+                        let sz = (tex.1).1.size().map(|sz| format!("{}x{}", sz.0, sz.1)).unwrap_or(String::from("???"));
                         ui.next_column();
-                        ui.text(tex.0);
+                        ui.text(&(tex.1).0);
                         ui.new_line();
                         ui.text(sz);
                         ui.next_column();
 
-                        if ui.button(im_str!("X##texdelete{}", tex.0), (20.0, 20.0)) {
-                            remove = Some(tex.0.clone());
+                        if ui.button(im_str!("X##texdelete{}", (tex.1).0), (20.0, 20.0)) {
+                            remove = Some(tex.0);
                         }
                         ui.next_column();
                     }
-
-                    remove
-                };
+                }
                 if let Some(remove) = remove {
-                    self.renderer.remove_texture(&remove);
+                    self.renderer.remove_texture(remove as _);
                 }
             });
 

@@ -31,7 +31,7 @@ pub struct Renderer {
 
     // the colorator may fail to compile (this may happen after removing a channel or texture), but we'll just fall-back
     colorator: String,
-    textures: HashMap<String, tinygl::Texture>,
+    textures: Vec<(String, tinygl::Texture)>,
 
     fbo: Option<tinygl::OffscreenBuffer>,
 
@@ -41,7 +41,7 @@ pub struct Renderer {
     errors_colorator: Option<String>,
 }
 
-fn create_render_program(colorator: &str, channels: &Channels, textures: &HashMap<String, tinygl::Texture>) -> tinygl::Program {
+fn create_render_program(colorator: &str, channels: &Channels, textures: &Vec<(String, tinygl::Texture)>) -> tinygl::Program {
     let vert_source = "
             uniform mat4 mvp;
             uniform float radius;
@@ -84,7 +84,7 @@ fn create_render_program(colorator: &str, channels: &Channels, textures: &HashMa
     let tex_declarations = textures
         .iter()
         .fold(String::new(), |acc, tex| {
-            acc + "uniform sampler2D " + tex.0 + ";\n"
+            acc + "uniform sampler2D " + &tex.0 + ";\n"
         });
 
     let frag_source = String::from("
@@ -185,7 +185,7 @@ impl Renderer {
         let mut ret = Renderer {
             camera: FlyCamera::new(100.0),
             program: None,
-            default_program: create_render_program(&colorator, &channels, &HashMap::new()),
+            default_program: create_render_program(&colorator, &channels, &Vec::new()),
 
             planet: None,
             planet_depth: 6,
@@ -205,7 +205,7 @@ impl Renderer {
             generator: default_generator(),
             channels,
             colorator,
-            textures: HashMap::new(),
+            textures: Vec::new(),
 
             errors_generator: None,
             errors_channels: None,
@@ -335,16 +335,18 @@ impl Renderer {
     }
 
     pub fn add_texture(&mut self, name: &str, texture: tinygl::Texture) {
-        self.textures.insert(name.to_string(), texture);
+        self.textures.push((name.to_string(), texture));
         self.recreate_proram();
     }
 
-    pub fn remove_texture(&mut self, name: &str) {
-        self.textures.remove(name);
-        self.recreate_proram();
+    pub fn remove_texture(&mut self, index: usize) {
+        if index < self.textures.len() {
+            self.textures.remove(index);
+            self.recreate_proram();
+        }
     }
 
-    pub fn textures(&self) -> &HashMap<String, tinygl::Texture> {
+    pub fn textures(&self) -> &Vec<(String, tinygl::Texture)> {
         &self.textures
     }
 
@@ -406,7 +408,7 @@ impl Renderer {
         // Bind Textures
         for tex in self.textures.iter().enumerate() {
             (tex.1).1.bind_at(tex.0 as _);
-            program.uniform((tex.1).0, tinygl::Uniform::Signed(tex.0 as _));
+            program.uniform(&(tex.1).0, tinygl::Uniform::Signed(tex.0 as _));
         }
 
         let camspeed = 2.0;
