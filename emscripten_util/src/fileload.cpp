@@ -4,6 +4,8 @@
 #include <string>
 
 #include <emscripten.h>
+#include <emscripten/bind.h>
+#include <emscripten/val.h>
 
 struct Upload
 {
@@ -117,3 +119,40 @@ extern "C" int UploadGetFilename(const char *inputItem, char *buffer, int len)
     return 0;
 }
 
+static std::vector<unsigned char> s_downloadData;
+
+extern "C" void DoDownload(const char *name, int namelen, const char *data, int size)
+{
+    s_downloadData.resize(size);
+    memcpy(s_downloadData.data(), data, size);
+
+    std::string nameStr(name, namelen);
+
+    char commandBuffer[16 * 1024];
+    sprintf(commandBuffer,
+        "try { eval(\" "
+            "var data = Module.DownloadGetData(); "
+            "var dataBlob = new Blob([data], {type: 'application/octet-stream'}); "
+            "var dataUrl = URL.createObjectURL(dataBlob); "
+
+            // create a/href and link data
+            "var element = document.createElement('a');"
+            "element.setAttribute('href', dataUrl);"
+            "element.setAttribute('download', '%s');"
+            "element.style.display = 'none';"
+            "document.body.appendChild(element);"
+            "element.click();"
+            "document.body.removeChild(element);"
+        "\") } catch (error) { console.log('Error running JS: ' + error); } "
+    , nameStr.c_str());
+
+    emscripten_run_script(commandBuffer);
+}
+
+emscripten::val DownloadGetData() {
+    return emscripten::val(emscripten::typed_memory_view(s_downloadData.size(), s_downloadData.data()));
+}
+
+EMSCRIPTEN_BINDINGS(download_get_bytes) {
+    function("DownloadGetData", &DownloadGetData);
+}

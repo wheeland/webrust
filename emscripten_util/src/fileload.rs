@@ -9,6 +9,7 @@ extern "C" {
     fn UploadFilenameSize(element: *const c_char) -> c_int;
     fn UploadGetData(element: *const c_char, data: *mut u8, len: c_int) -> c_int;
     fn UploadGetFilename(element: *const c_char, data: *mut u8, len: c_int) -> c_int;
+    fn DoDownload(name: *const c_char, name_len: c_int, data: *const c_char, data_len: c_int);
 }
 
 //pub fn show_upload_button(element: &str) {
@@ -53,18 +54,13 @@ pub fn get_result(element: &str) -> Option<(String, Vec<u8>)> {
     Some((filename, data))
 }
 
-pub fn download(name: &str, data: &str) {
-    let encoded = base64::encode(data);
-
-    let command = format!("
-        var element = document.createElement('a');
-        element.setAttribute('href', 'data:application/octet-stream;charset=utf-8;base64,{}');
-        element.setAttribute('download', '{}');
-        element.style.display = 'none';
-        document.body.appendChild(element);
-        element.click();
-        document.body.removeChild(element);
-    ", encoded, name);
-
-    super::run_javascript(&command);
+pub fn download(name: &str, data: &Vec<u8>) {
+    unsafe {
+        DoDownload(
+            name.as_ptr() as _,
+            name.len() as _,
+            data.as_ptr() as _,
+            data.len() as _
+        );
+    }
 }
