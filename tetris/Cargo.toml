@@ -6,7 +6,6 @@ authors = ["Wieland Hagen <wieland.hagen@kdab.com>"]
 [dependencies]
 array2d = { version = "^0", path = "../array2d" }
 base64 = "0.10.0"
-bincode = "1.0"
 chrono = { version = "0.4.0", features = ["serde"] }
 num = "^0"
 num-traits = "^0"

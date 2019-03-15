@@ -16,7 +16,7 @@ overflow-checks = false
 [dependencies]
 appbase = { version = "^0", path = "../appbase" }
 base64 = "0.10.0"
-bincode = "1.0"
+bincode = "~1.0.0"
 cgmath = "0.16.1"
 gl = "0.10.0"
 imgui = { version = "0.0.20", path = "../../imgui-rs" }
