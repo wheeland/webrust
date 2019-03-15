@@ -10,7 +10,7 @@
 struct Decode
 {
     int id;
-    std::string base64data;
+    std::vector<unsigned char> data;
     std::vector<unsigned char> imageData;
     int imageWidth = -1;
     int imageHeight = -1;
@@ -20,12 +20,13 @@ struct Decode
 static int s_id = 0;
 static std::vector<Decode*> s_decodes;
 
-extern "C" int DecodeStart(const char *base64data, int size)
+extern "C" int DecodeStart(const char *data, int size)
 {
     Decode *decode = new Decode();
 
     decode->id = s_id++;
-    decode->base64data = std::string(base64data, size);
+    decode->data.resize(size);
+    memcpy(decode->data.data(), data, size);
 
     s_decodes.push_back(decode);
 
@@ -34,18 +35,9 @@ extern "C" int DecodeStart(const char *base64data, int size)
     sprintf(commandBuffer,
         "try { eval(\" "
             "var size = %d; "
-            "var data = Module.DecodeGetBase64Data(); "
-
-            // convert uint8array to string
-            "var Uint8ToString = function (u8a) {"
-                "var CHUNK_SZ = 0x8000;"
-                "var c = [];"
-                "for (var i=0; i < u8a.length; i+=CHUNK_SZ) {"
-                    "c.push(String.fromCharCode.apply(null, u8a.subarray(i, i+CHUNK_SZ)));"
-                "}"
-                "return c.join('');"
-            "};"
-            "var dataAsStr = Uint8ToString(data); "
+            "var data = Module.DecodeGetData(); "
+            "var dataBlob = new Blob([data], {type: 'application/octet-stream'}); "
+            "var dataUrl = URL.createObjectURL(dataBlob); "
 
             // // create image and load it
             "var img = document.createElement('img'); "
@@ -82,7 +74,7 @@ extern "C" int DecodeStart(const char *base64data, int size)
                         "['number', 'number', 'number'], "
                         "[%d, -1, -1]);"
             "};"
-            "img.src = 'data:image/png;base64, ' + dataAsStr; "
+            "img.src = dataUrl; "
         "\"); } catch (error) { console.log('Error running JS: ' + error); } "
     , size, decode->id, decode->id, decode->id);
 
@@ -91,14 +83,13 @@ extern "C" int DecodeStart(const char *base64data, int size)
     return decode->id;
 }
 
-emscripten::val DecodeGetBase64Data() {
+emscripten::val DecodeGetData() {
     Decode *decode = s_decodes.back();
-    // printf("DecodeGetBase64Data: get %d (from %d)\n", (int) decode->base64data.size(), (int) s_decodes.size());
-    return emscripten::val(emscripten::typed_memory_view(decode->base64data.size(), decode->base64data.data()));
+    return emscripten::val(emscripten::typed_memory_view(decode->data.size(), decode->data.data()));
 }
 
 EMSCRIPTEN_BINDINGS(decode_get_bytes_getter) {
-    function("DecodeGetBase64Data", &DecodeGetBase64Data);
+    function("DecodeGetData", &DecodeGetData);
 }
 
 extern "C" void DecodeSetImageData(int id, char *buffer, int start, int end)

@@ -23,8 +23,7 @@ extern "C" {
 }
 
 pub fn start(data: Vec<u8>) -> i32 {
-    let encoded = base64::encode(&data);
-    unsafe { DecodeStart(encoded.as_ptr(), encoded.len() as _) }
+    unsafe { DecodeStart(data.as_ptr(), data.len() as _) }
 }
 
 pub fn get(id: i32) -> Option<((i32, i32), Vec<u8>)> {
