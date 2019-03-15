@@ -9,6 +9,8 @@ use cgmath::prelude::*;
 pub mod shapes;
 pub mod util;
 
+static mut PRINT_SHADER_ERRORS: bool = false;
+
 struct BufferBase {
     target: GLenum,
     buffer: GLuint
@@ -138,6 +140,14 @@ pub struct Program {
 }
 
 impl Program {
+    pub fn set_print_compilation_errors(print: bool) {
+        unsafe { PRINT_SHADER_ERRORS = print; }
+    }
+
+    pub fn print_compilation_errors() -> bool {
+        unsafe { PRINT_SHADER_ERRORS }
+    }
+
     fn compile_shader(src: &str, shader_type: GLuint, version: i32) -> (bool, GLuint, String) {
         let glsl = match version {
             100 => "100",
@@ -234,11 +244,11 @@ impl Program {
         let mut attrs = HashMap::new();
         let mut uniforms = HashMap::new();
 
-        if !vs.0 {
+        if !vs.0 && Self::print_compilation_errors() {
             Self::print_lines(vsrc);
             Self::print_errors("Vertex Shader Log:", &vs.2);
         }
-        if !fs.0 {
+        if !fs.0 && Self::print_compilation_errors() {
             Self::print_lines(fsrc);
             Self::print_errors("Fragment Shader Log:", &fs.2);
         }
@@ -248,7 +258,7 @@ impl Program {
             prog = ret.0;
             prog_log = Some(ret.1);
 
-            if let None = ret.0 {
+            if ret.0.is_none() && Self::print_compilation_errors() {
                 Self::print_errors("Program Link Log:", prog_log.as_ref().unwrap());
             }
         }
