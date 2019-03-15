@@ -10,7 +10,7 @@ extern crate array2d;
 #[cfg(target_os = "emscripten")] extern crate emscripten_util;
 
 extern crate serde;
-extern crate serde_json;
+extern crate bincode;
 #[macro_use] extern crate serde_derive;
 
 use appbase::webrunner;
@@ -49,6 +49,7 @@ struct MyApp {
     edit_js: guiutil::ShaderEditData,
     select_channels: Vec<(String, i32)>,
     texuploads: Vec<i32>,
+    active_textures: Vec<(String, (i32, i32), Vec<u8>)>,
 
     sun_speed: f32,
     sun_lon: f32,
@@ -81,23 +82,29 @@ impl MyApp {
         }
     }
 
-    fn save_state(&self) -> String {
-        serde_json::to_string(&savegames::Savegame::Version0 {
+    fn save_state(&self) -> Vec<u8> {
+        bincode::serialize(&savegames::Savegame::Version0 {
             generator: self.edit_generator.to_str().to_string(),
             colorator: self.edit_colorator.to_str().to_string(),
             select_channels: self.select_channels.clone(),
+            active_textures: self.active_textures.clone(),
         }).unwrap()
     }
 
-    fn restore_state(&mut self, serialized: &str) {
-        let deser = serde_json::from_str::<savegames::Savegame>(serialized);
+    fn restore_state(&mut self, serialized: &Vec<u8>) {
+        let deser = bincode::deserialize::<savegames::Savegame>(serialized);
 
         if let Ok(deser) = deser {
             match deser {
-                savegames::Savegame::Version0{generator, colorator, select_channels} => {
+                savegames::Savegame::Version0{generator, colorator, select_channels, active_textures} => {
                     self.edit_generator.set_source(&generator);
                     self.edit_colorator.set_source(&colorator);
                     self.select_channels = select_channels.clone();
+                    self.renderer.clear_textures();
+                    for tex in &active_textures {
+                        self.renderer.add_texture(&tex.0, tinygl::Texture::from_data_2d(&tex.2, tex.1));
+                    }
+                    self.active_textures = active_textures;
                 }
                 _ => {
                     self.errors.push(String::from("Couldn't parse planet data"));
@@ -134,6 +141,7 @@ impl webrunner::WebApp for MyApp {
             edit_js: guiutil::ShaderEditData::new("JavaScript executor", "var elem = document.getElementById('state');", (250.0, 250.0), (600.0, 400.0)),
             select_channels: Vec::new(),
             texuploads: Vec::new(),
+            active_textures: Vec::new(),
             sun_speed: 0.0,
             sun_lon: 0.0,
             sun_lat: 0.0,
@@ -365,8 +373,7 @@ impl webrunner::WebApp for MyApp {
                 // check for uploads
                 #[cfg(target_os = "emscripten")] {
                     if let Some(state_data) = fileload::get_result(HTML_INPUT_PLANET) {
-                        let serialized = unsafe { String::from_utf8_unchecked(state_data.1) };
-                        self.restore_state(&serialized);
+                        self.restore_state(&state_data.1);
                     }
                 }
 
@@ -437,7 +444,7 @@ impl webrunner::WebApp for MyApp {
                 ui.separator();
 
                 //
-                // List of Textures
+                // Add new texture button
                 //
                 ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
                 #[cfg(target_os = "emscripten")] emscripten_util::set_overlay_position(HTML_INPUT_TEXTURE, ui.get_cursor_screen_pos(), (160.0, 20.0));
@@ -450,13 +457,18 @@ impl webrunner::WebApp for MyApp {
                     // start new image parsing?
                     if let Some(texupload) = self.texuploads.pop() {
                         if let Some(texdata) = imgdecode::get(texupload) {
-                            self.renderer.add_texture("FOOO", tinygl::Texture::from_data_2d(&texdata.1, texdata.0));
+                            let texname = String::from("newTexture");
+                            self.renderer.add_texture(&texname, tinygl::Texture::from_data_2d(&texdata.1, texdata.0));
+                            self.active_textures.push((texname, texdata.0, texdata.1));
                         } else {
                             self.texuploads.push(texupload);
                         }
                     }
                 }
 
+                //
+                // List of textures
+                //
                 ui.spacing();
                 ui.columns(3, im_str!("Textures"), true);
                 // 1: image, 2: name, nextline: size, 3: X
@@ -497,8 +509,10 @@ impl webrunner::WebApp for MyApp {
                 }
                 if let Some(change) = change {
                     if let Some(new_name) = change.1 {
+                        self.active_textures[change.0].0 = new_name.clone();
                         self.renderer.rename_texture(change.0 as _, &new_name);
                     } else {
+                        self.active_textures.remove(change.0 as _);
                         self.renderer.remove_texture(change.0 as _);
                     }
                 }

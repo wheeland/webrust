@@ -334,6 +334,11 @@ impl Renderer {
         ret
     }
 
+    pub fn clear_textures(&mut self) {
+        self.textures.clear();
+        self.recreate_proram();
+    }
+
     pub fn add_texture(&mut self, name: &str, texture: tinygl::Texture) {
         self.textures.push((name.to_string(), texture));
         self.recreate_proram();
