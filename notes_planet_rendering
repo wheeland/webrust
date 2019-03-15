@@ -17,9 +17,11 @@ graphical effects
     - color terrain based on average incoming sun color (based on optical depth texture)
         - this can be a simple cubemap!
         - could also be used as input for PBR rendering materials?
+        - even simpler: this can be expressed as a function vec3 attenuation(sunAngle)
+            -> the larger the angle, the more blue light gets removed -> the redder it gets
     - (fog)
     x shadows: do the 'ol classic shadow mapping, but LODdy
-    - external textures, and compute 2D UV mapping in postprocess generator already
+    x external textures
     - clouds
     - depth of field blur
     - final tone mapping / HDR-to-RGB8
