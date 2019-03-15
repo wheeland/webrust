@@ -7,7 +7,7 @@ export EMMAKEN_CFLAGS="\
     -s USE_WEBGL2=1 \
     -Os \
     -s TOTAL_MEMORY=1073741824 \
-    -s EXPORTED_FUNCTIONS='[\"_UploadFinished\", \"_DecodeSetImageData\", \"_DecodeSetImageDone\", \"_main\", \"_malloc\"]' \
+    -s EXPORTED_FUNCTIONS='[\"_UploadData\", \"_UploadFinished\", \"_DecodeSetImageData\", \"_DecodeSetImageDone\", \"_main\", \"_malloc\"]' \
     -s EXTRA_EXPORTED_RUNTIME_METHODS='[\"ccall\", \"cwrap\"]' \
     --bind \
 "

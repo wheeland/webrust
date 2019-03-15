@@ -12,6 +12,7 @@ struct Upload
     std::string inputItem;
     std::string fileName;
     std::vector<unsigned char> data;
+    bool done = false;
 };
 
 static std::vector<Upload*> s_uploaded;
@@ -34,12 +35,24 @@ extern "C" void UploadStart(const char *inputItem)
 
      sprintf(commandBuffer,
         "try { "
-            "var elem = document.getElementById('%s'); "
+            "var inputItem = '%s'; "
+            "var elem = document.getElementById(inputItem); "
             "elem.addEventListener('input', function() { "
             "    var reader = new FileReader(); "
             "    reader.addEventListener('loadend', function() { "
             "        var view = new Uint8Array(reader.result); "
-            "        Module.ccall('UploadFinished', 'void', ['string', 'string', 'array','number'], ['%s', elem.files[0].name, view, view.length]); "
+            // "        Module.ccall('UploadFinished', 'void', ['string', 'string', 'array','number'], ['%s', elem.files[0].name, view, view.length]); "
+                    "var step = 1024 * 512;"
+                    "for (var start = 0; start < view.length; start += step) { "
+                        "var end = ((start + step) < view.length) ? (start + step) : view.length; "
+                        "var sub = view.slice(start, end);"
+                        "Module.ccall('UploadData', 'void', "
+                                "['string', 'array', 'number', 'number'], "
+                                "[inputItem, sub, start, end]);"
+                    "}"
+                    "Module.ccall('UploadFinished', 'void', "
+                            "['string', 'string'], "
+                            "[inputItem, elem.files[0].name]);"
             "    }); "
             "    reader.readAsArrayBuffer(elem.files[0]); "
             "}); "
@@ -49,14 +62,29 @@ extern "C" void UploadStart(const char *inputItem)
     emscripten_run_script(commandBuffer);
 }
 
-extern "C" void UploadFinished(const char *input, const char *filename, const unsigned char *data, int length)
+extern "C" void UploadData(const char *input, const unsigned char *data, int start, int end)
 {
-    Upload *upload = new Upload();
+    // get or create Upload object for given input
+    Upload *upload;
+    if (s_uploaded.size() > 0 && s_uploaded.back()->inputItem == input && !s_uploaded.back()->done) {
+        upload = s_uploaded.back();
+    } else {
+        upload = new Upload();
+        upload->inputItem = input;
+        s_uploaded.push_back(upload);
+    }
+
+    if (upload->data.size() < end)
+        upload->data.resize(end);
+    memcpy(upload->data.data() + start, data, end-start);
+}
+
+extern "C" void UploadFinished(const char *input, const char *filename)
+{
+    Upload *upload = s_uploaded.back();
     upload->inputItem = std::string(input);
     upload->fileName = std::string(filename);
-    upload->data.resize(length);
-    memcpy(upload->data.data(), data, length);
-    s_uploaded.push_back(upload);
+    upload->done = true;
 }
 
 extern "C" int UploadResultSize(const char *inputItem)
