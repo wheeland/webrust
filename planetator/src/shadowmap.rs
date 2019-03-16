@@ -4,6 +4,7 @@ use tinygl::{Program, Texture, Uniform, OffscreenBuffer};
 use super::guiutil;
 
 static MAX_SHADOW_MAPS: usize = 6;
+static MAX_REL_EXTENT: f32 = 1.2;
 
 fn glsl() -> String {
     String::from("
@@ -220,7 +221,7 @@ impl SunPositionCascades {
     fn new(size: u32, radius: f32, levels: i32) -> Self {
         let mut cascades = Vec::new();
         for i in 0..levels {
-            cascades.push(ShadowCascade::new(size, i, radius * 1.1));
+            cascades.push(ShadowCascade::new(size, i, radius * MAX_REL_EXTENT));
         }
 
         SunPositionCascades {
@@ -320,7 +321,7 @@ impl ShadowMap {
 
     fn scale_cascades(&mut self) {
         for lvl in 0..self.levels {
-            let extent = self.radius * 1.1 * self.level_scale.powi(lvl);
+            let extent = self.radius * MAX_REL_EXTENT * self.level_scale.powi(lvl);
             self.prev.as_mut().unwrap().cascades[lvl as usize].set_extent(extent);
             self.curr.as_mut().unwrap().cascades[lvl as usize].set_extent(extent);
             self.next.as_mut().unwrap().cascades[lvl as usize].set_extent(extent);
@@ -446,10 +447,16 @@ impl ShadowMap {
         //
         // select central point to render: cheap for now -: center on camera eye
         //
-        let rel_idx = to_render.index as f32 / 6.0;
-        let eye_height = eye.magnitude() - self.radius;
-        let look_center = eye + look * eye_height * rel_idx;
-        let look_surface_center = look_center.normalize() * self.radius;
+        let look_surface_center = if to_render.index == 0 {
+            // for the first global cascade, always put the light vertically head on to the planet
+            self.get_sun_cascades(to_render.tp).sun_direction * self.radius
+        } else {
+            // all further detailed cascades are oriented towards the view frustum
+            let rel_idx = to_render.index as f32 / 6.0;
+            let eye_height = eye.magnitude() - self.radius;
+            let look_center = eye + look * eye_height * rel_idx;
+            look_center.normalize() * self.radius
+        };
 
         let sun_rotation = self.get_sun_cascades(to_render.tp).sun_rotation;
         let sunspace_center = sun_rotation.transform_vector(look_surface_center);
