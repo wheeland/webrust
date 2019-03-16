@@ -5,6 +5,8 @@
 export EMMAKEN_CFLAGS="\
     -s USE_SDL=2 \
     -s USE_WEBGL2=1 \
+    -s ASSERTIONS=1 \
+    -s DEMANGLE_SUPPORT=1 \
     -Os \
     -s TOTAL_MEMORY=1073741824 \
     -s EXPORTED_FUNCTIONS='[\"_UploadData\", \"_UploadFinished\", \"_DecodeSetImageData\", \"_DecodeSetImageDone\", \"_main\", \"_malloc\"]' \
@@ -12,9 +14,9 @@ export EMMAKEN_CFLAGS="\
     --bind \
 "
 
-export RUST_BACKTRACE=0
-#export EMMAKEN_CFLAGS="-s USE_SDL=2 -s DEMANGLE_SUPPORT=1 -s ASSERTIONS=2"
-export RUSTFLAGS='-C panic=abort -C lto -C opt-level=z -C panic=abort -C overflow-checks=no -C debuginfo=0 -C debug-assertions=no'
+export RUST_BACKTRACE=1
+#export RUSTFLAGS='-C panic=abort -C lto -C opt-level=z -C panic=abort -C overflow-checks=no -C debuginfo=0 -C debug-assertions=no'
+export RUSTFLAGS='-C panic=abort -C lto -C opt-level=z -C overflow-checks=no -C debuginfo=0 -C debug-assertions=no'
 
 cargo build --target asmjs-unknown-emscripten --release
 
