@@ -240,6 +240,10 @@ impl webrunner::WebApp for MyApp {
         let eye = self.renderer.camera().eye();
         let look = self.renderer.camera().look();
 
+        let camspeed = 2.0;
+        let cam_height = self.renderer.get_surface_height(&eye);
+        self.renderer.camera().set_move_speed(camspeed * cam_height.max(0.01));
+
         //
         // render planet into FBO
         //

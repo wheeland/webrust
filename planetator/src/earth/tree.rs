@@ -115,6 +115,29 @@ impl Planet {
         });
     }
 
+    pub fn get_surface_height(&self, position: &Vector3<f32>) -> f32 {
+        let dir = super::plate::Direction::spherical_to_dir_and_square(&position);
+        let mut height = 0.0;
+
+        self.traverse(|node| {
+            let plate_pos = node.position();
+
+            if plate_pos.direction() == dir.0 {
+                let local = plate_pos.square_from_root(&dir.1);
+                if local.x > 0.0 && local.x < 1.0 && local.y > 0.0 && local.y < 1.0 {
+                    if let Some(node_height) = node.height_at(local) {
+                        height = node_height;
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        });
+
+        position.magnitude() - (self.radius + height)
+    }
+
     pub fn waiting_plates_size(&self) -> usize {
         self.plate_data_manager.borrow().waiting()
     }
@@ -332,20 +355,17 @@ impl Plate {
     pub fn position(&self) -> plate::Position { self.position }
     pub fn has_render_data(&self) -> bool { self.generated_data.is_some() }
 
-    pub fn height_at(&self, local: Vector2<f32>) -> f32 {
-        match self.generated_data.as_ref() {
-            None => 0.0,
-            Some(rd) => {
-                let sz = self.data_manager.borrow().size();
-                let x = local.x.min(1.0).max(0.0);
-                let y = local.y.min(1.0).max(0.0);
-                let x = (x * sz as f32) as i32 + 1;
-                let y = (y * sz as f32) as i32 + 1;
-                let idx = x * (sz + 3) + y;
-                let ret = rd.heights[idx as usize];
-                if ret.is_nan() { 0.0 } else { ret }
-            }
-        }
+    pub fn height_at(&self, local: Vector2<f32>) -> Option<f32> {
+        self.generated_data.as_ref().map(|rd| {
+            let sz = self.data_manager.borrow().size();
+            let x = local.x.min(1.0).max(0.0);
+            let y = local.y.min(1.0).max(0.0);
+            let x = (x * sz as f32) as i32 + 1;
+            let y = (y * sz as f32) as i32 + 1;
+            let idx = y * (sz + 3) + x;
+            let ret = rd.heights[idx as usize];
+            if ret.is_nan() { 0.0 } else { ret }
+        })
     }
 
     pub fn distance(&self, pos: &Vector3<f32>) -> f32 {
@@ -354,8 +374,8 @@ impl Plate {
 
         local.x = local.x.min(1.0).max(0.0);
         local.y = local.y.min(1.0).max(0.0);
+        let height = self.height_at(local).unwrap_or(0.0);
         let radius = self.data_manager.borrow().radius();
-        let height = self.height_at(local);
         let global = self.position.square_to_sphere(&local) * (radius + height);
 
         (global - pos).magnitude()

@@ -255,6 +255,10 @@ impl Renderer {
         }
     }
 
+    pub fn get_surface_height(&self, position: &Vector3<f32>) -> f32 {
+        self.planet.as_ref().unwrap().get_surface_height(position)
+    }
+
     pub fn depth(&self) -> i32 {
         self.planet_depth
     }
@@ -423,25 +427,11 @@ impl Renderer {
             program.uniform(&(tex.1).0, tinygl::Uniform::Signed(tex.0 as _));
         }
 
-        let camspeed = 2.0;
-        let cameye = self.camera.eye();
-        let camdir = super::plate::Direction::spherical_to_dir_and_square(&cameye);
-        self.camera.set_move_speed(camspeed * (cameye.magnitude() - self.planet_radius));
-
         self.rendered_triangles = 0;
         let rendered_plates = planet.rendered_plates();
 
         for plate in &rendered_plates {
             plate.borrow().bind_render_data(program, self.textures.len());
-
-            // See if this is the plate under the camera
-            let plate_pos = plate.borrow().position();
-            if plate_pos.direction() == camdir.0 {
-                let local = plate_pos.square_from_root(&camdir.1);
-                if local.x > 0.0 && local.x < 1.0 && local.y > 0.0 && local.y < 1.0 {
-                    self.camera.set_move_speed(plate.borrow().distance(&cameye) * camspeed);
-                }
-            }
 
             // Render Triangles
             self.rendered_triangles += if self.reduce_poly_count {
