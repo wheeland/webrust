@@ -102,14 +102,14 @@ impl Planet {
             node.visible = in_bounds && !(hide_backside && node.is_backside(eye, camdir.0, camdir.1));
 
             let dist = node.distance(eye) / radius;
-            let required_detail = 4.0 * 0.5f32.powi(node.position().depth());
+            let detail_factor = 4.0 * 0.5f32.powi(node.position().depth()) / dist;
 
-            if dist < required_detail && node.position.depth() < max_level {
+            if detail_factor > 1.0 && node.position.depth() < max_level {
                 node.create_children();
-            } else {
+            } else if detail_factor < 1.2 {
                 node.delete_children();
             }
-            node.my_priority = if node.visible { required_detail / dist } else { 0.0 };
+            node.my_priority = if node.visible { detail_factor } else { 0.0 };
 
             true
         });
