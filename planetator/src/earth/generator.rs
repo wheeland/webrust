@@ -48,6 +48,7 @@ impl Drop for Triangulation {
 pub struct Result {
     pub height_extent: (f32, f32),
     pub heights: Vec<f32>,
+    pub height_texture: Texture,
     pub vertex_data: Vec<Vector4<f32>>,
     pub normals: Vec<u8>,
     pub channels: HashMap<String, Texture>,
@@ -57,6 +58,7 @@ pub struct Result {
 impl Result {
     fn new(height_extent: (f32, f32),
            heights: Vec<f32>,
+           height_texture: Texture,
            vertex_data: Vec<Vector4<f32>>,
            normals: Vec<u8>,
            triangulation: Option<Triangulation>,
@@ -66,6 +68,7 @@ impl Result {
         Result {
             height_extent,
             heights,
+            height_texture,
             vertex_data,
             normals,
             channels,
@@ -184,6 +187,7 @@ impl GeneratorBuffers {
     fn new(size: i32, channels: &super::Channels) -> Self {
         let mut position_pass = OffscreenBuffer::new((size, size));
         position_pass.add("position", gl::RGBA32F, gl::RGBA, gl::FLOAT);
+        position_pass.add("height", gl::R32F, gl::RED, gl::FLOAT);
         for chan in channels.channels() {
             let int_fmt = match chan.1 {
                 1 => (gl::R8, gl::RED),
@@ -234,9 +238,8 @@ pub fn compile_generator(generator: &str, channels: &super::Channels) -> Program
         uniform int depth;
         uniform mat3 cubeTransformMatrix;
 
-        float height;
-
         layout(location = 0) out vec4 posHeight;
+        layout(location = 1) out float height;
         "
         + &declarations + "
         \n#line 1\n"
@@ -623,6 +626,11 @@ impl Generator {
         for pos in &self.generation_order {
             let mut fbos = self.framebuffers.remove(&pos).expect("No FBO found");
 
+            // sorry, we need this
+            let mut height_texture = fbos.position_pass.take("height").expect("No Height texture found");
+            height_texture.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR);
+            height_texture.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR);
+
             //
             // Allocate buffers for regular attributes
             //
@@ -666,7 +674,7 @@ impl Generator {
             //
             self.postprocess_ribbons(&mut buf_positions, max - min);
 
-            let mut result = Result::new((min, max), buf_heights, buf_positions, buf_normals, None, channels);
+            let mut result = Result::new((min, max), buf_heights, height_texture, buf_positions, buf_normals, None, channels);
             result.triangulation = Some(self.triangulate(&result));
 
             if self.framebuffer_cache.len() < self.max_framebuffer_cache {

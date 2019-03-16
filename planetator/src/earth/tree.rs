@@ -492,7 +492,7 @@ impl Plate {
         program.vertex_attrib_buffer("posHeight", &render_data.positions, 4, gl::FLOAT, false, 16, 0);
 
         for channel in self.generated_data.as_ref().unwrap().channels.iter().enumerate() {
-            let idx = channel.0 + first_tex_unit + 1;
+            let idx = channel.0 + first_tex_unit + 2;
             (channel.1).1.bind_at(idx as _);
             program.uniform(&(String::from("texture_") + (channel.1).0), tinygl::Uniform::Signed(idx as i32));
         }
@@ -500,6 +500,7 @@ impl Plate {
         program.uniform("debugColor", tinygl::Uniform::Vec3(self.debug_color));
 
         render_data.normals.bind_at(first_tex_unit as _);
+        self.generated_data.as_ref().unwrap().height_texture.bind_at((first_tex_unit + 1) as _);
     }
 
     pub fn debug_color(&self) -> Vector3<f32> {

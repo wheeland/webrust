@@ -89,7 +89,9 @@ fn create_render_program(colorator: &str, channels: &Channels, textures: &Vec<(S
 
     let frag_source = String::from("
             uniform float wf;
+            uniform float radius;
             uniform sampler2D normals;
+            uniform sampler2D heights;
             uniform vec3 debugColor;
             in vec2 tc;
             in vec3 pos;
@@ -107,6 +109,7 @@ fn create_render_program(colorator: &str, channels: &Channels, textures: &Vec<(S
             void main()
             {
                 vec3 norm = 2.0 * texture(normals, tc).xyz - vec3(1.0);
+                float height = texture(heights, tc).r;
             " + &chan_assignments + "
                 vec3 col = color(norm, pos);
 
@@ -114,7 +117,7 @@ fn create_render_program(colorator: &str, channels: &Channels, textures: &Vec<(S
                 outColor = vec4(mix(col, vec3(wfVal), wf), 1.0 - 0.7* wf);
                 // outColor = mix(outColor, vec4(debugColor, 1.0), 0.5);
                 outNormal = vec4(vec3(0.5) + 0.5 * norm, 1.0);
-                outPosition = vec4(pos, 1.0);
+                outPosition = vec4(normalize(pos) * (radius + height), 1.0);
             }";
 
     tinygl::Program::new(vert_source, &frag_source)
@@ -419,6 +422,7 @@ impl Renderer {
         program.uniform("eye", tinygl::Uniform::Vec3(self.camera.eye()));
         program.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
         program.uniform("normals", tinygl::Uniform::Signed(self.textures.len() as _));
+        program.uniform("heights", tinygl::Uniform::Signed((self.textures.len() + 1) as _));
         program.vertex_attrib_buffer("plateCoords", planet.plate_coords(), 2, gl::UNSIGNED_SHORT, true, 4, 0);
 
         // Bind Textures
