@@ -6,8 +6,8 @@ authors = ["Wieland Hagen <wieland.hagen@kdab.com>"]
 [dependencies]
 cgmath = "^0"
 gl = "0.10.0"
-imgui = { version = "0.0.20", path = "../../imgui-rs" }
-imgui-sdl2 = { version = "0.3.0", path = "../../imgui-sdl2" }
+imgui = { version = "0.0.20", path = "../imgui-rs" }
+imgui-sdl2 = { version = "0.3.0", path = "../imgui-sdl2" }
 sdl2 = "^0"
 tinygl = { version = "^0", path = "../tinygl" }
 
