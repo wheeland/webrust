@@ -87,12 +87,12 @@ fn glsl() -> String {
         return c;
     }
 
-    bool shadow_getShadowForLevel(int level, vec3 pos, float dotSunNormal, out float lit) {
+    bool shadow_getShadowForLevel(int level, vec3 pos, float dist, float dotSunNormal, out float lit) {
         vec4 posInSunSpace = shadowMapsPrevCurr[level].mvp * vec4(pos, 1.0);
         posInSunSpace /= posInSunSpace.w;
         posInSunSpace = 0.5 * posInSunSpace + vec4(0.5);
 
-        vec2 compare = vec2(posInSunSpace.z - 1.0 / shadowMapsPrevCurr[level].depth, posInSunSpace.z);
+        vec2 compare = vec2(posInSunSpace.z - 0.1 * dist / shadowMapsPrevCurr[level].depth, posInSunSpace.z);
 
         if (all(greaterThan(posInSunSpace.xy, vec2(0.05))) && all(lessThan(posInSunSpace.xy, vec2(0.95)))) {
             if (shadowBlurRadius <= 1.0)
@@ -106,11 +106,11 @@ fn glsl() -> String {
         }
     }
 
-    float shadow_getShadowWithOffset(vec3 pos, float dotSunNormal, int start, out vec3 color) {
+    float shadow_getShadowWithOffset(vec3 pos, float dist, float dotSunNormal, int start, out vec3 color) {
         float lit = 0.0;
         int i = shadowMapCount - 1;
         while (i >= 0) {
-            if (shadow_getShadowForLevel(i + start, pos, dotSunNormal, lit))
+            if (shadow_getShadowForLevel(i + start, pos, dist, dotSunNormal, lit))
                 break;
             --i;
         }
@@ -125,8 +125,8 @@ fn glsl() -> String {
 
         vec3 shadowMapDebugPrev, shadowMapDebugCurr;
 
-        float litPrev = shadow_getShadowWithOffset(pos, dotSunNormal, 0, shadowMapDebugPrev);
-        float litNext = shadow_getShadowWithOffset(pos, dotSunNormal, MAX_SHADOW_MAPS, shadowMapDebugCurr);
+        float litPrev = shadow_getShadowWithOffset(pos, dist, dotSunNormal, 0, shadowMapDebugPrev);
+        float litNext = shadow_getShadowWithOffset(pos, dist, dotSunNormal, MAX_SHADOW_MAPS, shadowMapDebugCurr);
 
         debugColor = mix(shadowMapDebugPrev, shadowMapDebugCurr, shadowMapProgress);
         float shadow = mix(litPrev, litNext, shadowMapProgress);
