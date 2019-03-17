@@ -123,6 +123,113 @@ impl MyApp {
     }
 }
 
+fn create_postprocess_shader() -> tinygl::Program {
+    tinygl::Program::new_versioned("
+        in vec2 vertex;
+        out vec2 clipPos;
+        void main() {
+            clipPos = vertex;
+            gl_Position = vec4(vertex, 0.0, 1.0);
+        }
+        ", &(String::from("
+        uniform float planetRadius;
+        uniform vec3 eyePosition;
+        uniform vec3 sunDirection;
+        uniform mat4 inverseViewProjectionMatrix;
+        uniform sampler2D planetColor;
+        uniform sampler2D planetNormal;
+        uniform sampler2D planetPosition;
+
+        ")
+        + &shadowmap::ShadowMap::glsl()
+        + &atmosphere::shader_source().replace("#version 330", "") +
+        "
+        in vec2 clipPos;
+        out vec4 outColor;
+
+        uniform vec3 white_point;
+        uniform float exposure;
+        uniform vec2 sun_size;
+        const vec3 kGroundAlbedo = vec3(0.0, 0.0, 0.04);
+
+        void main() {
+            vec3 normalFromTex = texture(planetNormal, vec2(0.5) + 0.5 * clipPos).rgb;
+
+            // calculate eye direction in that pixel
+            vec4 globalPosV4 = inverseViewProjectionMatrix * vec4(clipPos, 0.0, 1.0);
+            vec3 globalPos = globalPosV4.xyz / globalPosV4.w;
+            vec3 eyeDir = normalize(globalPos - eyePosition);
+
+            vec3 color = vec3(0.0);
+
+            if (length(normalFromTex) > 0.0) {
+                //
+                // Load position/normal/color from planet rendering textures
+                //
+                vec3 normal = vec3(-1.0) + 2.0 * normalFromTex;
+                vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
+                vec3 pPos = texture(planetPosition, vec2(0.5) + 0.5 * clipPos).rgb;
+                float dist = length(pPos - eyePosition);
+                float dotSun = dot(normal, sunDirection);
+
+                //
+                // Find out if we are shadowed by the terrain, and interpolate between last and curr sun position
+                //
+                vec3 shadowMapDebugColor;
+                float shadow = 0.6 + 0.4 * getShadow(pPos, dotSun, dist, shadowMapDebugColor);
+                float slopeShadow = max(0.7 + 0.3 * dotSun, 0.0);
+                shadow *= slopeShadow;
+                // pColor = mix(shadowMapDebugColor, pColor, 0.7);
+                pColor *= shadow;
+
+                // visibility of the sky and sun, based on shadows cast by the terrain
+                float sunVisibility = 1.0;
+                float skyVisibility = 1.0;
+
+                // Compute the radiance reflected by the ground.
+                vec3 sky_irradiance;
+                vec3 sun_irradiance = GetSunAndSkyIrradiance(
+                    pPos / planetRadius, normal, sunDirection, sky_irradiance);
+                vec3 ground_radiance = kGroundAlbedo * (1.0 / PI) * (
+                    sun_irradiance * sunVisibility +
+                    sky_irradiance * skyVisibility);
+
+                // float shadow_length =
+                //     max(0.0, min(shadow_out, distance_to_intersection) - shadow_in) *
+                //     lightshaft_fadein_hack;
+                float shadow_length = 0.0;
+
+                vec3 transmittance;
+                vec3 in_scatter = GetSkyRadianceToPoint(
+                    eyePosition / planetRadius,
+                    pPos / planetRadius,
+                    shadow_length, sunDirection, transmittance
+                );
+                ground_radiance = ground_radiance * transmittance + in_scatter;
+
+                color = pow(vec3(1.0) - exp(-ground_radiance / white_point * exposure), vec3(1.0 / 2.2));
+            }
+            else {
+                // Compute the radiance of the sky.
+                float shadow_length = 0.0;
+                vec3 transmittance;
+                vec3 radiance = GetSkyRadiance(
+                    eyePosition / planetRadius, eyeDir, shadow_length, sunDirection, transmittance
+                );
+
+                // If the view ray intersects the Sun, add the Sun radiance.
+                if (dot(eyeDir, sunDirection) > sun_size.y) {
+                    radiance = radiance + transmittance * GetSolarRadiance();
+                }
+                color = pow(vec3(1.0) - exp(-radiance / white_point * exposure), vec3(1.0 / 2.2));
+            }
+
+            outColor = vec4(color, 1.0);
+        }
+        "),
+    300)
+}
+
 impl webrunner::WebApp for MyApp {
     fn new(windowsize: (u32, u32)) -> Self {
         // check for loading savegame files
@@ -146,109 +253,7 @@ impl webrunner::WebApp for MyApp {
             sun_lat: 0.0,
             renderer: earth::renderer::Renderer::new(),
             shadows: shadowmap::ShadowMap::new(100.0),
-            postprocess: tinygl::Program::new_versioned("
-                in vec2 vertex;
-                out vec2 clipPos;
-                void main() {
-                    clipPos = vertex;
-                    gl_Position = vec4(vertex, 0.0, 1.0);
-                }
-                ", &(String::from("
-                uniform float planetRadius;
-                uniform vec3 eyePosition;
-                uniform vec3 sunDirection;
-                uniform mat4 inverseViewProjectionMatrix;
-                uniform sampler2D planetColor;
-                uniform sampler2D planetNormal;
-                uniform sampler2D planetPosition;
-
-                ")
-                + &shadowmap::ShadowMap::glsl()
-                + &atmosphere::shader_source().replace("#version 330", "") +
-                "
-                in vec2 clipPos;
-                out vec4 outColor;
-
-                uniform vec3 white_point;
-                uniform float exposure;
-                uniform vec2 sun_size;
-                const vec3 kGroundAlbedo = vec3(0.0, 0.0, 0.04);
-
-                void main() {
-                    vec3 normalFromTex = texture(planetNormal, vec2(0.5) + 0.5 * clipPos).rgb;
-
-                    // calculate eye direction in that pixel
-                    vec4 globalPosV4 = inverseViewProjectionMatrix * vec4(clipPos, 0.0, 1.0);
-                    vec3 globalPos = globalPosV4.xyz / globalPosV4.w;
-                    vec3 eyeDir = normalize(globalPos - eyePosition);
-
-                    vec3 color = vec3(0.0);
-
-                    if (length(normalFromTex) > 0.0) {
-                        //
-                        // Load position/normal/color from planet rendering textures
-                        //
-                        vec3 normal = vec3(-1.0) + 2.0 * normalFromTex;
-                        vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
-                        vec3 pPos = texture(planetPosition, vec2(0.5) + 0.5 * clipPos).rgb;
-                        float dist = length(pPos - eyePosition);
-                        float dotSun = dot(normal, sunDirection);
-
-                        //
-                        // Find out if we are shadowed by the terrain, and interpolate between last and curr sun position
-                        //
-                        vec3 shadowMapDebugColor;
-                        float shadow = 0.6 + 0.4 * getShadow(pPos, dotSun, dist, shadowMapDebugColor);
-                        float slopeShadow = max(0.7 + 0.3 * dotSun, 0.0);
-                        shadow *= slopeShadow;
-                        // pColor = mix(shadowMapDebugColor, pColor, 0.7);
-                        pColor *= shadow;
-
-                        // visibility of the sky and sun, based on shadows cast by the terrain
-                        float sunVisibility = 1.0;
-                        float skyVisibility = 1.0;
-
-                        // Compute the radiance reflected by the ground.
-                        vec3 sky_irradiance;
-                        vec3 sun_irradiance = GetSunAndSkyIrradiance(
-                            pPos / planetRadius, normal, sunDirection, sky_irradiance);
-                        vec3 ground_radiance = kGroundAlbedo * (1.0 / PI) * (
-                            sun_irradiance * sunVisibility +
-                            sky_irradiance * skyVisibility);
-
-                        // float shadow_length =
-                        //     max(0.0, min(shadow_out, distance_to_intersection) - shadow_in) *
-                        //     lightshaft_fadein_hack;
-                        float shadow_length = 0.0;
-
-                        vec3 transmittance;
-                        vec3 in_scatter = GetSkyRadianceToPoint(
-                            eyePosition / planetRadius,
-                            pPos / planetRadius,
-                            shadow_length, sunDirection, transmittance
-                        );
-                        ground_radiance = ground_radiance * transmittance + in_scatter;
-
-                        color = pow(vec3(1.0) - exp(-ground_radiance / white_point * exposure), vec3(1.0 / 2.2));
-                    }
-                    else {
-                        // Compute the radiance of the sky.
-                        float shadow_length = 0.0;
-                        vec3 transmittance;
-                        vec3 radiance = GetSkyRadiance(
-                            eyePosition / planetRadius, eyeDir, shadow_length, sunDirection, transmittance
-                        );
-
-                        // If the view ray intersects the Sun, add the Sun radiance.
-                        if (dot(eyeDir, sunDirection) > sun_size.y) {
-                            radiance = radiance + transmittance * GetSolarRadiance();
-                        }
-                        color = pow(vec3(1.0) - exp(-radiance / white_point * exposure), vec3(1.0 / 2.2));
-                    }
-
-                    outColor = vec4(color, 1.0);
-                }
-                "), 300),
+            postprocess: create_postprocess_shader(),
             fsquad: tinygl::shapes::FullscreenQuad::new(),
         }
     }
@@ -353,7 +358,19 @@ impl webrunner::WebApp for MyApp {
 
                 // Atmosphere settings
                 if ui.collapsing_header(im_str!("Atmosphere")).default_open(false).build() {
+                    atmosphere::set_outer_radius(guiutil::slider_float(ui, "Radius", atmosphere::outer_radius(), (1.0, 1.2), 1.0));
+                    atmosphere::set_raleigh_scattering(guiutil::slider_float(ui, "Raleigh Scattering", atmosphere::raleigh_scattering(), (0.1, 10.0), 2.0));
+                    atmosphere::set_raleigh_height(guiutil::slider_float(ui, "Raleigh Height", atmosphere::raleigh_height(), (0.0, 10.0), 2.0));
+                    atmosphere::set_mie_scattering(guiutil::slider_float(ui, "Mie Scattering", atmosphere::mie_scattering(), (0.1, 10.0), 2.0));
+                    atmosphere::set_mie_height(guiutil::slider_float(ui, "Mie Height", atmosphere::mie_height(), (0.0, 10.0), 2.0));
+                    let mut half_precision = atmosphere::half_precision();
+                    ui.checkbox(im_str!("Half-Precision"), &mut half_precision);
+                    atmosphere::set_half_precision(half_precision);
 
+                    if atmosphere::is_dirty() {
+                        atmosphere::recreate();
+                        self.postprocess = create_postprocess_shader();
+                    }
                 }
 
                 // Sun Settings

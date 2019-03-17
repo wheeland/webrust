@@ -57,7 +57,7 @@ extern "C" int AtmosphereUseCombinedTextures = 1;
 extern "C" int AtmosphereUseHalfPrecision = 1;
 
 extern "C" float AtmosphereExposure = 10.0;
-extern "C" float AtmosphereOuterRadius = 1.05f;
+extern "C" float AtmosphereOuterRadius = 1.1f;
 extern "C" float AtmosphereRaleighScattering = 1.0f;
 extern "C" float AtmosphereRaleighHeight = 1.0f;
 extern "C" float AtmosphereMieScattering = 1.0f;

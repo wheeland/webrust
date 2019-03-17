@@ -18,14 +18,105 @@ extern "C" {
 
     static mut AtmosphereExposure: f32;
     static mut AtmosphereOuterRadius: f32;
+    static mut AtmosphereRaleighScattering: f32;
+    static mut AtmosphereRaleighHeight: f32;
+    static mut AtmosphereMieScattering: f32;
+    static mut AtmosphereMieHeight: f32;
 }
 
 static mut did_init: bool = false;
+static mut dirty: bool = false;
+
+pub fn is_dirty() -> bool {
+    unsafe { dirty }
+}
+
+pub fn half_precision() -> bool {
+    unsafe { AtmosphereUseHalfPrecision != 0 }
+}
+pub fn set_half_precision(half: bool) {
+    unsafe {
+        if half_precision() != half {
+            AtmosphereUseHalfPrecision = if half { 1 } else { 0 };
+            dirty = true;
+        }
+    }
+}
+
+pub fn outer_radius() -> f32 {
+    unsafe { AtmosphereOuterRadius }
+}
+pub fn set_outer_radius(r: f32) {
+    unsafe {
+        if AtmosphereOuterRadius != r {
+            AtmosphereOuterRadius = r;
+            dirty = true;
+        }
+    }
+}
+
+pub fn raleigh_scattering() -> f32 {
+    unsafe { AtmosphereRaleighScattering }
+}
+pub fn set_raleigh_scattering(r: f32) {
+    unsafe {
+        if AtmosphereRaleighScattering != r {
+            AtmosphereRaleighScattering = r;
+            dirty = true;
+        }
+    }
+}
+
+pub fn raleigh_height() -> f32 {
+    unsafe { AtmosphereRaleighHeight }
+}
+pub fn set_raleigh_height(r: f32) {
+    unsafe {
+        if AtmosphereRaleighHeight != r {
+            AtmosphereRaleighHeight = r;
+            dirty = true;
+        }
+    }
+}
+
+pub fn mie_scattering() -> f32 {
+    unsafe { AtmosphereMieScattering }
+}
+pub fn set_mie_scattering(r: f32) {
+    unsafe {
+        if AtmosphereMieScattering != r {
+            AtmosphereMieScattering = r;
+            dirty = true;
+        }
+    }
+}
+
+pub fn mie_height() -> f32 {
+    unsafe { AtmosphereMieHeight }
+}
+pub fn set_mie_height(r: f32) {
+    unsafe {
+        if AtmosphereMieHeight != r {
+            AtmosphereMieHeight = r;
+            dirty = true;
+        }
+    }
+}
+
+pub fn recreate() {
+    unsafe {
+        if did_init {
+            AtmosphereInitModel();
+            dirty = false;
+        }
+    }
+}
 
 pub fn init() {
     unsafe {
         if !did_init {
             AtmosphereInit();
+            dirty = false;
             did_init = true;
         }
     }
@@ -35,6 +126,7 @@ pub fn destroy() {
     unsafe {
         if did_init {
             AtmosphereDestroy();
+            dirty = true;
             did_init = false;
         }
     }
