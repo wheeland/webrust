@@ -58,7 +58,6 @@ struct MyApp {
     shadows: shadowmap::ShadowMap,
 
     renderer: earth::renderer::Renderer,
-    atmosphere: atmosphere::Atmosphere,
     postprocess: tinygl::Program,
 
     fsquad: tinygl::shapes::FullscreenQuad,
@@ -146,7 +145,6 @@ impl webrunner::WebApp for MyApp {
             sun_lon: 0.0,
             sun_lat: 0.0,
             renderer: earth::renderer::Renderer::new(),
-            atmosphere: atmosphere::Atmosphere::new(),
             shadows: shadowmap::ShadowMap::new(100.0),
             postprocess: tinygl::Program::new_versioned("
                 in vec2 vertex;
@@ -156,6 +154,7 @@ impl webrunner::WebApp for MyApp {
                     gl_Position = vec4(vertex, 0.0, 1.0);
                 }
                 ", &(String::from("
+                uniform float planetRadius;
                 uniform vec3 eyePosition;
                 uniform vec3 sunDirection;
                 uniform mat4 inverseViewProjectionMatrix;
@@ -164,11 +163,16 @@ impl webrunner::WebApp for MyApp {
                 uniform sampler2D planetPosition;
 
                 ")
-                + &atmosphere::Atmosphere::shader_source()
-                + &shadowmap::ShadowMap::glsl() +
+                + &shadowmap::ShadowMap::glsl()
+                + &atmosphere::shader_source().replace("#version 330", "") +
                 "
                 in vec2 clipPos;
                 out vec4 outColor;
+
+                uniform vec3 white_point;
+                uniform float exposure;
+                uniform vec2 sun_size;
+                const vec3 kGroundAlbedo = vec3(0.0, 0.0, 0.04);
 
                 void main() {
                     vec3 normalFromTex = texture(planetNormal, vec2(0.5) + 0.5 * clipPos).rgb;
@@ -177,10 +181,6 @@ impl webrunner::WebApp for MyApp {
                     vec4 globalPosV4 = inverseViewProjectionMatrix * vec4(clipPos, 0.0, 1.0);
                     vec3 globalPos = globalPosV4.xyz / globalPosV4.w;
                     vec3 eyeDir = normalize(globalPos - eyePosition);
-
-                    // get intersection points of view ray with atmosphere
-                    float t0, t1;
-                    bool hasAtmo = raySphereIntersect(eyePosition, eyeDir, atmosphereRadius, t0, t1);
 
                     vec3 color = vec3(0.0);
 
@@ -204,13 +204,46 @@ impl webrunner::WebApp for MyApp {
                         // pColor = mix(shadowMapDebugColor, pColor, 0.7);
                         pColor *= shadow;
 
-                        // calc atmospheric depth along view ray
-                        color = computeIncidentLight(eyePosition, eyeDir, max(t0, 0.0), dist, sunDirection, pColor);
+                        // visibility of the sky and sun, based on shadows cast by the terrain
+                        float sunVisibility = 1.0;
+                        float skyVisibility = 1.0;
+
+                        // Compute the radiance reflected by the ground.
+                        vec3 sky_irradiance;
+                        vec3 sun_irradiance = GetSunAndSkyIrradiance(
+                            pPos / planetRadius, normal, sunDirection, sky_irradiance);
+                        vec3 ground_radiance = kGroundAlbedo * (1.0 / PI) * (
+                            sun_irradiance * sunVisibility +
+                            sky_irradiance * skyVisibility);
+
+                        // float shadow_length =
+                        //     max(0.0, min(shadow_out, distance_to_intersection) - shadow_in) *
+                        //     lightshaft_fadein_hack;
+                        float shadow_length = 0.0;
+
+                        vec3 transmittance;
+                        vec3 in_scatter = GetSkyRadianceToPoint(
+                            eyePosition / planetRadius,
+                            pPos / planetRadius,
+                            shadow_length, sunDirection, transmittance
+                        );
+                        ground_radiance = ground_radiance * transmittance + in_scatter;
+
+                        color = pow(vec3(1.0) - exp(-ground_radiance / white_point * exposure), vec3(1.0 / 2.2));
                     }
                     else {
-                        if (hasAtmo && t1 > 0.0) {
-                            color = computeIncidentLight(eyePosition, eyeDir, max(t0, 0.0), t1, sunDirection, vec3(0.0));
+                        // Compute the radiance of the sky.
+                        float shadow_length = 0.0;
+                        vec3 transmittance;
+                        vec3 radiance = GetSkyRadiance(
+                            eyePosition / planetRadius, eyeDir, shadow_length, sunDirection, transmittance
+                        );
+
+                        // If the view ray intersects the Sun, add the Sun radiance.
+                        if (dot(eyeDir, sunDirection) > sun_size.y) {
+                            radiance = radiance + transmittance * GetSolarRadiance();
                         }
+                        color = pow(vec3(1.0) - exp(-radiance / white_point * exposure), vec3(1.0 / 2.2));
                     }
 
                     outColor = vec4(color, 1.0);
@@ -280,7 +313,7 @@ impl webrunner::WebApp for MyApp {
         self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
         self.postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));
         self.postprocess.uniform("planetRadius", tinygl::Uniform::Float(radius));
-        self.atmosphere.prepare_shader(&self.postprocess, radius, 3);
+        atmosphere::prepare_shader(self.postprocess.handle().unwrap(), 4 + self.shadows.num_textures());
 
         unsafe {
             gl::Viewport(0, 0, self.windowsize.0 as _, self.windowsize.1 as _);
@@ -320,7 +353,7 @@ impl webrunner::WebApp for MyApp {
 
                 // Atmosphere settings
                 if ui.collapsing_header(im_str!("Atmosphere")).default_open(false).build() {
-                    self.atmosphere.options(ui);
+
                 }
 
                 // Sun Settings

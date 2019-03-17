@@ -414,6 +414,10 @@ impl Program {
         }
     }
 
+    pub fn handle(&self) -> Option<GLuint> {
+        self.program
+    }
+
     pub fn vertex_attrib_location(&self, attrib: &str) -> Option<u32> {
         // spit warning on first try, then remember that it's not there
         let opt = self.attribute_locations.borrow().get(attrib).map(|r| *r);

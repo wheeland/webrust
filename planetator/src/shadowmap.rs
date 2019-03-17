@@ -532,6 +532,11 @@ impl ShadowMap {
         program.uniform("shadowBlurRadius", Uniform::Float(self.blur_radius));
     }
 
+    pub fn num_textures(&self) -> usize {
+        self.prev.as_ref().map(|cascades| cascades.cascades.len()).unwrap_or(0) +
+        self.curr.as_ref().map(|cascades| cascades.cascades.len()).unwrap_or(0)
+    }
+
     pub fn options(&mut self, ui: &imgui::Ui) {
         let mapsz = guiutil::slider_exp2int(ui, "Shadow Map Size:", self.size_step as _, (8, 12));
         self.set_size_step(mapsz as _);
