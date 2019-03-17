@@ -204,7 +204,10 @@ class Model {
     // in m.
     double bottom_radius,
     // The distance between the planet center and the top of the atmosphere,
-    // in m.
+    // in m, which is actually used for generating the textures
+    double generator_radius,
+    // The distance between the planet center and the top of the atmosphere,
+    // in m, which is used in the coloring shader
     double top_radius,
     // The density profile of air molecules, i.e. a function from altitude to
     // dimensionless values between 0 (null density) and 1 (maximum density).
@@ -290,7 +293,6 @@ class Model {
 
   void Init(unsigned int num_scattering_orders = 4);
 
-  GLuint shader() const { return atmosphere_shader_; }
   std::string shaderSource() const { return atmosphere_shader_src_; }
 
   void SetProgramUniforms(
@@ -319,7 +321,6 @@ class Model {
   typedef std::array<float, 9> mat3;
 
   void Precompute(
-      GLuint fbo,
       GLuint delta_irradiance_texture,
       GLuint delta_rayleigh_scattering_texture,
       GLuint delta_mie_scattering_texture,
@@ -331,14 +332,14 @@ class Model {
       unsigned int num_scattering_orders);
 
   unsigned int num_precomputed_wavelengths_;
+  float generator_radius_;
   bool half_precision_;
   bool rgb_format_supported_;
-  std::function<std::string(const vec3&)> glsl_header_factory_;
+  std::function<std::string(const vec3&, float)> glsl_header_factory_;
   GLuint transmittance_texture_;
   GLuint scattering_texture_;
   GLuint optional_single_mie_scattering_texture_;
   GLuint irradiance_texture_;
-  GLuint atmosphere_shader_;
   GLuint full_screen_quad_vao_;
   GLuint full_screen_quad_vbo_;
 

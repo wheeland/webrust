@@ -358,7 +358,8 @@ impl webrunner::WebApp for MyApp {
 
                 // Atmosphere settings
                 if ui.collapsing_header(im_str!("Atmosphere")).default_open(false).build() {
-                    atmosphere::set_outer_radius(guiutil::slider_float(ui, "Radius", atmosphere::outer_radius(), (1.0, 1.2), 1.0));
+                    atmosphere::set_shader_radius(guiutil::slider_float(ui, "Shader Radius", atmosphere::shader_radius(), (1.0, 1.2), 1.0));
+                    atmosphere::set_generator_radius(guiutil::slider_float(ui, "Generator Radius", atmosphere::generator_radius(), (1.0, 1.2), 1.0));
                     atmosphere::set_raleigh_scattering(guiutil::slider_float(ui, "Raleigh Scattering", atmosphere::raleigh_scattering(), (0.1, 10.0), 2.0));
                     atmosphere::set_raleigh_height(guiutil::slider_float(ui, "Raleigh Height", atmosphere::raleigh_height(), (0.0, 10.0), 2.0));
                     atmosphere::set_mie_scattering(guiutil::slider_float(ui, "Mie Scattering", atmosphere::mie_scattering(), (0.1, 10.0), 2.0));

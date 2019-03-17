@@ -613,6 +613,7 @@ Model::Model(
     const std::vector<double>& solar_irradiance,
     const double sun_angular_radius,
     double bottom_radius,
+    double generator_radius,
     double top_radius,
     const std::vector<DensityProfileLayer>& rayleigh_density,
     const std::vector<double>& rayleigh_scattering,
@@ -628,6 +629,7 @@ Model::Model(
     unsigned int num_precomputed_wavelengths,
     bool combine_scattering_textures,
     bool half_precision) :
+        generator_radius_(generator_radius),
         num_precomputed_wavelengths_(num_precomputed_wavelengths),
         half_precision_(half_precision),
         rgb_format_supported_(IsFramebufferRgbFormatSupported(half_precision)) {
@@ -686,7 +688,7 @@ Model::Model(
   // A lambda that creates a GLSL header containing our atmosphere computation
   // functions, specialized for the given atmosphere parameters and for the 3
   // wavelengths in 'lambdas'.
-  glsl_header_factory_ = [=](const vec3& lambdas) {
+  glsl_header_factory_ = [=](const vec3& lambdas, float topRadius) {
     return
       "#version 330\n"
       "#define IN(x) const in x\n"
@@ -717,7 +719,7 @@ Model::Model(
           to_string(solar_irradiance, lambdas, 1.0) + ",\n" +
           std::to_string(sun_angular_radius) + ",\n" +
           std::to_string(bottom_radius / length_unit_in_meters) + ",\n" +
-          std::to_string(top_radius / length_unit_in_meters) + ",\n" +
+          std::to_string(topRadius / length_unit_in_meters) + ",\n" +
           density_profile(rayleigh_density) + ",\n" +
           to_string(
               rayleigh_scattering, lambdas, length_unit_in_meters) + ",\n" +
@@ -765,14 +767,10 @@ Model::Model(
 
   // Create and compile the shader providing our API.
   std::string shader =
-      glsl_header_factory_({kLambdaR, kLambdaG, kLambdaB}) +
+      glsl_header_factory_({kLambdaR, kLambdaG, kLambdaB}, top_radius) +
       (precompute_illuminance ? "" : "#define RADIANCE_API_ENABLED\n") +
       kAtmosphereShader;
-  const char* source = shader.c_str();
   atmosphere_shader_src_ = shader;
-  atmosphere_shader_ = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(atmosphere_shader_, 1, &source, NULL);
-  glCompileShader(atmosphere_shader_);
 
   // Create a full screen quad vertex array and vertex buffer objects.
   glGenVertexArrays(1, &full_screen_quad_vao_);
@@ -806,7 +804,6 @@ Model::~Model() {
     glDeleteTextures(1, &optional_single_mie_scattering_texture_);
   }
   glDeleteTextures(1, &irradiance_texture_);
-  glDeleteShader(atmosphere_shader_);
 }
 
 /*
@@ -906,7 +903,7 @@ void Model::Init(unsigned int num_scattering_orders) {
   if (num_precomputed_wavelengths_ <= 3) {
     vec3 lambdas{kLambdaR, kLambdaG, kLambdaB};
     mat3 luminance_from_radiance{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
-    Precompute(fbo, delta_irradiance_texture, delta_rayleigh_scattering_texture,
+    Precompute(delta_irradiance_texture, delta_rayleigh_scattering_texture,
         delta_mie_scattering_texture, delta_scattering_density_texture,
         delta_multiple_scattering_texture, lambdas, luminance_from_radiance,
         false /* blend */, num_scattering_orders);
@@ -940,7 +937,7 @@ void Model::Init(unsigned int num_scattering_orders) {
         coeff(lambdas[0], 1), coeff(lambdas[1], 1), coeff(lambdas[2], 1),
         coeff(lambdas[0], 2), coeff(lambdas[1], 2), coeff(lambdas[2], 2)
       };
-      Precompute(fbo, delta_irradiance_texture,
+      Precompute(delta_irradiance_texture,
           delta_rayleigh_scattering_texture, delta_mie_scattering_texture,
           delta_scattering_density_texture, delta_multiple_scattering_texture,
           lambdas, luminance_from_radiance, i > 0 /* blend */,
@@ -951,7 +948,7 @@ void Model::Init(unsigned int num_scattering_orders) {
     // transmittance for the 3 wavelengths used at the last iteration. But we
     // want the transmittance at kLambdaR, kLambdaG, kLambdaB instead, so we
     // must recompute it here for these 3 wavelengths:
-    std::string header = glsl_header_factory_({kLambdaR, kLambdaG, kLambdaB});
+    std::string header = glsl_header_factory_({kLambdaR, kLambdaG, kLambdaB}, generator_radius_);
     Program compute_transmittance(
         kVertexShader, header + kComputeTransmittanceShader);
     glFramebufferTexture(
@@ -1045,7 +1042,6 @@ described in Algorithm 4.1 of
 explained by the inline comments below.
 */
 void Model::Precompute(
-    GLuint fbo,
     GLuint delta_irradiance_texture,
     GLuint delta_rayleigh_scattering_texture,
     GLuint delta_mie_scattering_texture,
@@ -1058,7 +1054,7 @@ void Model::Precompute(
   // The precomputations require specific GLSL programs, for each precomputation
   // step. We create and compile them here (they are automatically destroyed
   // when this method returns, via the Program destructor).
-  std::string header = glsl_header_factory_(lambdas);
+  std::string header = glsl_header_factory_(lambdas, generator_radius_);
   Program compute_transmittance(
       kVertexShader, header + kComputeTransmittanceShader);
   Program compute_direct_irradiance(

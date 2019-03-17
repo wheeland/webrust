@@ -57,7 +57,8 @@ extern "C" int AtmosphereUseCombinedTextures = 1;
 extern "C" int AtmosphereUseHalfPrecision = 1;
 
 extern "C" float AtmosphereExposure = 10.0;
-extern "C" float AtmosphereOuterRadius = 1.1f;
+extern "C" float AtmosphereShaderRadius = 1.1f;
+extern "C" float AtmosphereGeneratorRadius = 1.02f;
 extern "C" float AtmosphereRaleighScattering = 1.0f;
 extern "C" float AtmosphereRaleighHeight = 1.0f;
 extern "C" float AtmosphereMieScattering = 1.0f;
@@ -144,7 +145,8 @@ extern "C" void AtmosphereInitModel() {
     // realistic, but was used in the original implementation).
     constexpr double kConstantSolarIrradiance = 1.5;
     const double kBottomRadius = 6360000.0 * MULT;
-    const double kTopRadius = 6360000.0 * AtmosphereOuterRadius * MULT;
+    const double kShaderRadius = 6360000.0 * AtmosphereShaderRadius * MULT;
+    const double kGeneratorRadius = 6360000.0 * AtmosphereGeneratorRadius * MULT;
     const double kRayleigh = 1.24062e-6 * AtmosphereRaleighScattering / MULT;
     const double kRayleighScaleHeight = 8000.0 * AtmosphereRaleighHeight * MULT;
     const double kMieScaleHeight = 1200.0 * AtmosphereMieHeight * MULT;
@@ -204,7 +206,7 @@ extern "C" void AtmosphereInitModel() {
     model_.reset(
         new Model(
             wavelengths, solar_irradiance, kSunAngularRadius,
-            kBottomRadius, kTopRadius, {rayleigh_layer}, rayleigh_scattering,
+            kBottomRadius, kGeneratorRadius, kShaderRadius, {rayleigh_layer}, rayleigh_scattering,
             {mie_layer}, mie_scattering, mie_extinction, kMiePhaseFunctionG,
             ozone_density, absorption_extinction, ground_albedo, max_sun_zenith_angle,
             kLengthUnitInMeters, use_luminance_ == PRECOMPUTED ? 15 : 3,

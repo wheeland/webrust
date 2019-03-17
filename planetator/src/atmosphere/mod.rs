@@ -17,7 +17,8 @@ extern "C" {
     static mut AtmosphereUseHalfPrecision: c_int;
 
     static mut AtmosphereExposure: f32;
-    static mut AtmosphereOuterRadius: f32;
+    static mut AtmosphereShaderRadius: f32;
+    static mut AtmosphereGeneratorRadius: f32;
     static mut AtmosphereRaleighScattering: f32;
     static mut AtmosphereRaleighHeight: f32;
     static mut AtmosphereMieScattering: f32;
@@ -43,13 +44,24 @@ pub fn set_half_precision(half: bool) {
     }
 }
 
-pub fn outer_radius() -> f32 {
-    unsafe { AtmosphereOuterRadius }
+pub fn shader_radius() -> f32 {
+    unsafe { AtmosphereShaderRadius }
 }
-pub fn set_outer_radius(r: f32) {
+pub fn set_shader_radius(r: f32) {
     unsafe {
-        if AtmosphereOuterRadius != r {
-            AtmosphereOuterRadius = r;
+        if AtmosphereShaderRadius != r {
+            AtmosphereShaderRadius = r;
+            dirty = true;
+        }
+    }
+}
+pub fn generator_radius() -> f32 {
+    unsafe { AtmosphereGeneratorRadius }
+}
+pub fn set_generator_radius(r: f32) {
+    unsafe {
+        if AtmosphereGeneratorRadius != r {
+            AtmosphereGeneratorRadius = r;
             dirty = true;
         }
     }
