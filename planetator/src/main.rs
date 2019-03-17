@@ -152,6 +152,13 @@ fn create_postprocess_shader() -> tinygl::Program {
         uniform vec2 sun_size;
         const vec3 kGroundAlbedo = vec3(0.0, 0.0, 0.04);
 
+        vec3 clampVecLen(vec3 vec, float minLen) {
+            float vecLen = length(vec);
+            if (vecLen < minLen)
+                vec *= minLen / vecLen;
+            return vec;
+        }
+
         void main() {
             vec3 normalFromTex = texture(planetNormal, vec2(0.5) + 0.5 * clipPos).rgb;
 
@@ -176,21 +183,21 @@ fn create_postprocess_shader() -> tinygl::Program {
                 // Find out if we are shadowed by the terrain, and interpolate between last and curr sun position
                 //
                 vec3 shadowMapDebugColor;
-                float shadow = 0.6 + 0.4 * getShadow(pPos, dotSun, dist, shadowMapDebugColor);
-                float slopeShadow = max(0.7 + 0.3 * dotSun, 0.0);
-                shadow *= slopeShadow;
-                // pColor = mix(shadowMapDebugColor, pColor, 0.7);
-                pColor *= shadow;
+                float shadow = getShadow(pPos, dotSun, dist, shadowMapDebugColor);
 
                 // visibility of the sky and sun, based on shadows cast by the terrain
-                float sunVisibility = 1.0;
+                float sunVisibility = 0.5 * shadow;
                 float skyVisibility = 1.0;
 
+                vec3 fakedEyePos = clampVecLen(eyePosition / planetRadius, 1.01);
+                vec3 fakedTerrainPos = clampVecLen(pPos / planetRadius, 1.01);
+
+                //
                 // Compute the radiance reflected by the ground.
+                //
                 vec3 sky_irradiance;
-                vec3 sun_irradiance = GetSunAndSkyIrradiance(
-                    pPos / planetRadius, normal, sunDirection, sky_irradiance);
-                vec3 ground_radiance = kGroundAlbedo * (1.0 / PI) * (
+                vec3 sun_irradiance = GetSunAndSkyIrradiance(pPos / planetRadius, normalize(pPos), sunDirection, sky_irradiance);
+                vec3 ground_radiance = pColor * (1.0 / PI) * (
                     sun_irradiance * sunVisibility +
                     sky_irradiance * skyVisibility);
 
@@ -200,9 +207,15 @@ fn create_postprocess_shader() -> tinygl::Program {
                 float shadow_length = 0.0;
 
                 vec3 transmittance;
+
                 vec3 in_scatter = GetSkyRadianceToPoint(
-                    eyePosition / planetRadius,
-                    pPos / planetRadius,
+                    fakedEyePos,
+                    normalize(pPos),
+                    // TODO: fake the position to make sure that we are not looking 'up', i.e.
+                    // that we always look below the horizon line.
+                    // we can optimize this further a bit, because we might not have to reduce it all the way down to 1.0
+                    // but only so far as to match the horizon
+                    // TODO: also make sure that eyePosition is never < radius
                     shadow_length, sunDirection, transmittance
                 );
                 ground_radiance = ground_radiance * transmittance + in_scatter;
