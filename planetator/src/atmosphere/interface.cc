@@ -14,12 +14,23 @@ using namespace atmosphere;
 
 namespace {
 
+// normalize all parameters to unit sphere radius 1.0
 constexpr float MULT = 1.0 / 6360000.0f;
 
 constexpr double kPi = 3.1415926;
 constexpr double kSunAngularRadius = 0.00935 / 2.0;
 constexpr double kSunSolidAngle = kPi * kSunAngularRadius * kSunAngularRadius;
 constexpr double kLengthUnitInMeters = 1.0;
+
+std::unique_ptr<Model> model_;
+GLuint full_screen_quad_vao_ = 0;
+GLuint full_screen_quad_vbo_ = 0;
+
+// derived from input values
+double white_point_r_ = 1.0;
+double white_point_g_ = 1.0;
+double white_point_b_ = 1.0;
+bool do_white_balance_ = false;
 
 }  // anonymous namespace
 
@@ -38,23 +49,19 @@ enum Luminance {
     PRECOMPUTED
 };
 
-bool use_constant_solar_spectrum_ = false;
-bool use_ozone_ = true;
-bool use_combined_textures_ = true;
-bool use_half_precision_ = true;
 Luminance use_luminance_ = Luminance::NONE;
-bool do_white_balance_ = false;
 
-std::unique_ptr<Model> model_;
-GLuint full_screen_quad_vao_ = 0;
-GLuint full_screen_quad_vbo_ = 0;
+extern "C" int AtmosphereUseConstantSolarSpectrum = 0;
+extern "C" int AtmosphereUseOzone = 1;
+extern "C" int AtmosphereUseCombinedTextures = 1;
+extern "C" int AtmosphereUseHalfPrecision = 1;
 
-double exposure_ = 10.0;
-
-// derived from input values
-double white_point_r_ = 1.0;
-double white_point_g_ = 1.0;
-double white_point_b_ = 1.0;
+extern "C" float AtmosphereExposure = 10.0;
+extern "C" float AtmosphereOuterRadius = 1.05f;
+extern "C" float AtmosphereRaleighScattering = 1.0f;
+extern "C" float AtmosphereRaleighHeight = 1.0f;
+extern "C" float AtmosphereMieScattering = 1.0f;
+extern "C" float AtmosphereMieHeight = 1.0f;
 
 extern "C" void AtmosphereInitModel();
 
@@ -136,18 +143,18 @@ extern "C" void AtmosphereInitModel() {
     // Wavelength independent solar irradiance "spectrum" (not physically
     // realistic, but was used in the original implementation).
     constexpr double kConstantSolarIrradiance = 1.5;
-    constexpr double kBottomRadius = 6360000.0 * MULT;
-    constexpr double kTopRadius = 6420000.0 * MULT;
-    constexpr double kRayleigh = 1.24062e-6 / MULT;
-    constexpr double kRayleighScaleHeight = 8000.0 * MULT;
-    constexpr double kMieScaleHeight = 1200.0 * MULT;
-    constexpr double kMieAngstromAlpha = 0.0;
-    constexpr double kMieAngstromBeta = 5.328e-3;
-    constexpr double kMieSingleScatteringAlbedo = 0.9;
-    constexpr double kMiePhaseFunctionG = 0.8;
-    constexpr double kGroundAlbedo = 0.1;
+    const double kBottomRadius = 6360000.0 * MULT;
+    const double kTopRadius = 6360000.0 * AtmosphereOuterRadius * MULT;
+    const double kRayleigh = 1.24062e-6 * AtmosphereRaleighScattering / MULT;
+    const double kRayleighScaleHeight = 8000.0 * AtmosphereRaleighHeight * MULT;
+    const double kMieScaleHeight = 1200.0 * AtmosphereMieHeight * MULT;
+    const double kMieAngstromAlpha = 0.0;
+    const double kMieAngstromBeta = 5.328e-3 * AtmosphereMieScattering;
+    const double kMieSingleScatteringAlbedo = 0.9;
+    const double kMiePhaseFunctionG = 0.8;
+    const double kGroundAlbedo = 0.1;
     const double max_sun_zenith_angle =
-        (use_half_precision_ ? 102.0 : 120.0) / 180.0 * kPi;
+        (AtmosphereUseHalfPrecision ? 102.0 : 120.0) / 180.0 * kPi;
 
     DensityProfileLayer rayleigh_layer(0.0, 1.0, -1.0 / kRayleighScaleHeight, 0.0, 0.0);
     DensityProfileLayer mie_layer(0.0, 1.0, -1.0 / kMieScaleHeight, 0.0, 0.0);
@@ -170,7 +177,7 @@ extern "C" void AtmosphereInitModel() {
         double lambda = static_cast<double>(l) * 1e-3;  // micro-meters
         double mie = kMieAngstromBeta / kMieScaleHeight * pow(lambda, -kMieAngstromAlpha);
         wavelengths.push_back(l);
-        if (use_constant_solar_spectrum_) {
+        if (AtmosphereUseConstantSolarSpectrum) {
             solar_irradiance.push_back(kConstantSolarIrradiance);
         } else {
             solar_irradiance.push_back(kSolarIrradiance[(l - kLambdaMin) / 10]);
@@ -178,7 +185,7 @@ extern "C" void AtmosphereInitModel() {
         rayleigh_scattering.push_back(kRayleigh * pow(lambda, -4));
         mie_scattering.push_back(mie * kMieSingleScatteringAlbedo);
         mie_extinction.push_back(mie);
-        absorption_extinction.push_back(use_ozone_ ?
+        absorption_extinction.push_back(AtmosphereUseOzone ?
             kMaxOzoneNumberDensity * kOzoneCrossSection[(l - kLambdaMin) / 10] :
             0.0);
         ground_albedo.push_back(kGroundAlbedo);
@@ -201,7 +208,7 @@ extern "C" void AtmosphereInitModel() {
             {mie_layer}, mie_scattering, mie_extinction, kMiePhaseFunctionG,
             ozone_density, absorption_extinction, ground_albedo, max_sun_zenith_angle,
             kLengthUnitInMeters, use_luminance_ == PRECOMPUTED ? 15 : 3,
-            use_combined_textures_, use_half_precision_
+            AtmosphereUseCombinedTextures, AtmosphereUseHalfPrecision
         )
     );
     model_->Init();
@@ -235,5 +242,5 @@ extern "C" void AtmospherePrepareShader(GLuint program, int first_tex_unit)
         cos(kSunAngularRadius));
 
     glUniform1f(glGetUniformLocation(program, "exposure"),
-        use_luminance_ != NONE ? exposure_ * 1e-5 : exposure_);
+        use_luminance_ != NONE ? AtmosphereExposure * 1e-5 : AtmosphereExposure);
 }

@@ -10,6 +10,14 @@ extern "C" {
     fn AtmosphereDestroy();
     fn AtmosphereGetShaderSource(buffer: *mut c_char, size: c_int) -> c_int;
     fn AtmospherePrepareShader(program: GLuint, first_tex_unit: c_int);
+
+    static mut AtmosphereUseConstantSolarSpectrum: c_int;
+    static mut AtmosphereUseOzone: c_int;
+    static mut AtmosphereUseCombinedTextures: c_int;
+    static mut AtmosphereUseHalfPrecision: c_int;
+
+    static mut AtmosphereExposure: f32;
+    static mut AtmosphereOuterRadius: f32;
 }
 
 static mut did_init: bool = false;
