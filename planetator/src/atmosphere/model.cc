@@ -46,9 +46,27 @@ of the following C++ code.
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <sstream>
 #include <memory>
 
 #include "atmosphere/constants.h"
+
+static void printShader(GLuint shader) {
+  GLsizei bufSize = 1024 * 1024 * 1024;
+  char *buffer = new char[bufSize];
+  GLsizei len;
+  glGetShaderSource(shader, bufSize, &len, buffer);
+
+  std::istringstream f(buffer);
+  std::string s;
+  int ln = 0;
+  while (std::getline(f, s, '\n')) {
+      printf("[ %4d ] %s\n", ln, s.c_str());
+      ++ln;
+  }
+
+  delete [] buffer;
+}
 
 /*
 <p>The rest of this file is organized in 3 parts:
@@ -333,6 +351,7 @@ class Program {
     GLint compile_status;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &compile_status);
     if (compile_status == GL_FALSE) {
+      printShader(shader);
       PrintShaderLog(shader);
     }
     assert(compile_status == GL_TRUE);
@@ -910,8 +929,8 @@ void Model::Init(unsigned int num_scattering_orders) {
     std::string header = glsl_header_factory_({kLambdaR, kLambdaG, kLambdaB}, generator_radius_);
     Program compute_transmittance(
         kVertexShader, header + kComputeTransmittanceShader);
-    glFramebufferTexture(
-        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, transmittance_texture_, 0);
+    glFramebufferTexture2D(
+        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, transmittance_texture_, 0);
     GLuint drawBuffer = GL_COLOR_ATTACHMENT0;
     glDrawBuffers(1, &drawBuffer);
     glViewport(0, 0, TRANSMITTANCE_TEXTURE_WIDTH, TRANSMITTANCE_TEXTURE_HEIGHT);
@@ -1039,8 +1058,8 @@ void Model::Precompute(
   glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ONE, GL_ONE);
 
   // Compute the transmittance, and store it in transmittance_texture_.
-  glFramebufferTexture(
-      GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, transmittance_texture_, 0);
+  glFramebufferTexture2D(
+      GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, transmittance_texture_, 0);
   glDrawBuffers(1, kDrawBuffers);
   glViewport(0, 0, TRANSMITTANCE_TEXTURE_WIDTH, TRANSMITTANCE_TEXTURE_HEIGHT);
   compute_transmittance.Use();
@@ -1050,10 +1069,10 @@ void Model::Precompute(
   // depending on 'blend', either initialize irradiance_texture_ with zeros or
   // leave it unchanged (we don't want the direct irradiance in
   // irradiance_texture_, but only the irradiance from the sky).
-  glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-      delta_irradiance_texture, 0);
-  glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1,
-      irradiance_texture_, 0);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+      GL_TEXTURE_2D, delta_irradiance_texture, 0);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1,
+      GL_TEXTURE_2D, irradiance_texture_, 0);
   glDrawBuffers(2, kDrawBuffers);
   glViewport(0, 0, IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT);
   compute_direct_irradiance.Use();
@@ -1100,9 +1119,9 @@ void Model::Precompute(
        ++scattering_order) {
     // Compute the scattering density, and store it in
     // delta_scattering_density_texture.
-    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, 0, 0);
-    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, 0, 0);
-    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, 0, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, 0, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, 0, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, 0, 0);
     glDrawBuffers(1, kDrawBuffers);
     glViewport(0, 0, SCATTERING_TEXTURE_WIDTH, SCATTERING_TEXTURE_HEIGHT);
     compute_scattering_density.Use();
@@ -1128,10 +1147,10 @@ void Model::Precompute(
 
     // Compute the indirect irradiance, store it in delta_irradiance_texture and
     // accumulate it in irradiance_texture_.
-    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-        delta_irradiance_texture, 0);
-    glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1,
-        irradiance_texture_, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+        GL_TEXTURE_2D, delta_irradiance_texture, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1,
+        GL_TEXTURE_2D, irradiance_texture_, 0);
     glDrawBuffers(2, kDrawBuffers);
     glViewport(0, 0, IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT);
     compute_indirect_irradiance.Use();
@@ -1170,9 +1189,9 @@ void Model::Precompute(
       DrawQuad({false, true}, full_screen_quad_vao_);
     }
   }
-  glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, 0, 0);
-  glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, 0, 0);
-  glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, 0, 0);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, 0, 0);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, 0, 0);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, 0, 0);
 }
 
 }  // namespace atmosphere
