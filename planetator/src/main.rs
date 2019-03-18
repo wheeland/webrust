@@ -142,7 +142,7 @@ fn create_postprocess_shader() -> tinygl::Program {
 
         ")
         + &shadowmap::ShadowMap::glsl()
-        + &atmosphere::shader_source().replace("#version 330", "") +
+        + &atmosphere::shader_source().replace("#version 300 es", "") +
         "
         in vec2 clipPos;
         out vec4 outColor;

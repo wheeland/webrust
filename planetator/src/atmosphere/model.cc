@@ -72,8 +72,8 @@ namespace atmosphere {
 namespace {
 
 const char kVertexShader[] = R"(
-    #version 330
-    layout(location = 0) in vec2 vertex;
+    #version 300 es
+    layout(location = 0) in highp vec2 vertex;
     void main() {
       gl_Position = vec4(vertex, 0.0, 1.0);
     })";
@@ -121,7 +121,7 @@ const char kComputeSingleScatteringShader[] = R"(
     layout(location = 3) out vec3 single_mie_scattering;
     uniform mat3 luminance_from_radiance;
     uniform sampler2D transmittance_texture;
-    uniform int layer;
+    uniform float layer;
     void main() {
       ComputeSingleScatteringTexture(
           ATMOSPHERE, transmittance_texture, vec3(gl_FragCoord.xy, layer + 0.5),
@@ -139,7 +139,7 @@ const char kComputeScatteringDensityShader[] = R"(
     uniform sampler3D multiple_scattering_texture;
     uniform sampler2D irradiance_texture;
     uniform int scattering_order;
-    uniform int layer;
+    uniform float layer;
     void main() {
       scattering_density = ComputeScatteringDensityTexture(
           ATMOSPHERE, transmittance_texture, single_rayleigh_scattering_texture,
@@ -170,7 +170,7 @@ const char kComputeMultipleScatteringShader[] = R"(
     uniform mat3 luminance_from_radiance;
     uniform sampler2D transmittance_texture;
     uniform sampler3D scattering_density_texture;
-    uniform int layer;
+    uniform float layer;
     void main() {
       float nu;
       delta_multiple_scattering = ComputeMultipleScatteringTexture(
@@ -304,6 +304,10 @@ class Program {
       const std::array<float, 9>& value) const {
     glUniformMatrix3fv(glGetUniformLocation(program_, uniform_name.c_str()),
         1, true /* transpose */, value.data());
+  }
+
+  void BindFloat(const std::string& uniform_name, float value) const {
+    glUniform1f(glGetUniformLocation(program_, uniform_name.c_str()), value);
   }
 
   void BindInt(const std::string& uniform_name, int value) const {
@@ -643,7 +647,9 @@ Model::Model(
   // wavelengths in 'lambdas'.
   glsl_header_factory_ = [=](const vec3& lambdas, float topRadius) {
     return
-      "#version 330\n"
+      "#version 300 es\n"
+      "precision highp float;\n"
+      "precision highp sampler3D;\n"
       "#define IN(x) const in x\n"
       "#define OUT(x) out x\n"
       "#define TEMPLATE(x)\n"
@@ -906,7 +912,8 @@ void Model::Init(unsigned int num_scattering_orders) {
         kVertexShader, header + kComputeTransmittanceShader);
     glFramebufferTexture(
         GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, transmittance_texture_, 0);
-    glDrawBuffer(GL_COLOR_ATTACHMENT0);
+    GLuint drawBuffer = GL_COLOR_ATTACHMENT0;
+    glDrawBuffers(1, &drawBuffer);
     glViewport(0, 0, TRANSMITTANCE_TEXTURE_WIDTH, TRANSMITTANCE_TEXTURE_HEIGHT);
     compute_transmittance.Use();
     DrawQuad({}, full_screen_quad_vao_);
@@ -1034,7 +1041,7 @@ void Model::Precompute(
   // Compute the transmittance, and store it in transmittance_texture_.
   glFramebufferTexture(
       GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, transmittance_texture_, 0);
-  glDrawBuffer(GL_COLOR_ATTACHMENT0);
+  glDrawBuffers(1, kDrawBuffers);
   glViewport(0, 0, TRANSMITTANCE_TEXTURE_WIDTH, TRANSMITTANCE_TEXTURE_HEIGHT);
   compute_transmittance.Use();
   DrawQuad({}, full_screen_quad_vao_);
@@ -1071,7 +1078,7 @@ void Model::Precompute(
       "transmittance_texture", transmittance_texture_, 0);
 
   for (unsigned int layer = 0; layer < SCATTERING_TEXTURE_DEPTH; ++layer) {
-    compute_single_scattering.BindInt("layer", layer);
+    compute_single_scattering.BindFloat("layer", layer);
 
     glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
         delta_rayleigh_scattering_texture, 0, layer);
@@ -1096,7 +1103,7 @@ void Model::Precompute(
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, 0, 0);
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, 0, 0);
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, 0, 0);
-    glDrawBuffer(GL_COLOR_ATTACHMENT0);
+    glDrawBuffers(1, kDrawBuffers);
     glViewport(0, 0, SCATTERING_TEXTURE_WIDTH, SCATTERING_TEXTURE_HEIGHT);
     compute_scattering_density.Use();
     compute_scattering_density.BindTexture2d(
@@ -1115,7 +1122,7 @@ void Model::Precompute(
     for (unsigned int layer = 0; layer < SCATTERING_TEXTURE_DEPTH; ++layer) {
       glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
           delta_scattering_density_texture, 0, layer);
-      compute_scattering_density.BindInt("layer", layer);
+      compute_scattering_density.BindFloat("layer", layer);
       DrawQuad({}, full_screen_quad_vao_);
     }
 
@@ -1159,7 +1166,7 @@ void Model::Precompute(
           delta_multiple_scattering_texture, 0, layer);
       glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1,
           scattering_texture_, 0, layer);
-      compute_multiple_scattering.BindInt("layer", layer);
+      compute_multiple_scattering.BindFloat("layer", layer);
       DrawQuad({false, true}, full_screen_quad_vao_);
     }
   }
