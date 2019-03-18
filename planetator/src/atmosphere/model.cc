@@ -441,18 +441,15 @@ blending separately enabled or disabled for each color attachment):
 
 void DrawQuad(const std::vector<bool>& enable_blend, GLuint quad_vao) {
   for (unsigned int i = 0; i < enable_blend.size(); ++i) {
-    if (enable_blend[i]) {
-      glEnablei(GL_BLEND, i);
+    if (!enable_blend[i]) {
+      const float clearColor[] = {0, 0, 0, 0};
+      glClearBufferfv(GL_COLOR, i, clearColor);
     }
   }
 
   glBindVertexArray(quad_vao);
   glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
   glBindVertexArray(0);
-
-  for (unsigned int i = 0; i < enable_blend.size(); ++i) {
-    glDisablei(GL_BLEND, i);
-  }
 }
 
 /*
@@ -1030,6 +1027,7 @@ void Model::Precompute(
     GL_COLOR_ATTACHMENT2,
     GL_COLOR_ATTACHMENT3
   };
+  glEnable(GL_BLEND);
   glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
   glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ONE, GL_ONE);
 
