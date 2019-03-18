@@ -104,9 +104,9 @@ impl Planet {
             let dist = node.distance(eye) / radius;
             let detail_factor = 4.0 * 0.5f32.powi(node.position().depth()) / dist;
 
-            if detail_factor > 1.0 && node.position.depth() < max_level {
+            if detail_factor > 1.2 && node.position.depth() < max_level {
                 node.create_children();
-            } else if detail_factor < 1.2 {
+            } else if detail_factor < 0.8 {
                 node.delete_children();
             }
             node.my_priority = if node.visible { detail_factor } else { 0.0 };
