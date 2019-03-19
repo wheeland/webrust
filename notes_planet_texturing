@@ -1,0 +1,16 @@
+procedural 3D texturing
+    - http://www.iquilezles.org/www/articles/filtering/filtering.htm
+    
+
+
+2d mapping
+    - http://www.iquilezles.org/www/articles/texturerepetition/texturerepetition.htm
+    - 1st idea
+        - go from the un-stretched cube, where every of the 6 faces can be NxN squares
+        - now we can choose a random orientation of the texture for each square, and blend them at the sides
+        - on top of this, we can do http://www.decarpentier.nl/scape-render
+    - 2nd idea
+        - we can define 6 or 12 or 24 or what different directions
+        - each of these directions has an associated UV-space
+        - each face chooses one main direction of how to orient
+        - but actually it chooses a bunch, so as to make it smooth, and blend between them
