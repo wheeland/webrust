@@ -3,6 +3,7 @@ use array2d::Array2D;
 
 use super::plate;
 use super::plateoptimizer;
+use super::noise;
 
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -228,7 +229,7 @@ pub fn compile_generator(generator: &str, channels: &super::Channels) -> Program
             gl_Position = vec4(xy, 0.0, 1.0);
         }";
 
-    let frag = super::noise::ShaderNoise::declarations() + "
+    let frag = noise::ShaderNoise::declarations() + "
         uniform vec2 ofs;
         uniform float invsize;
         uniform float stretch;
@@ -261,7 +262,7 @@ pub fn compile_generator(generator: &str, channels: &super::Channels) -> Program
             generate(position * radius, depth);
 
             posHeight = vec4(position, height);
-        }" + &super::noise::ShaderNoise::definitions();
+        }" + &noise::ShaderNoise::definitions();
 
     Program::new(vert, &frag)
 }
@@ -285,7 +286,7 @@ pub fn compile_postvertex(channels: &super::Channels) -> Program {
                 gl_Position = vec4(xy, 0.0, 1.0);
             }";
 
-    let frag = super::noise::ShaderNoise::declarations() + "
+    let frag = noise::ShaderNoise::declarations() + "
             uniform float size;
             uniform float radius;
             uniform sampler2D positions;
@@ -345,7 +346,7 @@ pub fn compile_postvertex(channels: &super::Channels) -> Program {
         //+ if channels.source().is_empty() { "" } else { "generate(heightPosCenter.xyz, heightPosCenter.w, normal.xyz);" } +
         "
             }
-            " + &super::noise::ShaderNoise::definitions();
+            " + &noise::ShaderNoise::definitions();
 
     Program::new(vert, &frag)
 }
@@ -559,7 +560,7 @@ impl Generator {
         self.vertex_generator.uniform("ofs", Uniform::Vec2(Vector2::new(xofs, yofs)));
         self.vertex_generator.uniform("mul", Uniform::Float(fac));
         self.vertex_generator.uniform("depth", Uniform::Signed(pos.depth()));
-        self.vertex_generator.uniform("cubeTransformMatrix", Uniform::Mat3(get_vertex_transformation_matrix(pos.direction())));
+        self.vertex_generator.uniform("cubeTransformMatrix", Uniform::Mat3(pos.direction().square_to_cubic_transform()));
         self.vertex_generator.vertex_attrib_buffer("xy", &self.quad, 2, gl::FLOAT, false, 8, 0);
         fbos.position_pass.bind();
         unsafe { gl::DrawArrays(gl::TRIANGLES, 0, 6) }
@@ -686,46 +687,5 @@ impl Generator {
         self.generation_order.clear();
 
         ret
-    }
-}
-
-fn get_vertex_transformation_matrix(dir: plate::Direction) -> Matrix3<f32> {
-    match dir {
-        plate::Direction::PosX =>
-            Matrix3::new(
-                0.0, 0.0, 1.0,
-                0.0, 1.0, 0.0,
-                1.0, 0.0, 0.0
-            ),
-        plate::Direction::NegX =>
-            Matrix3::new(
-                0.0, 1.0, 0.0,
-                0.0, 0.0, 1.0,
-                -1.0, 0.0, 0.0
-            ),
-        plate::Direction::PosY =>
-            Matrix3::new(
-                1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0,
-                0.0, 1.0, 0.0
-            ),
-        plate::Direction::NegY =>
-            Matrix3::new(
-                0.0, 0.0, 1.0,
-                1.0, 0.0, 0.0,
-                0.0, -1.0, 0.0
-            ),
-        plate::Direction::PosZ =>
-            Matrix3::new(
-                0.0, 1.0, 0.0,
-                1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0
-            ),
-        plate::Direction::NegZ =>
-            Matrix3::new(
-                1.0, 0.0, 0.0,
-                0.0, 1.0, 0.0,
-                0.0, 0.0, -1.0
-            ),
     }
 }

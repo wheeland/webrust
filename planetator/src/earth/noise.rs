@@ -34,7 +34,7 @@ vec4 _noise_taylorInvSqrt(vec4 r) {
     return 1.79284291400159 - 0.85373472095314 * r;
 }
 
-float simplexNoise(vec2 v) {
+float noise(vec2 v) {
     const vec4 C = vec4(0.211324865405187,  // (3.0-sqrt(3.0))/6.0
                         0.366025403784439,  // 0.5*(sqrt(3.0)-1.0)
                        -0.577350269189626,  // -1.0 + 2.0 * C.x
@@ -82,7 +82,7 @@ float simplexNoise(vec2 v) {
     return 130.0 * dot(m, g);
 }
 
-float simplexNoise(vec3 v) {
+float noise(vec3 v) {
     const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
     const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
 
@@ -168,7 +168,7 @@ vec4 _noise_grad4(float j, vec4 ip) {
     return p;
 }
 
-float simplexNoise(vec4 v) {
+float noise(vec4 v) {
     const vec4  C = vec4( 0.138196601125011,  // (5 - sqrt(5))/20  G4
                           0.276393202250021,  // 2 * G4
                           0.414589803375032,  // 3 * G4
@@ -247,10 +247,10 @@ float simplexNoise(vec4 v) {
                  + dot(m1*m1, vec2( dot( p3, x3 ), dot( p4, x4 ) ) ) ) ;
 }
 
-float simplexNoise(vec2 v, int levels, float persistence) {
+float noise(vec2 v, int levels, float persistence) {
       float result = 0.0, amp = 1.0, freq = 1.0, total = 0.0;
       for (int i = 0; i < levels; i++) {
-          result += amp * simplexNoise(v * freq);
+          result += amp * noise(v * freq);
           total += amp;
           amp *= persistence;
           freq *= 2.0;
@@ -258,10 +258,10 @@ float simplexNoise(vec2 v, int levels, float persistence) {
       return result / total;
 }
 
-float simplexNoise(vec3 v, int levels, float persistence) {
+float noise(vec3 v, int levels, float persistence) {
       float result = 0.0, amp = 1.0, freq = 1.0, total = 0.0;
       for (int i = 0; i < levels; i++) {
-          result += amp * simplexNoise(v * freq);
+          result += amp * noise(v * freq);
           total += amp;
           amp *= persistence;
           freq *= 2.0;
@@ -269,10 +269,10 @@ float simplexNoise(vec3 v, int levels, float persistence) {
       return result / total;
 }
 
-float simplexNoise(vec4 v, int levels, float persistence) {
+float noise(vec4 v, int levels, float persistence) {
       float result = 0.0, amp = 1.0, freq = 1.0, total = 0.0;
       for (int i = 0; i < levels; i++) {
-          result += amp * simplexNoise(v * freq);
+          result += amp * noise(v * freq);
           total += amp;
           amp *= persistence;
           freq *= 2.0;
@@ -280,11 +280,7 @@ float simplexNoise(vec4 v, int levels, float persistence) {
       return result / total;
 }
 
-vec2 simplexNoise2(vec2 v) { return vec2(simplexNoise(v), simplexNoise(v + vec2(57.0))); }
-
-vec3 simplexNoise3(vec3 v) { return vec3(simplexNoise(v), simplexNoise(v + vec3(57.0)), simplexNoise(v + vec3(147.0))); }
-
-float simplexNoise3DGrad(vec3 v, out vec3 gradient) {
+float noise_grad(vec3 v, out vec3 gradient) {
     const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
     const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
 
@@ -392,7 +388,7 @@ float _noise_random1(vec3 pos)
   set by only iterating over multiples of M.
 
  */
-vec3 getShiftedGridPos(vec3 intPos, float density)
+vec3 _shifted_grid_pos(vec3 intPos, float density)
 {
     vec3 rdm = _noise_random3(intPos) * 0.5 - vec3(0.25);
 
@@ -401,8 +397,14 @@ vec3 getShiftedGridPos(vec3 intPos, float density)
     return intPos + rdm * dimensionality;
 }
 
-float cubicWorleyNoise(vec3 cubicPos, mat3 offsets, float density)
+uniform mat3 _worleyOffets;
+
+float worley(vec3 sphericalPos, float density)
 {
+    vec3 absPos = abs(sphericalPos);
+    float maxElem = max(absPos.x, max(absPos.y, absPos.z));
+    vec3 cubicPos = clamp(vec3(-1.0), sphericalPos / maxElem, vec3(1.0));
+
     // each grid point can be classified as being 0-, 1-, or 2-dimensional.
     //   0-dimensional: corner (three dimensions are +/- 1.0)
     //   1-dimensional: edge (two dimensions are +/- 1.0)
@@ -417,16 +419,16 @@ float cubicWorleyNoise(vec3 cubicPos, mat3 offsets, float density)
 
     // now we check where exactly those 4 neighbor grid points are
     vec3 gridPos[4];
-    gridPos[0] = getShiftedGridPos(basePos, density);
+    gridPos[0] = _shifted_grid_pos(basePos, density);
     for (int i = 0; i < 3; ++i)
-        gridPos[i + 1] = getShiftedGridPos(basePos + offsets[i], density);
+        gridPos[i + 1] = _shifted_grid_pos(basePos + _worleyOffets[i], density);
 
     // get min. distance to neighboring grid points
     float minDist2 = dot(noisePos - gridPos[0], noisePos - gridPos[0]);
     for (int i = 1; i < 4; ++i)
         minDist2 = min(minDist2, dot(noisePos - gridPos[i], noisePos - gridPos[i]));
 
-    return sqrt(minDist2);
+    return sqrt(max(minDist2, 0.0));
 }
 
 float cubicPerlinNoise(vec3 cubicPos, mat3 offsets, float density)
@@ -452,17 +454,14 @@ float cubicPerlinNoise(vec3 cubicPos, mat3 offsets, float density)
     }
 
     pub fn declarations() -> String {
-        String::from("
-float simplexNoise(vec2 v);
-float simplexNoise(vec3 v);
-float simplexNoise(vec4 v);
-float simplexNoise(vec2 v, int levels, float persistence);
-float simplexNoise(vec3 v, int levels, float persistence);
-float simplexNoise(vec4 v, int levels, float persistence);
-vec2 simplexNoise2(vec2 v);
-vec3 simplexNoise3(vec3 v);
-float simplexNoise3DGrad(vec3 v, out vec3 gradient);
-float cubicWorleyNoise(vec3 cubicPos, mat3 offsets, int density);
+        String::from("float noise(vec2 v);
+float noise(vec3 v);
+float noise(vec4 v);
+float noise(vec2 v, int levels, float persistence);
+float noise(vec3 v, int levels, float persistence);
+float noise(vec4 v, int levels, float persistence);
+float noise_grad(vec3 v, out vec3 gradient);
+float worley(vec3 cubicPos, float density);
 float cubicPerlinNoise(vec3 cubicPos, mat3 offsets, float density);
 ")
     }

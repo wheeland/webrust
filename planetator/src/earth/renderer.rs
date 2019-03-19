@@ -6,6 +6,7 @@ use super::super::culling;
 use super::Channels;
 use super::flycamera::FlyCamera;
 use super::tree;
+use super::noise;
 
 pub struct Renderer {
     camera: FlyCamera,
@@ -126,9 +127,9 @@ fn create_render_program(colorator: &str, channels: &Channels, textures: &Vec<(S
 pub fn default_generator() -> String {
     String::from("void generate(vec3 position, int depth)
 {
-    float mountain = smoothstep(-0.5, 1.0, simplexNoise(position * 0.2));
-    float base = simplexNoise(position * 0.1, 4, 0.5);
-    float detail = simplexNoise(position, 6, 0.5);
+    float mountain = smoothstep(-0.5, 1.0, noise(position * 0.2));
+    float base = noise(position * 0.1, 4, 0.5);
+    float detail = noise(position, 6, 0.5);
     height = 1.4 * base + mountain * (0.5 + 0.5 * detail);
     height *= 1.0 - smoothstep(0.8, 0.9, abs(normalize(position).y));
 }")

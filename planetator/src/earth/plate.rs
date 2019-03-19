@@ -1,4 +1,4 @@
-use cgmath::{Vector2, Vector3,InnerSpace};
+use cgmath::{Vector2, Vector3, InnerSpace, Matrix3};
 
 pub static STRETCH: f32 = 0.9;
 pub static STRETCH_ASIN: f32 = 1.1197695149986342;
@@ -103,6 +103,47 @@ impl Direction {
         result.x = unstretch(result.x);
         result.y = unstretch(result.y);
         result
+    }
+
+    pub fn square_to_cubic_transform(&self) -> Matrix3<f32> {
+        match self {
+            Direction::PosX =>
+                Matrix3::new(
+                    0.0, 0.0, 1.0,
+                    0.0, 1.0, 0.0,
+                    1.0, 0.0, 0.0
+                ),
+            Direction::NegX =>
+                Matrix3::new(
+                    0.0, 1.0, 0.0,
+                    0.0, 0.0, 1.0,
+                    -1.0, 0.0, 0.0
+                ),
+            Direction::PosY =>
+                Matrix3::new(
+                    1.0, 0.0, 0.0,
+                    0.0, 0.0, 1.0,
+                    0.0, 1.0, 0.0
+                ),
+            Direction::NegY =>
+                Matrix3::new(
+                    0.0, 0.0, 1.0,
+                    1.0, 0.0, 0.0,
+                    0.0, -1.0, 0.0
+                ),
+            Direction::PosZ =>
+                Matrix3::new(
+                    0.0, 1.0, 0.0,
+                    1.0, 0.0, 0.0,
+                    0.0, 0.0, 1.0
+                ),
+            Direction::NegZ =>
+                Matrix3::new(
+                    1.0, 0.0, 0.0,
+                    0.0, 1.0, 0.0,
+                    0.0, 0.0, -1.0
+                ),
+        }
     }
 }
 
