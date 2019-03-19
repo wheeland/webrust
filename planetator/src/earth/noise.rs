@@ -397,13 +397,18 @@ vec3 _shifted_grid_pos(vec3 intPos, float density)
     return intPos + rdm * dimensionality;
 }
 
-uniform mat3 _worleyOffets;
-
-float worley(vec3 sphericalPos, float density)
+vec2 worley(vec3 sphericalPos, float density)
 {
+    // find axis with maximum extent
     vec3 absPos = abs(sphericalPos);
+    vec3 sgnPos = sign(sphericalPos);
     float maxElem = max(absPos.x, max(absPos.y, absPos.z));
-    vec3 cubicPos = clamp(vec3(-1.0), sphericalPos / maxElem, vec3(1.0));
+    vec3 mainAxis = step(vec3(maxElem), absPos);
+    vec3 sideAxis = vec3(1.0) - mainAxis;
+
+    vec3 cubicPos = mainAxis * sgnPos + sideAxis * sphericalPos / maxElem;
+    vec3 ofs1 = mainAxis.yzx;
+    vec3 ofs2 = mainAxis.zxy;
 
     // each grid point can be classified as being 0-, 1-, or 2-dimensional.
     //   0-dimensional: corner (three dimensions are +/- 1.0)
@@ -418,17 +423,24 @@ float worley(vec3 sphericalPos, float density)
     vec3 basePos = floor(noisePos);
 
     // now we check where exactly those 4 neighbor grid points are
-    vec3 gridPos[4];
-    gridPos[0] = _shifted_grid_pos(basePos, density);
-    for (int i = 0; i < 3; ++i)
-        gridPos[i + 1] = _shifted_grid_pos(basePos + _worleyOffets[i], density);
+    vec3 gridPos0 = _shifted_grid_pos(basePos, density);
+    vec3 gridPos1 = _shifted_grid_pos(basePos + ofs1, density);
+    vec3 gridPos2 = _shifted_grid_pos(basePos + ofs2, density);
+    vec3 gridPos3 = _shifted_grid_pos(basePos + ofs1 + ofs2, density);
 
     // get min. distance to neighboring grid points
-    float minDist2 = dot(noisePos - gridPos[0], noisePos - gridPos[0]);
-    for (int i = 1; i < 4; ++i)
-        minDist2 = min(minDist2, dot(noisePos - gridPos[i], noisePos - gridPos[i]));
+    vec4 dists2 = vec4(
+        dot(noisePos - gridPos0, noisePos - gridPos0),
+        dot(noisePos - gridPos1, noisePos - gridPos1),
+        dot(noisePos - gridPos2, noisePos - gridPos2),
+        dot(noisePos - gridPos3, noisePos - gridPos3)
+    );
 
-    return sqrt(max(minDist2, 0.0));
+    float minDist2 = min(dists2.x, min(dists2.y, min(dists2.z, dists2.w)));
+    dists2 += step(vec4(minDist2), dists2);
+    float minDist22 = min(dists2.x, min(dists2.y, min(dists2.z, dists2.w)));
+
+    return sqrt(vec2(minDist2, minDist22));
 }
 
 float cubicPerlinNoise(vec3 cubicPos, mat3 offsets, float density)
@@ -461,7 +473,7 @@ float noise(vec2 v, int levels, float persistence);
 float noise(vec3 v, int levels, float persistence);
 float noise(vec4 v, int levels, float persistence);
 float noise_grad(vec3 v, out vec3 gradient);
-float worley(vec3 cubicPos, float density);
+vec2 worley(vec3 cubicPos, float density);
 float cubicPerlinNoise(vec3 cubicPos, mat3 offsets, float density);
 ")
     }
