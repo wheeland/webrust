@@ -27,6 +27,7 @@ extern "C" {
 
 static mut did_init: bool = false;
 static mut dirty: bool = false;
+static E: f32 = 0.000001;
 
 pub fn is_dirty() -> bool {
     unsafe { dirty }
@@ -50,7 +51,7 @@ pub fn shader_radius() -> f32 {
 pub fn set_shader_radius(r: f32) {
     unsafe {
         if AtmosphereShaderRadius != r {
-            AtmosphereShaderRadius = r;
+            AtmosphereShaderRadius = r.max(E);
             dirty = true;
         }
     }
@@ -61,7 +62,7 @@ pub fn generator_radius() -> f32 {
 pub fn set_generator_radius(r: f32) {
     unsafe {
         if AtmosphereGeneratorRadius != r {
-            AtmosphereGeneratorRadius = r;
+            AtmosphereGeneratorRadius = r.max(E);
             dirty = true;
         }
     }
@@ -73,7 +74,7 @@ pub fn raleigh_scattering() -> f32 {
 pub fn set_raleigh_scattering(r: f32) {
     unsafe {
         if AtmosphereRaleighScattering != r {
-            AtmosphereRaleighScattering = r;
+            AtmosphereRaleighScattering = r.max(E);
             dirty = true;
         }
     }
@@ -85,7 +86,7 @@ pub fn raleigh_height() -> f32 {
 pub fn set_raleigh_height(r: f32) {
     unsafe {
         if AtmosphereRaleighHeight != r {
-            AtmosphereRaleighHeight = r;
+            AtmosphereRaleighHeight = r.max(E);
             dirty = true;
         }
     }
@@ -97,7 +98,7 @@ pub fn mie_scattering() -> f32 {
 pub fn set_mie_scattering(r: f32) {
     unsafe {
         if AtmosphereMieScattering != r {
-            AtmosphereMieScattering = r;
+            AtmosphereMieScattering = r.max(E);
             dirty = true;
         }
     }
@@ -109,7 +110,7 @@ pub fn mie_height() -> f32 {
 pub fn set_mie_height(r: f32) {
     unsafe {
         if AtmosphereMieHeight != r {
-            AtmosphereMieHeight = r;
+            AtmosphereMieHeight = r.max(E);
             dirty = true;
         }
     }
