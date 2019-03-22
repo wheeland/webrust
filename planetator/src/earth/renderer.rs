@@ -132,13 +132,255 @@ pub fn default_generator() -> String {
     float detail = noise(position, 6, 0.5);
     height = 1.4 * base + mountain * (0.5 + 0.5 * detail);
     height *= 1.0 - smoothstep(0.8, 0.9, abs(normalize(position).y));
+    height = 0.0;
 }")
 }
 
 pub fn default_colorator() -> String {
-String::from("vec3 color(vec3 normal, vec3 position)
+String::from("const lowp vec3 icoVerts[12] = vec3[](
+    vec3(-0.59807, -0.25358,  0.76027),
+    vec3(-0.52296,  0.73967,  0.42355),
+    vec3( 0.52296, -0.73967, -0.42355),
+    vec3( 0.59807,  0.25358, -0.76027),
+    vec3( 0.98339, -0.01299,  0.18103),
+    vec3( 0.29056,  0.28743,  0.91267),
+    vec3(-0.29056, -0.28743, -0.91267),
+    vec3(-0.98339,  0.01299, -0.18103),
+    vec3(-0.33291,  0.71875, -0.61038),
+    vec3( 0.45443,  0.88837,  0.06556),
+    vec3(-0.45443, -0.88837, -0.06556),
+    vec3( 0.33291, -0.71875,  0.61038)
+);
+
+const lowp vec3 icoMats1[20] = vec3[](
+    vec3(-1.09276,  0.51477,  0.59140),
+    vec3(-0.72726, -0.59140,  0.88028),
+    vec3(-0.18322, -0.88028, -0.04735),
+    vec3(-0.21249,  0.04735, -0.90954),
+    vec3(-0.77461,  0.90954, -0.51477),
+    vec3( 0.72726,  0.43081, -1.04087),
+    vec3( 1.09276, -0.08397, -0.16059),
+    vec3( 0.77461, -0.99351,  0.43081),
+    vec3( 0.21249, -1.04087, -0.08397),
+    vec3( 0.18322, -0.16059, -0.99351),
+    vec3( 0.21249,  0.90954, -0.04735),
+    vec3( 0.18322,  0.04735,  0.88028),
+    vec3( 0.72726, -0.88028,  0.59140),
+    vec3( 1.09276, -0.59140, -0.51477),
+    vec3( 0.77461,  0.51477, -0.90954),
+    vec3(-0.21249,  0.08397,  1.04087),
+    vec3(-0.18322,  0.99351,  0.16059),
+    vec3(-0.72726,  1.04087, -0.43081),
+    vec3(-1.09276,  0.16059,  0.08397),
+    vec3(-0.77461, -0.43081,  0.99351)
+);
+
+const lowp vec3 icoMats2[20] = vec3[](
+    vec3(-0.16625,  0.81245, -1.00775),
+    vec3(-0.78907,  1.00775,  0.18963),
+    vec3(-0.67187, -0.18963,  1.12494),
+    vec3( 0.02339, -1.12494,  0.50562),
+    vec3( 0.33588, -0.50562, -0.81245),
+    vec3( 0.78907, -0.29804,  0.52008),
+    vec3( 0.16625, -1.11049,  0.70971),
+    vec3(-0.33588, -0.60487, -0.29804),
+    vec3(-0.02339,  0.52008, -1.11049),
+    vec3( 0.67187,  0.70971, -0.60487),
+    vec3(-0.02339, -0.50562,  1.12494),
+    vec3( 0.67187, -1.12494,  0.18963),
+    vec3( 0.78907, -0.18963, -1.00775),
+    vec3( 0.16625,  1.00775, -0.81245),
+    vec3(-0.33588,  0.81245,  0.50562),
+    vec3( 0.02339,  1.11049, -0.52008),
+    vec3(-0.67187,  0.60487, -0.70971),
+    vec3(-0.78907, -0.52008,  0.29804),
+    vec3(-0.16625, -0.70971,  1.11049),
+    vec3( 0.33588,  0.29804,  0.60487)
+);
+
+const lowp vec3 icoMats3[20] = vec3[](
+    vec3( 0.40025,  0.67594,  0.12909),
+    vec3( 0.48003, -0.12909,  0.75572),
+    vec3( 0.94709, -0.75572,  0.33797),
+    vec3( 1.15597, -0.33797, -0.54685),
+    vec3( 0.81800,  0.54685, -0.67594),
+    vec3(-0.48003,  1.05240,  0.16758),
+    vec3(-0.40025,  0.37646,  0.92331),
+    vec3(-0.81800, -0.17039,  1.05240),
+    vec3(-1.15597,  0.16758,  0.37646),
+    vec3(-0.94709,  0.92331, -0.17039),
+    vec3(-1.15597,  0.54685,  0.33797),
+    vec3(-0.94709, -0.33797,  0.75572),
+    vec3(-0.48003, -0.75572,  0.12909),
+    vec3(-0.40025, -0.12909, -0.67594),
+    vec3(-0.81800,  0.67594, -0.54685),
+    vec3( 1.15597, -0.37646, -0.16758),
+    vec3( 0.94709,  0.17039, -0.92331),
+    vec3( 0.48003, -0.16758, -1.05240),
+    vec3( 0.40025, -0.92331, -0.37646),
+    vec3( 0.81800, -1.05240,  0.17039)
+);
+
+const highp vec3 icoNorms[20] = vec3[](
+    vec3( 0.01065, -0.28730,  0.95778),
+    vec3(-0.34836,  0.32447,  0.87941),
+    vec3(-0.88274,  0.20935,  0.42064),
+    vec3(-0.85400, -0.47356,  0.21547),
+    vec3(-0.30185, -0.78051,  0.54744),
+    vec3( 0.09313,  0.80348,  0.58800),
+    vec3( 0.67403, -0.18638,  0.71481),
+    vec3( 0.16839, -0.98441,  0.05087),
+    vec3(-0.72500, -0.48776, -0.48627),
+    vec3(-0.77152,  0.61721, -0.15430),
+    vec3( 0.85400,  0.47356, -0.21547),
+    vec3( 0.88274, -0.20935, -0.42064),
+    vec3( 0.34836, -0.32447, -0.87941),
+    vec3(-0.01065,  0.28730, -0.95778),
+    vec3( 0.30185,  0.78051, -0.54744),
+    vec3( 0.72500,  0.48776,  0.48627),
+    vec3( 0.77152, -0.61721,  0.15430),
+    vec3(-0.09313, -0.80348, -0.58800),
+    vec3(-0.67403,  0.18638, -0.71481),
+    vec3(-0.16839,  0.98441, -0.05087)
+);
+
+vec3 normUnit(vec3 v) {
+    vec3 L = abs(v);
+    return v / (L.x + L.y + L.z);
+}
+
+float maxElem(vec3 v) {
+    return max(v.x, max(v.y, v.z));
+}
+
+const float DROPOFF = 0.2;
+
+// output:
+vec3 tc1;
+vec3 tc2;
+vec3 tc3;
+
+vec3 lultex(vec2 uv) {
+    uv *= 1.0;
+    float r = fract(0.5 * (floor(uv.x) + floor(uv.y)));
+    float bw = step(r, 0.4);
+    return vec3(fract(uv), 0.5) * bw;
+}
+
+vec2 projectIntoUvSpace(vec3 position, vec3 normal) {
+    float x1 = normal.x;
+    float y1 = normal.y;
+    float z1 = normal.z;
+    float x2 = y1 + z1;
+    float y2 = x1 + z1;
+    float z2 = (-x1 * x2 - y1 * y2) / z1;
+
+    vec3 dir1 = normalize(vec3(x2, y2, z2));
+    vec3 dir2 = cross(dir1, normal);
+
+    // project onto plane
+    vec3 onPlane = position - normal * dot(position, normal);
+
+    float u = dot(onPlane, dir1);
+    float v = dot(onPlane, dir2);
+    return vec2(u, v);
+}
+
+vec3 color(vec3 normal, vec3 position)
 {
-    return vec3(1.0);
+    vec3 n = normalize(normal);
+
+    float d1 = 0.0;
+    float d2 = 0.0;
+    float dp = 0.0;
+    int i1 = 0;
+    int i2 = 0;
+    int ip = 0;
+
+    // find highest and second-highest scoring hexagon
+    for (int i = 0; i < 20; ++i) {
+        float d = dot(n, icoNorms[i]);
+        if (d > d1) {
+            d2 = d1;
+            i2 = i1;
+            d1 = d;
+            i1 = i;
+        } else if (d > d2) {
+            d2 = d;
+            i2 = i;
+        }
+    }
+
+    // find highest-scoring pentagon
+    for (int i = 0; i < 12; ++i) {
+        float d = dot(n, icoVerts[i]);
+        if (d > dp) {
+            dp = d;
+            ip = i;
+        }
+    }
+
+    // normals of this triangle/hexagon, neighbor triangle/hexagon, and pentagon
+    vec3 thisHexNorm = icoNorms[i1];
+    vec3 neighborHexNorm = icoNorms[i2];
+    vec3 pentNorm = icoVerts[ip];
+
+    // barycentric coordinates of N in this and the neighbor hexagon/triangle UVW space
+    vec3 thisUvw = normUnit(mat3(icoMats1[i1], icoMats2[i1], icoMats3[i1]) * n);
+    vec3 neighborUvw = normUnit(mat3(icoMats1[i2], icoMats2[i2], icoMats3[i2]) * n);
+
+    // relative distance to the neighbor hexagon border, 0 is the border, 1 is this hexagon's center
+    float neighborDist = 1.4142 * 3.0 * maxElem(-neighborUvw);
+
+    // UV spaces for the three adjacent surfaces
+    vec2 thisUv = projectIntoUvSpace(position, thisHexNorm);
+    vec2 neighborUv = projectIntoUvSpace(position, neighborHexNorm);
+    vec2 pentUv = projectIntoUvSpace(position, pentNorm);
+
+    if (all(lessThan(thisUvw, vec3(2.0 / 3.0)))) {
+        // relative distance to the pentagon border, 0 is in the border, 1 is this hexagon's center
+        float pentDist = 2.0 - 3.0 * maxElem(thisUvw);
+
+        if (neighborDist > DROPOFF && pentDist > DROPOFF) {
+            tc1 = vec3(thisUv, 1.0);
+            tc2 = vec3(0.0);
+            tc3 = vec3(0.0);
+        }
+        else {
+            float fNeighbor = pow(1.0 - min(neighborDist / DROPOFF, 1.0), 2.0);
+            float fPentagon = pow(1.0 - min(pentDist / DROPOFF, 1.0), 2.0);
+            float sum = 1.0 + fNeighbor + fPentagon;
+
+            tc1 = vec3(thisUv, 1.0 / sum);
+            tc2 = vec3(neighborUv, fNeighbor / sum);
+            tc3 = vec3(pentUv, fPentagon / sum);
+        }
+    }
+    else {
+        // relative distance to the pentagon border, 0 is in the border, 1 is this hexagon's center
+        float mainDist = 3.0 * maxElem(thisUvw) - 2.0;
+
+        if (mainDist > DROPOFF) {
+            tc1 = vec3(pentUv, 1.0);
+            tc2 = vec3(0.0);
+            tc3 = vec3(0.0);
+        }
+        else {
+            float fNeighbor = pow(1.0 - min(neighborDist / DROPOFF, 1.0), 2.0);
+            float fMain = pow(1.0 - min(mainDist / DROPOFF, 1.0), 2.0);
+            float sum = 1.0 + fMain * (1.0 + fNeighbor);
+
+            tc1 = vec3(pentUv, 1.0 / sum);
+            tc2 = vec3(thisUv, fMain / sum);
+            tc3 = vec3(neighborUv, fMain * fNeighbor  / sum);
+        }
+    }
+
+    vec3 ret = vec3(0.0);
+    ret += lultex(tc1.xy) * tc1.z;
+    ret += lultex(tc2.xy) * tc2.z;
+    ret += lultex(tc3.xy) * tc3.z;
+    return ret;
 }")
 }
 

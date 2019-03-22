@@ -14,3 +14,65 @@ procedural 3D texturing
         - each of these directions has an associated UV-space
         - each face chooses one main direction of how to orient
         - but actually it chooses a bunch, so as to make it smooth, and blend between them
+        - we could search for the max. N in the preprocess-stage, and pre-compute 
+          UV values already
+
+2d textures only come in after a certain LOD level
+    - before that, they would only cause noise
+    - at least for the detail textures, if it makes sense at all to make such a distinction
+    - that means that, by the time they come into play, we can start to slowly blend them into the color
+    - that also means that by the time we reach that detail level, we can start doing our own 
+      UV mapping based on chunks and such
+
+what shape is best for this kind of thing?
+    -> a shape where the surfaces have lots of edges, and small angles!
+    -> because then, they only share corners with fewer other surfaces -> less texture reads on interpolations
+
+maybe dodecahedron
+    -> if I'm in the center of the 5-angle, I'll only take my own value 100%
+    -> if I move perpendicular towards an edge, I'll approach 50/50
+    -> on the corner its 33/33/33
+    -> max. 3 tex reads!!
+even better: a fucking football!! only 3 texture reads, max. angles of 22/18 degrees!
+
+so there are two challenges here, and both can be solved by considering regions as independent, having their own
+UV space, and at the edges blending between them:
+1. mapping 3D -> 2D, i.e. swizzling XYZ -> make sure that scaling is OK
+2. within a 2D space: making sure that tiling is not visible
+
+now the regions where (1) actually overlap (from one xyz->UV space to the next) can be very small, 
+at least if we only have max. angles of 20 degrees. this means that we have a lot of space
+inside the football surfaces to do (2). (2) though depends on the UV scale of the texture, which
+can only be known in the fragment shader. the intensities that quaracterize the interpolation regions
+for (1) are independent of texture scale, while the choice of sub-patterns for (2) are dependent on
+texture scale. 
+
+so basically we export, from the generator, for 3 texture lookups:
+vec {
+    vec2 UV; // within that side's uv space
+    float factor;
+    float tiling;
+}
+
+no it could be like this: if factor in [0..1], that means we are in an interpolation region between
+two football surfaces, so do 3 texture lookups and be done
+
+if factor == 1.0, then tiling can be [0..1]. (we have to gradually drop off tiling before we reach the interpolation region).
+if tiling > 0 (i.e. if factor == 1.0) then we can, in the fragment shader, do our thing with tiling between 3 textures
+    -> and this again we can do with hexagons in a 2d-plane!
+
+https://stackoverflow.com/questions/4821350/find-the-projection-of-a-vector-on-the-icosahedron-or-on-its-unfolded-surface
+
+football math
+    - find face in icosahedron that the normal pierces
+    - find adjecent 2 faces
+    - get barycentric coords
+    - if they are in the center, it's a hexagon
+    - if it's at the end 3rd, it's a pentagon
+    - map the shit out of this shit
+
+more math
+    - for the normal N with the in-triangle UVW, find the nearest adjacent triangle
+        -> this will be your "neighbor hexagon"
+    - if we are a hexagon truly (1/3 <= uvw <= 2/3), our neighbors will be the nearest pentagon, and the neighbor
+    - if we are a pentagon, our neighbors will be "this hexagon" and "neighbor hexagon"
