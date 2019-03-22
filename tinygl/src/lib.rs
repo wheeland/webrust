@@ -244,11 +244,11 @@ impl Program {
         let mut attrs = HashMap::new();
         let mut uniforms = HashMap::new();
 
-        if !vs.0 && Self::print_compilation_errors() {
+        if Self::print_compilation_errors() && !vs.2.is_empty() {
             Self::print_lines(vsrc);
             Self::print_errors("Vertex Shader Log:", &vs.2);
         }
-        if !fs.0 && Self::print_compilation_errors() {
+        if Self::print_compilation_errors() && !fs.2.is_empty() {
             Self::print_lines(fsrc);
             Self::print_errors("Fragment Shader Log:", &fs.2);
         }
@@ -258,7 +258,7 @@ impl Program {
             prog = ret.0;
             prog_log = Some(ret.1);
 
-            if ret.0.is_none() && Self::print_compilation_errors() {
+            if Self::print_compilation_errors() && !prog_log.as_ref().unwrap().is_empty() {
                 Self::print_errors("Program Link Log:", prog_log.as_ref().unwrap());
             }
         }
