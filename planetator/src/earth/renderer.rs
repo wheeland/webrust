@@ -109,7 +109,7 @@ fn create_render_program(colorator: &str, channels: &Channels, textures: &Vec<(S
 
             void main()
             {
-                vec3 norm = 2.0 * texture(normals, tc).xyz - vec3(1.0);
+                vec3 norm = texture(normals, tc).xyz;
                 float height = texture(heights, tc).r;
             " + &chan_assignments + "
                 vec3 col = color(norm, pos);

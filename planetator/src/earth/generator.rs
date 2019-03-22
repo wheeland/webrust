@@ -51,7 +51,8 @@ pub struct Result {
     pub heights: Vec<f32>,
     pub height_texture: Texture,
     pub vertex_data: Vec<Vector4<f32>>,
-    pub normals: Vec<u8>,
+    pub detail: Vec<u8>,
+    pub normals: Texture,
     pub channels: HashMap<String, Texture>,
     pub triangulation: Option<Triangulation>
 }
@@ -61,16 +62,18 @@ impl Result {
            heights: Vec<f32>,
            height_texture: Texture,
            vertex_data: Vec<Vector4<f32>>,
-           normals: Vec<u8>,
+           detail: Vec<u8>,
+           normals: Texture,
            triangulation: Option<Triangulation>,
            channels: HashMap<String, Texture>
     ) -> Self {
-        add_mem_usage(heights.capacity() * 4 + vertex_data.capacity() * 16 + normals.capacity());
+        add_mem_usage(heights.capacity() * 4 + vertex_data.capacity() * 16);
         Result {
             height_extent,
             heights,
             height_texture,
             vertex_data,
+            detail,
             normals,
             channels,
             triangulation
@@ -80,7 +83,7 @@ impl Result {
 
 impl Drop for Result {
     fn drop(&mut self) {
-        del_mem_usage(self.heights.capacity() * 4 + self.vertex_data.capacity() * 16 + self.normals.capacity());
+        del_mem_usage(self.heights.capacity() * 4 + self.vertex_data.capacity() * 16);
     }
 }
 
@@ -201,7 +204,8 @@ impl GeneratorBuffers {
         }
 
         let mut normal_pass = OffscreenBuffer::new((size, size));
-        normal_pass.add("normal", gl::RGBA, gl::RGBA, gl::UNSIGNED_BYTE);
+        normal_pass.add("normal", gl::RGBA32F, gl::RGBA, gl::FLOAT);
+        normal_pass.add("detail", gl::RGBA, gl::RGBA, gl::UNSIGNED_BYTE);
 
         GeneratorBuffers {
             position_pass,
@@ -292,7 +296,8 @@ pub fn compile_postvertex(channels: &super::Channels) -> Program {
             uniform sampler2D positions;
             uniform sampler2D parentCoords;
 
-            layout(location = 0) out vec4 normal;
+            layout(location = 0) out vec3 normal;
+            layout(location = 1) out vec4 detail;
             "
         + &declarations +
         "
@@ -341,7 +346,8 @@ pub fn compile_postvertex(channels: &super::Channels) -> Program {
                     interpolation = 0.5 * dMid / dParents * sqrt(length(parents.xy - parents.zw));
                 }
 
-                normal = vec4(vec3(0.5) + 0.5 * norm, 5.0 * interpolation * sqrt(size));
+                normal = norm;
+                detail = vec4(5.0 * interpolation * sqrt(size));
             " +
         //+ if channels.source().is_empty() { "" } else { "generate(heightPosCenter.xyz, heightPosCenter.w, normal.xyz);" } +
         "
@@ -613,7 +619,7 @@ impl Generator {
         let tex_size = (self.size + 3) as usize;
 
         let optimized = self.optimizer.optimize(|x,y| {
-            data.normals[4 * (x + 1 +  tex_size * (y + 1)) + 3] < 255 - self.detail
+            data.detail[x + 1 +  tex_size * (y + 1)] < 255 - self.detail
         });
 
         Triangulation::new(self.detail, optimized.triangles, optimized.wireframe)
@@ -638,13 +644,14 @@ impl Generator {
             let tex_size = (self.size + 3) as usize;
             let mut buf_positions = Vec::<Vector4<f32>>::with_capacity(tex_size * tex_size);
             let mut buf_heights = Vec::<f32>::with_capacity(tex_size * tex_size);
-            let mut buf_normals = Vec::<u8>::with_capacity(tex_size * tex_size);
+            let mut buf_detail = Vec::<u8>::with_capacity(4 * tex_size * tex_size);
             buf_positions.resize(tex_size * tex_size, Vector4::new(0.0, 0.0, 0.0, 0.0));
-            buf_normals.resize(tex_size * tex_size * 4, 0);
+            buf_detail.resize(tex_size * tex_size * 4, 0);
             let mut channels = HashMap::new();
 
             unsafe {
                 fbos.position_pass.read("position", buf_positions.as_mut_ptr() as _);
+                fbos.normal_pass.read("detail", buf_detail.as_mut_ptr() as _);
 
                 for chan in self.channels.channels() {
                     if let Some(mut tex) = fbos.position_pass.take(chan.0) {
@@ -654,8 +661,14 @@ impl Generator {
                         channels.insert(chan.0.clone(), tex);
                     }
                 }
+            }
 
-                fbos.normal_pass.read("normal", buf_normals.as_mut_ptr() as _);
+            //
+            // Convert from RGBA_U8 to U8 detail texture
+            //
+            let mut buf_detail_u8 = Vec::<u8>::with_capacity(tex_size * tex_size);
+            for i in 0..(tex_size*tex_size) {
+                buf_detail_u8.push(buf_detail[4*i]);
             }
 
             //
@@ -671,11 +684,20 @@ impl Generator {
             }
 
             //
+            // Prepare normals texture
+            //
+            let mut normals = fbos.normal_pass.take("normal").unwrap();
+            normals.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
+            normals.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR_MIPMAP_LINEAR as _);
+            normals.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
+            normals.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
+            normals.gen_mipmaps();
+
+            //
             // adjust ribbon heights and positions
             //
             self.postprocess_ribbons(&mut buf_positions, max - min);
-
-            let mut result = Result::new((min, max), buf_heights, height_texture, buf_positions, buf_normals, None, channels);
+            let mut result = Result::new((min, max), buf_heights, height_texture, buf_positions, buf_detail_u8, normals, None, channels);
             result.triangulation = Some(self.triangulate(&result));
 
             if self.framebuffer_cache.len() < self.max_framebuffer_cache {

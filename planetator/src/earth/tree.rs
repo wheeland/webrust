@@ -222,7 +222,6 @@ impl Planet {
 
 struct GpuData {
     pub positions: tinygl::VertexBuffer,
-    pub normals: tinygl::Texture,
     pub triangles: tinygl::IndexBuffer,
     pub wireframe: tinygl::IndexBuffer
 }
@@ -233,18 +232,9 @@ impl GpuData {
 
         let mut ret = GpuData {
             positions: tinygl::VertexBuffer::from(&data.vertex_data),
-            normals: tinygl::Texture::new(gl::TEXTURE_2D),
             triangles: tinygl::IndexBuffer::from16(&triangulation.triangles),
             wireframe: tinygl::IndexBuffer::from16(&triangulation.wireframe),
         };
-        unsafe {
-            ret.normals.teximage((tex_size, tex_size), gl::RGBA8, gl::RGBA, gl::UNSIGNED_BYTE, data.normals.as_ptr() as _);
-        }
-        ret.normals.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
-        ret.normals.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR_MIPMAP_LINEAR as _);
-        ret.normals.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
-        ret.normals.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
-        ret.normals.gen_mipmaps();
 
         ret
     }
@@ -499,7 +489,7 @@ impl Plate {
 
         program.uniform("debugColor", tinygl::Uniform::Vec3(self.debug_color));
 
-        render_data.normals.bind_at(first_tex_unit as _);
+        self.generated_data.as_ref().unwrap().normals.bind_at(first_tex_unit as _);
         self.generated_data.as_ref().unwrap().height_texture.bind_at((first_tex_unit + 1) as _);
     }
 
