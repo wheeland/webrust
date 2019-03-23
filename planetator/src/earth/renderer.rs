@@ -35,8 +35,8 @@ pub struct Renderer {
     colorator: String,
     textures: Vec<(String, tinygl::Texture)>,
 
-    fbo_scene: Option<tinygl::OffscreenBuffer>,
-    fbo_color: Option<tinygl::OffscreenBuffer>,
+    fbo_scene: Option<tinygl::FrameBufferObject>,
+    fbo_color: Option<tinygl::FrameBufferObject>,
     fsquad: tinygl::shapes::FullscreenQuad,
 
     // errors to be picked up by y'all
@@ -546,7 +546,7 @@ impl Renderer {
         // Update and bind Scene Render Target
         //
         if self.fbo_scene.as_ref().map(|fbo| fbo.size() != windowsize).unwrap_or(true) {
-            let mut fbo = tinygl::OffscreenBuffer::new((windowsize.0 as _, windowsize.1 as _));
+            let mut fbo = tinygl::FrameBufferObject::new((windowsize.0 as _, windowsize.1 as _));
             fbo.add("normalWf", gl::RGBA, gl::RGBA, gl::UNSIGNED_BYTE);
             fbo.add("positionHeight", gl::RGBA32F, gl::RGBA, gl::FLOAT);
             // TODO: avoid duplication
@@ -621,7 +621,7 @@ impl Renderer {
         // Update and bind Color Render Target
         //
         if self.fbo_color.as_ref().map(|fbo| fbo.size() != windowsize).unwrap_or(true) {
-            let mut fbo = tinygl::OffscreenBuffer::new((windowsize.0 as _, windowsize.1 as _));
+            let mut fbo = tinygl::FrameBufferObject::new((windowsize.0 as _, windowsize.1 as _));
             fbo.add("color", gl::RGB, gl::RGB, gl::UNSIGNED_BYTE);
             self.fbo_color = Some(fbo);
         }

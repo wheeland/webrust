@@ -1,6 +1,6 @@
 use cgmath::prelude::*;
 use cgmath::*;
-use tinygl::{Program, Texture, Uniform, OffscreenBuffer};
+use tinygl::{Program, Texture, Uniform, FrameBufferObject};
 use super::guiutil;
 
 static MAX_SHADOW_MAPS: usize = 6;
@@ -144,7 +144,7 @@ fn glsl() -> String {
 struct ShadowCascade {
     // constant:
     level: i32,
-    fbo: OffscreenBuffer,
+    fbo: FrameBufferObject,
     extent: f32,
     granularity: f32,
     orthogonal_depth: f32,
@@ -157,7 +157,7 @@ struct ShadowCascade {
 impl ShadowCascade {
     fn new(size: u32, level: i32, extent: f32) -> Self {
         // Create FBO
-        let mut fbo = OffscreenBuffer::new((size as _, size as _));
+        let mut fbo = FrameBufferObject::new((size as _, size as _));
         fbo.add_depth_texture();
         // fbo.add("depth", gl::R32F, gl::RED, gl::FLOAT);
         {
@@ -496,7 +496,7 @@ impl ShadowMap {
             gl::DepthFunc(gl::LEQUAL);
             gl::PolygonOffset(0.0, 0.0);
         }
-        tinygl::OffscreenBuffer::unbind();
+        tinygl::FrameBufferObject::unbind();
     }
 
     fn bind_shadow_map(program: &Program, index: usize, texunit: u32, sun_rotation: &Matrix4<f32>, cascade: &ShadowCascade) {

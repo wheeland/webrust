@@ -129,13 +129,13 @@ impl PlateDataManager {
 // Offscreen FBOs used during the plate data generation and optimization phases
 //
 struct GeneratorBuffers {
-    position_pass: OffscreenBuffer,
-    normal_pass: OffscreenBuffer,
+    position_pass: FrameBufferObject,
+    normal_pass: FrameBufferObject,
 }
 
 impl GeneratorBuffers {
     fn new(size: i32, channels: &Channels) -> Self {
-        let mut position_pass = OffscreenBuffer::new((size, size));
+        let mut position_pass = FrameBufferObject::new((size, size));
         position_pass.add("position", gl::RGBA32F, gl::RGBA, gl::FLOAT);
         position_pass.add("height", gl::R32F, gl::RED, gl::FLOAT);
         // TODO: avoid duplication
@@ -150,7 +150,7 @@ impl GeneratorBuffers {
             position_pass.add(&chan.0, int_fmt.0, int_fmt.1, gl::UNSIGNED_BYTE);
         }
 
-        let mut normal_pass = OffscreenBuffer::new((size, size));
+        let mut normal_pass = FrameBufferObject::new((size, size));
         normal_pass.add("normal", gl::RGB, gl::RGB, gl::UNSIGNED_BYTE);
         normal_pass.add("detail", gl::RGBA, gl::RGBA, gl::UNSIGNED_BYTE);
 
@@ -502,7 +502,7 @@ impl Generator {
         unsafe { gl::DrawArrays(gl::TRIANGLES, 0, 6) }
         self.post_generator.disable_all_vertex_attribs();
 
-        OffscreenBuffer::unbind();
+        FrameBufferObject::unbind();
 
         self.generation_order.push(pos);
         self.framebuffers.insert(pos, fbos);
