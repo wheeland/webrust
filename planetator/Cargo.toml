@@ -29,6 +29,7 @@ serde = "1.0"
 serde_json = "1.0"
 serde_derive = "1.0"
 tinygl = { version = "^0", path = "../tinygl" }
+util3d = { version = "0.1.0", path = "../util3d" }
 webutil = { version = "0.1.0", path = "../webutil" }
 
 [target.'cfg(target_os = "emscripten")'.dependencies]

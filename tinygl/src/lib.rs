@@ -7,7 +7,6 @@ use gl::types::*;
 use cgmath::prelude::*;
 
 pub mod shapes;
-pub mod util;
 
 static mut PRINT_SHADER_ERRORS: bool = false;
 

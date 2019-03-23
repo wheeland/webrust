@@ -1,0 +1,7 @@
+[package]
+name = "util3d"
+version = "0.1.0"
+authors = ["Wieland Hagen <wieland.hagen@kdab.com>"]
+
+[dependencies]
+cgmath = "^0"
