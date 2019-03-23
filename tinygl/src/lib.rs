@@ -8,7 +8,11 @@ use cgmath::prelude::*;
 
 pub mod shapes;
 
-static mut PRINT_SHADER_ERRORS: bool = false;
+static mut PRINT_SHADER_ERRORS: bool = true;
+
+static mut BOUND_PROGRAM: i32 = 0;
+static mut PROGRAM_ID: i32 = 0;
+static mut CLEARED_VERTEX_BINDINGS: bool = true;
 
 struct BufferBase {
     target: GLenum,
@@ -125,6 +129,7 @@ pub enum Uniform {
 }
 
 pub struct Program {
+    id: i32,
     vertex_source: String,
     fragment_source: String,
 
@@ -236,6 +241,7 @@ impl Program {
     }
 
     pub fn new_versioned(vsrc: &str, fsrc: &str, version: i32) -> Self {
+        let id = unsafe { let id = PROGRAM_ID; PROGRAM_ID += 1; id };
         let vs = Self::compile_shader(vsrc, gl::VERTEX_SHADER, version);
         let fs = Self::compile_shader(fsrc, gl::FRAGMENT_SHADER, version);
         let mut prog = None;
@@ -303,6 +309,7 @@ impl Program {
         }
 
         Program {
+            id,
             vertex_source: String::from(vsrc),
             fragment_source: String::from(fsrc),
             vertex_shader_log: vs.2,
@@ -312,6 +319,10 @@ impl Program {
             attribute_locations: RefCell::new(attrs),
             uniform_locations: RefCell::new(uniforms)
         }
+    }
+
+    fn assert_bound(&self) {
+        assert!(unsafe { BOUND_PROGRAM } == self.id);
     }
 
     pub fn vertex_source(&self) -> &String {
@@ -410,6 +421,8 @@ impl Program {
     pub fn bind(&self) {
         if let Some(prog) = self.program {
             unsafe { gl::UseProgram(prog); }
+            unsafe { BOUND_PROGRAM = self.id; }
+            assert!(unsafe { CLEARED_VERTEX_BINDINGS });
         }
     }
 
@@ -418,6 +431,8 @@ impl Program {
     }
 
     pub fn vertex_attrib_location(&self, attrib: &str) -> Option<u32> {
+        self.assert_bound();
+
         // spit warning on first try, then remember that it's not there
         let opt = self.attribute_locations.borrow().get(attrib).map(|r| *r);
         match opt {
@@ -431,12 +446,17 @@ impl Program {
     }
 
     pub fn vertex_attrib_divisor(&self, attrib: &str, divisor: u32) {
+        self.assert_bound();
+
         if let Some(l) = self.vertex_attrib_location(attrib) {
             unsafe { gl::VertexAttribDivisor(l, divisor); }
         }
     }
 
     pub fn vertex_attrib_buffer(&self, attrib: &str, buffer: &VertexBuffer, size: GLint, datatype: GLenum, normed: bool, stride: GLsizei, offset: GLsizei) {
+        self.assert_bound();
+        unsafe { CLEARED_VERTEX_BINDINGS = false; }
+
         if let Some(l) = self.vertex_attrib_location(attrib) {
             buffer.bind();
             unsafe {
@@ -447,20 +467,28 @@ impl Program {
     }
 
     pub fn disable_vertex_attrib(&self, attrib: &str) {
+        self.assert_bound();
+
         if let Some(l) = self.vertex_attrib_location(attrib) {
             unsafe { gl::DisableVertexAttribArray(l); }
         }
     }
 
     pub fn disable_all_vertex_attribs(&self) {
+        self.assert_bound();
+
         for loc in self.attribute_locations.borrow().iter() {
             if let Some(loc) = loc.1 {
                 unsafe { gl::DisableVertexAttribArray(*loc); }
             }
         }
+
+        unsafe { CLEARED_VERTEX_BINDINGS = true; }
     }
 
     pub fn uniform(&self, uniform: &str, value: Uniform) {
+        self.assert_bound();
+
         // spit warning on first try, then remember that it's not there
         let opt = self.uniform_locations.borrow().get(uniform).map(|r| *r);
         let loc = match opt {
@@ -528,7 +556,7 @@ impl Texture {
         self.tex
     }
 
-    pub fn bind(&self) {
+    fn bind(&self) {
         unsafe { gl::BindTexture(self.target, self.tex); }
     }
 
