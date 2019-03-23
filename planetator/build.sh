@@ -15,7 +15,8 @@ export EMMAKEN_CFLAGS="\
 "
 
 export RUST_BACKTRACE=1
-#export RUSTFLAGS='-C panic=abort -C lto -C opt-level=z -C panic=abort -C overflow-checks=no -C debuginfo=0 -C debug-assertions=no'
+
+# set to debuginfo=1 to profile Rust code inside the browsers!
 export RUSTFLAGS='-C panic=abort -C lto -C opt-level=z -C overflow-checks=no -C debuginfo=0 -C debug-assertions=no'
 
 cargo build --target asmjs-unknown-emscripten --release
