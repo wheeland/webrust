@@ -606,9 +606,9 @@ impl Renderer {
             if self.wireframe {
                 program_scene.uniform("wf", tinygl::Uniform::Float(1.0));
                 if self.reduce_poly_count {
-                    plate.borrow().wireframe().draw_all(gl::LINES);
+                    plate.borrow().indices().draw(gl::LINES, plate.borrow().wireframe_count() as _, 0);
                 } else {
-                    planet.wireframe_indices().draw_all(gl::LINES);
+                    planet.triangle_indices().draw_all(gl::LINES);
                 }
                 program_scene.uniform("wf", tinygl::Uniform::Float(0.0));
             }

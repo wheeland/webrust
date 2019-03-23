@@ -18,9 +18,8 @@ pub type Idx = u16;
 // Result of a triangle-optimization stage
 //
 pub struct Triangulation {
-    // detail: u8,
-    pub triangles: Vec<Idx>,
-    pub wireframe: Vec<Idx>,
+    pub indices: Vec<Idx>,
+    pub wireframe_count: usize,
 }
 
 //
@@ -542,11 +541,10 @@ impl Generator {
         });
 
         Triangulation {
-            triangles: optimized.triangles,
-            wireframe: optimized.wireframe
+            indices: optimized.indices,
+            wireframe_count: optimized.wireframe_count,
         }
     }
-
 
     pub fn results(&mut self) -> HashMap<plate::Position, Result> {
         let mut ret = HashMap::new();

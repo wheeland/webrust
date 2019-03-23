@@ -12,8 +12,8 @@ pub struct PlateOptimizer {
 }
 
 pub struct Result {
-    pub triangles: Vec<Idx>,
-    pub wireframe: Vec<Idx>,
+    pub indices: Vec<Idx>,
+    pub wireframe_count: usize,
 }
 
 #[derive(Copy)]
@@ -42,8 +42,8 @@ struct IndexBufferBuilder {
     size: usize,
     mutable: Array2D<bool>,
     rendered: Array2D<bool>,
-    triangles: Vec<Idx>,
-    wireframe: Vec<Idx>,
+    indices: Vec<Idx>,                          // used for both triangles and wireframe
+    additional_vertex_indices: Vec<Idx>,        // used only for vertices
 }
 
 struct QuadIndices {
@@ -83,15 +83,19 @@ impl IndexBufferBuilder {
             size,
             mutable,
             rendered,
-            triangles: Vec::with_capacity(6 * size * size),
-            wireframe: Vec::with_capacity(6 * size * size),
+            indices: Vec::with_capacity(6 * size * size),
+            additional_vertex_indices: Vec::with_capacity(6 * size * size),
         };
 
         builder.process();
 
+        let wireframe_count = builder.indices.len();
+        let mut indices = builder.indices;
+        indices.append(&mut builder.additional_vertex_indices);
+
         Result {
-            triangles: builder.triangles,
-            wireframe: builder.wireframe,
+            indices,
+            wireframe_count
         }
     }
 
@@ -132,30 +136,23 @@ impl IndexBufferBuilder {
     }
 
     fn render(&mut self, i00: Idx, i10: Idx, i01: Idx, i11: Idx) {
-        self.triangles.push(i00);
-        self.triangles.push(i11);
-        self.triangles.push(i10);
-        self.triangles.push(i00);
-        self.triangles.push(i01);
-        self.triangles.push(i11);
-
-        self.wireframe.push(i00);
-        self.wireframe.push(i01);
-        self.wireframe.push(i00);
-        self.wireframe.push(i10);
-        self.wireframe.push(i00);
-        self.wireframe.push(i11);
+        self.indices.push(i00);
+        self.indices.push(i01);
+        self.indices.push(i11);
+        self.indices.push(i11);
+        self.indices.push(i10);
+        self.indices.push(i00);
     }
 
     fn ribbon(&mut self, i0: Idx, i1: Idx, ofs: i32) {
         let r0 = (i0 as i32 + ofs) as Idx;
         let r1 = (i1 as i32 + ofs) as Idx;
-        self.triangles.push(i0);
-        self.triangles.push(i1);
-        self.triangles.push(r0);
-        self.triangles.push(i1);
-        self.triangles.push(r1);
-        self.triangles.push(r0);
+        self.additional_vertex_indices.push(i0);
+        self.additional_vertex_indices.push(i1);
+        self.additional_vertex_indices.push(r0);
+        self.additional_vertex_indices.push(i1);
+        self.additional_vertex_indices.push(r1);
+        self.additional_vertex_indices.push(r0);
     }
 
     fn process(&mut self) {
@@ -292,24 +289,24 @@ impl IndexBufferBuilder {
                         //  (a) modify that middle vertex so that it's interpolated between the two corner ones
                         //  (b) add a little triangle that fills the hole, because otherwise there may be artifacts
                         if rendered[0] {
-                            self.triangles.push(idx.i00);
-                            self.triangles.push(idx.i0m);
-                            self.triangles.push(idx.i01);
+                            self.additional_vertex_indices.push(idx.i00);
+                            self.additional_vertex_indices.push(idx.i0m);
+                            self.additional_vertex_indices.push(idx.i01);
                         }
                         if rendered[1] {
-                            self.triangles.push(idx.i10);
-                            self.triangles.push(idx.i11);
-                            self.triangles.push(idx.i1m);
+                            self.additional_vertex_indices.push(idx.i10);
+                            self.additional_vertex_indices.push(idx.i11);
+                            self.additional_vertex_indices.push(idx.i1m);
                         }
                         if rendered[2] {
-                            self.triangles.push(idx.i00);
-                            self.triangles.push(idx.i10);
-                            self.triangles.push(idx.im0);
+                            self.additional_vertex_indices.push(idx.i00);
+                            self.additional_vertex_indices.push(idx.i10);
+                            self.additional_vertex_indices.push(idx.im0);
                         }
                         if rendered[3] {
-                            self.triangles.push(idx.i01);
-                            self.triangles.push(idx.im1);
-                            self.triangles.push(idx.i11);
+                            self.additional_vertex_indices.push(idx.i01);
+                            self.additional_vertex_indices.push(idx.im1);
+                            self.additional_vertex_indices.push(idx.i11);
                         }
                     }
                 }

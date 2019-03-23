@@ -222,8 +222,7 @@ impl Planet {
 
 struct GpuData {
     pub positions: tinygl::VertexBuffer,
-    pub triangles: tinygl::IndexBuffer,
-    pub wireframe: tinygl::IndexBuffer
+    pub indices: tinygl::IndexBuffer,
 }
 
 impl GpuData {
@@ -232,8 +231,7 @@ impl GpuData {
 
         let ret = GpuData {
             positions: tinygl::VertexBuffer::from(&data.vertex_data),
-            triangles: tinygl::IndexBuffer::from16(&triangulation.triangles),
-            wireframe: tinygl::IndexBuffer::from16(&triangulation.wireframe),
+            indices: tinygl::IndexBuffer::from16(&triangulation.indices),
         };
 
         ret
@@ -499,12 +497,11 @@ impl Plate {
 
     pub fn indices(&self) -> &tinygl::IndexBuffer {
         let rd = self.gpu_data.as_ref().expect("Expected GpuData");
-        &rd.triangles
+        &rd.indices
     }
 
-    pub fn wireframe(&self) -> &tinygl::IndexBuffer {
-        let rd = self.gpu_data.as_ref().expect("Expected GpuData");
-        &rd.wireframe
+    pub fn wireframe_count(&self) -> usize {
+        self.generated_data.as_ref().unwrap().triangulation.as_ref().unwrap().wireframe_count
     }
 }
 
