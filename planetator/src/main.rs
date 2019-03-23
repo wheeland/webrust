@@ -48,7 +48,7 @@ struct MyApp {
     edit_colorator: guiutil::ShaderEditData,
     edit_js: guiutil::ShaderEditData,
     select_channels: Vec<(String, i32)>,
-    texuploads: Vec<i32>,
+    texuploads: Vec<(String, i32)>,
     active_textures: Vec<(String, (i32, i32), Vec<u8>)>,
 
     sun_speed: f32,
@@ -531,13 +531,16 @@ impl webrunner::WebApp for MyApp {
                 // start new uploads?
                 #[cfg(target_os = "emscripten")] {
                     if let Some(tex_data) =  fileload::get_result(HTML_INPUT_TEXTURE) {
-                        self.texuploads.push(imgdecode::start(tex_data.1));
+                        self.texuploads.push((tex_data.0, imgdecode::start(tex_data.1)));
                     }
                     // start new image parsing?
                     if let Some(texupload) = self.texuploads.pop() {
-                        if let Some(texdata) = imgdecode::get(texupload) {
-                            let texname = String::from("newTexture");
-                            self.renderer.add_texture(&texname, tinygl::Texture::from_data_2d(&texdata.1, texdata.0));
+                        if let Some(texdata) = imgdecode::get(texupload.1) {
+                            let texname = texupload.0.split(".").next().unwrap().to_string();
+                            let mut tex = tinygl::Texture::from_data_2d(&texdata.1, texdata.0);
+                            tex.wrap(gl::TEXTURE_WRAP_S, gl::MIRRORED_REPEAT);
+                            tex.wrap(gl::TEXTURE_WRAP_T, gl::MIRRORED_REPEAT);
+                            self.renderer.add_texture(&texname, tex);
                             self.active_textures.push((texname, texdata.0, texdata.1));
                         } else {
                             self.texuploads.push(texupload);
