@@ -74,7 +74,7 @@ fn create_scene_program(channels: &Channels) -> tinygl::Program {
         layout(location = 0) out vec4 outNormalWf;
         layout(location = 1) out vec4 outPositionHeight;
         ") + &channels.glsl_texture_declarations() + "
-        " + &channels.glsl_output_declarations(3) + "
+        " + &channels.glsl_output_declarations(2) + "
 
         void main()
         {
