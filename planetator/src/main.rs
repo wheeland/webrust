@@ -1,5 +1,6 @@
 extern crate gl;
 extern crate tinygl;
+extern crate util3d;
 extern crate sdl2;
 extern crate imgui;
 extern crate imgui_sys;
@@ -18,7 +19,6 @@ use appbase::webrunner;
 #[cfg(target_os = "emscripten")] use emscripten_util::imgdecode;
 
 mod earth;
-mod culling;
 mod guiutil;
 mod atmosphere;
 mod shadowmap;
@@ -68,10 +68,17 @@ impl MyApp {
         *self.keyboard.get(&key).unwrap_or(&false)
     }
 
-    fn channels_changed(&mut self) {
-        let new_channels = earth::Channels::new(&self.select_channels);
+    fn build_channels(&self) -> HashMap<String, usize> {
+        let mut ret = HashMap::new();
+        for chan in &self.select_channels {
+            ret.insert(chan.0.clone(), (chan.1 + 1) as usize);
+        }
+        ret
+    }
 
-        if self.renderer.set_channels(&new_channels, &self.edit_generator.to_str()) {
+    fn channels_changed(&mut self) {
+        let chans = self.build_channels();
+        if self.renderer.set_channels(&chans, &self.edit_generator.to_str()) {
             // also update the colorator, because it might have been already adapted to the new channels
             if self.renderer.set_colorator(&self.edit_colorator.to_str()) {
                 self.edit_colorator.works();
@@ -114,8 +121,8 @@ impl MyApp {
             self.edit_generator.works();
             self.edit_colorator.works();
 
-            let new_channels = earth::Channels::new(&self.select_channels);
-            self.renderer.set_generator_and_channels(&self.edit_generator.to_str(), &new_channels);
+            let new_chans = self.build_channels();
+            self.renderer.set_generator_and_channels(&self.edit_generator.to_str(), &new_chans);
             self.renderer.set_colorator(&self.edit_colorator.to_str());
         } else {
             self.errors.push(String::from("Couldn't deserialize planet data"));
@@ -299,7 +306,6 @@ impl webrunner::WebApp for MyApp {
         // render planet into FBO
         //
         self.renderer.render(self.windowsize);
-        let fbo = self.renderer.fbo().unwrap();
 
         //
         // Move Sun
@@ -339,9 +345,9 @@ impl webrunner::WebApp for MyApp {
             gl::Disable(gl::BLEND);
         }
 
-        fbo.texture("position").unwrap().bind_at(2);
-        fbo.texture("normal").unwrap().bind_at(1);
-        fbo.texture("colorWf").unwrap().bind_at(0);
+        self.renderer.out_position().bind_at(2);
+        self.renderer.out_normal().bind_at(1);
+        self.renderer.out_color().bind_at(0);
 
         self.fsquad.render(&self.postprocess, "vertex");
     }

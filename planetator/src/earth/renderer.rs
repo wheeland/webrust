@@ -1,17 +1,18 @@
 use std::collections::HashMap;
 use cgmath::prelude::*;
 use cgmath::*;
-use super::super::culling;
+use util3d::culling;
 
-use super::Channels;
-use super::flycamera::FlyCamera;
+use super::channels::Channels;
+use util3d::flycamera::FlyCamera;
 use super::tree;
-use super::noise;
+use util3d::noise;
 
 pub struct Renderer {
     camera: FlyCamera,
-    program: Option<tinygl::Program>,
-    default_program: tinygl::Program,
+    program_scene: Option<tinygl::Program>,
+    program_color: Option<tinygl::Program>,
+    program_color_default: tinygl::Program,
 
     planet: Option<tree::Planet>,
     planet_depth: i32,
@@ -34,92 +35,243 @@ pub struct Renderer {
     colorator: String,
     textures: Vec<(String, tinygl::Texture)>,
 
-    fbo: Option<tinygl::OffscreenBuffer>,
+    fbo_scene: Option<tinygl::OffscreenBuffer>,
+    fbo_color: Option<tinygl::OffscreenBuffer>,
+    fsquad: tinygl::shapes::FullscreenQuad,
 
     // errors to be picked up by y'all
     errors_generator: Option<String>,
-    errors_channels: Option<String>,
     errors_colorator: Option<String>,
 }
 
-fn create_render_program(colorator: &str, channels: &Channels, textures: &Vec<(String, tinygl::Texture)>) -> tinygl::Program {
+fn create_scene_program(channels: &Channels) -> tinygl::Program {
+    tinygl::Program::new_versioned("
+        uniform mat4 mvp;
+        uniform float radius;
+        uniform float wf;
+        // uniform float Far;
+        in vec4 posHeight;
+        in vec2 plateCoords;
+        out vec2 plateTc;
+        out vec3 pos;
+
+        void main()
+        {
+            plateTc = plateCoords;
+            pos = posHeight.xyz * (posHeight.w + radius + 0.0001 * wf);
+            // vec4 wpos = mvp * vec4(pos, 1.0);
+            // float C = 1.0;
+            // wpos.z = (2.0 * log(C * wpos.w + 1.0) / log(C * Far + 1.0) - 1.0) * wpos.w;
+            gl_Position = mvp * vec4(pos, 1.0);
+        }",
+        &(String::from("uniform float wf;
+        uniform float radius;
+        uniform sampler2D tex_normals;
+        uniform sampler2D tex_heights;
+        in vec2 plateTc;
+        in vec3 pos;
+        layout(location = 0) out vec3 outNormal;
+        layout(location = 1) out vec3 outPosition;
+        layout(location = 2) out float outWireframe;
+        ") + &channels.glsl_texture_declarations() + "
+        " + &channels.glsl_output_declarations(3) + "
+
+        void main()
+        {
+            vec3 normal = texture(tex_normals, plateTc).xyz;
+            float height = texture(tex_heights, plateTc).r;
+            outNormal = normal;
+            outPosition = normalize(pos) * (radius + height);
+            outWireframe = wf;
+            " + &channels.glsl_assignments("plateTc") + "
+        }"), 300)
+}
+
+fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(String, tinygl::Texture)>) -> tinygl::Program {
     let vert_source = "
-            uniform mat4 mvp;
-            uniform float radius;
-            uniform float wf;
-            uniform float Far;
-            in vec4 posHeight;
-            in vec2 plateCoords;
-            out vec2 tc;
-            out vec3 pos;
+        in vec2 vertex;
+        out vec2 tc_screen;
+        void main() {
+            tc_screen = vec2(0.5) + 0.5 * vertex;
+            gl_Position = vec4(vertex, 0.0, 1.0);
+        }";
 
-            void main()
-            {
-                float C = 1.0;
-
-                tc = plateCoords;
-                pos = posHeight.xyz * (posHeight.w + radius + 0.0001 * wf);
-                vec4 wpos = mvp * vec4(pos, 1.0);
-                // wpos.z = (2.0 * log(C * wpos.w + 1.0) / log(C * Far + 1.0) - 1.0) * wpos.w;
-                gl_Position = wpos;
-            }";
-
-    let chan_declarations = channels.channels().iter()
-        .fold(String::new(), |acc, chan| {
-            let glsltype = Channels::to_glsl_type(*chan.1);
-            acc + &glsltype + " " + chan.0 + ";\nuniform sampler2D texture_" + chan.0 + ";\n"
-        });
-
-    let chan_assignments = channels.channels().iter()
-        .fold(String::new(), |acc, x| {
-            let swizzler = String::from(match x.1 {
-                1 => ".r",
-                2 => ".rg",
-                3 => ".rgb",
-                4 => ".rgba",
-                _ => panic!("Does not compute")
-            });
-            acc + x.0 + " = texture(texture_" + x.0 + ", tc)" + &swizzler + ";\n"
-        });
-
-    let tex_declarations = textures
+    let texture_function_definitions = textures
         .iter()
         .fold(String::new(), |acc, tex| {
-            acc + "uniform sampler2D " + &tex.0 + ";\n"
+            let texname = String::from("_texture_") + &tex.0;
+            acc + "uniform sampler2D " + &texname + ";\n" +
+            "vec3 " + &tex.0 + "(float scale) {\n" +
+                "vec2 globalUV = (scenePosition.xy + scenePosition.yz + scenePosition.zx) * scale;\n" +
+                "vec2 dUVdx = dFdx(globalUV);\n" +
+                "vec2 dUVdy = dFdy(globalUV);\n" +
+                "vec3 ret = vec3(0.0);\n" +
+                "ret += textureGrad(" + &texname + ", uv1 * scale, dUVdx, dUVdy).rgb * uvAlpha.x;\n" +
+                "ret += textureGrad(" + &texname + ", uv23.xy * scale, dUVdx, dUVdy).rgb * uvAlpha.y;\n" +
+                "ret += textureGrad(" + &texname + ", uv23.zw * scale, dUVdx, dUVdy).rgb * uvAlpha.z;\n" +
+                "return ret;\n}\n"
         });
 
+    let channel_variables = channels.glsl_base_declarations().iter().fold(
+        String::new(), |acc, chan| acc + chan + ";\n"
+    );
+
     let frag_source = String::from("
-            uniform float wf;
-            uniform float radius;
-            uniform sampler2D normals;
-            uniform sampler2D heights;
-            uniform vec3 debugColor;
-            in vec2 tc;
-            in vec3 pos;
-            layout(location = 0) out vec4 outColor;
-            layout(location = 1) out vec4 outNormal;
-            layout(location = 2) out vec4 outPosition;
+        uniform sampler2D scene_normal;
+        uniform sampler2D scene_position;
+        in vec2 tc_screen;
+        layout(location = 0) out vec3 outColor;
 
-            ") + &super::noise::ShaderNoise::declarations() + "\n"
-            + &chan_declarations
-            + &tex_declarations + "
-            \n#line 1\n" + colorator + "
+        vec2 uv1;
+        vec4 uv23;
+        vec3 uvAlpha;
 
-            " + &super::noise::ShaderNoise::definitions() + "
+        vec3 sceneNormal;
+        vec3 scenePosition;
 
-            void main()
-            {
-                vec3 norm = texture(normals, tc).xyz;
-                float height = texture(heights, tc).r;
-            " + &chan_assignments + "
-                vec3 col = color(norm, pos);
+        ") + &channels.glsl_texture_declarations() + "
+        " + &channel_variables + "
+        " + &texture_function_definitions + "
+        " + &noise::ShaderNoise::declarations() + "
+        \n#line 1\n" + colorator + "
 
-                float wfVal = 1.0 - step(0.8, (0.2126*col.r + 0.7152*col.g + 0.0722*col.b));
-                outColor = vec4(mix(col, vec3(wfVal), wf), 1.0 - 0.7* wf);
-                // outColor = mix(outColor, vec4(debugColor, 1.0), 0.5);
-                outNormal = vec4(vec3(0.5) + 0.5 * norm, 1.0);
-                outPosition = vec4(normalize(pos) * (radius + height), 1.0);
-            }";
+        " + &noise::ShaderNoise::definitions() + "
+        " + &super::icosahedron_defs::DEFS + "
+
+        vec3 _normUnit(vec3 v) {
+            vec3 L = abs(v);
+            return v / (L.x + L.y + L.z);
+        }
+
+        float _maxElem(vec3 v) {
+            return max(v.x, max(v.y, v.z));
+        }
+
+        const float DROPOFF = 0.2;
+
+        vec2 _projectIntoUvSpace(vec3 position, vec3 normal) {
+            float x2 = normal.y + normal.z;
+            float y2 = normal.x + normal.z;
+            float z2 = (-normal.x * x2 - normal.y * y2) / normal.z;
+
+            vec3 dir1 = normalize(vec3(x2, y2, z2));
+            vec3 dir2 = cross(dir1, normal);
+
+            // project onto plane
+            vec3 onPlane = position - normal * dot(position, normal);
+
+            float u = dot(onPlane, dir1);
+            float v = dot(onPlane, dir2);
+            return vec2(u, v);
+        }
+
+        void _generateUvMaps(vec3 n, vec3 position)
+        {
+            float d1 = 0.0;
+            float d2 = 0.0;
+            float dp = 0.0;
+            int i1 = 0;
+            int i2 = 0;
+            int ip = 0;
+
+            //
+            // find highest and second-highest scoring hexagon
+            //
+            for (int i = 0; i < 20; ++i) {
+                float d = dot(n, icoNorms[i]);
+                if (d > d1) {
+                    d2 = d1;
+                    i2 = i1;
+                    d1 = d;
+                    i1 = i;
+                } else if (d > d2) {
+                    d2 = d;
+                    i2 = i;
+                }
+            }
+
+            //
+            // find highest-scoring pentagon
+            //
+            for (int i = 0; i < 12; ++i) {
+                float d = dot(n, icoVerts[i]);
+                if (d > dp) {
+                    dp = d;
+                    ip = i;
+                }
+            }
+
+            // normals of this triangle/hexagon, neighbor triangle/hexagon, and pentagon
+            vec3 thisHexNorm = icoNorms[i1];
+            vec3 neighborHexNorm = icoNorms[i2];
+            vec3 pentNorm = icoVerts[ip];
+
+            // barycentric coordinates of N in this and the neighbor hexagon/triangle UVW space
+            vec3 thisUvw = _normUnit(mat3(icoMats1[i1], icoMats2[i1], icoMats3[i1]) * n);
+            vec3 neighborUvw = _normUnit(mat3(icoMats1[i2], icoMats2[i2], icoMats3[i2]) * n);
+
+            // relative distance to the neighbor hexagon border, 0 is the border, 1 is this hexagon's center
+            float neighborDist = 1.4142 * 3.0 * _maxElem(-neighborUvw);
+
+            // UV spaces for the three adjacent surfaces
+            vec2 thisUv = _projectIntoUvSpace(position, thisHexNorm);
+            vec2 neighborUv = _projectIntoUvSpace(position, neighborHexNorm);
+            vec2 pentUv = _projectIntoUvSpace(position, pentNorm);
+
+            if (all(lessThan(thisUvw, vec3(2.0 / 3.0)))) {
+                // relative distance to the pentagon border, 0 is in the border, 1 is this hexagon's center
+                float pentDist = 2.0 - 3.0 * _maxElem(thisUvw);
+
+                if (neighborDist > DROPOFF && pentDist > DROPOFF) {
+                    uv1 = thisUv;
+                    uv23 = vec4(0.0);
+                    uvAlpha = vec3(1.0, 0.0, 0.0);
+                }
+                else {
+                    float fNeighbor = pow(1.0 - min(neighborDist / DROPOFF, 1.0), 2.0);
+                    float fPentagon = pow(1.0 - min(pentDist / DROPOFF, 1.0), 2.0);
+                    float sum = 1.0 + fNeighbor + fPentagon;
+
+                    uv1 = thisUv;
+                    uv23 = vec4(neighborUv, pentUv);
+                    uvAlpha = vec3(1.0, fNeighbor, fPentagon) / sum;
+                }
+            }
+            else {
+                // relative distance to the pentagon border, 0 is in the border, 1 is this hexagon's center
+                float mainDist = 3.0 * _maxElem(thisUvw) - 2.0;
+
+                if (mainDist > DROPOFF) {
+                    uv1 = pentUv;
+                    uv23 = vec4(0.0);
+                    uvAlpha = vec3(1.0, 0.0, 0.0);
+                }
+                else {
+                    float fNeighbor = pow(1.0 - min(neighborDist / DROPOFF, 1.0), 2.0);
+                    float fMain = pow(1.0 - min(mainDist / DROPOFF, 1.0), 2.0);
+                    float sum = 1.0 + fMain * (1.0 + fNeighbor);
+
+                    uv1 = pentUv;
+                    uv23 = vec4(thisUv, neighborUv);
+                    uvAlpha = vec3(1.0, fMain, fMain * fNeighbor) / sum;
+                }
+            }
+        }
+
+        void main()
+        {
+            sceneNormal = texture(scene_normal, tc_screen).xyz;
+            if (sceneNormal == vec3(0.0)) {
+                outColor = vec3(0.0);
+                return;
+            }
+            scenePosition = texture(scene_position, tc_screen).xyz;
+
+            _generateUvMaps(sceneNormal, scenePosition);
+
+        " + &channels.glsl_assignments("tc_screen") + "
+            outColor = color(sceneNormal, scenePosition);
+        }";
 
     tinygl::Program::new(vert_source, &frag_source)
 }
@@ -132,292 +284,42 @@ pub fn default_generator() -> String {
     float detail = noise(position, 6, 0.5);
     height = 1.4 * base + mountain * (0.5 + 0.5 * detail);
     height *= 1.0 - smoothstep(0.8, 0.9, abs(normalize(position).y));
-    height = 0.0;
+    //height = 0.0;
 }")
 }
 
 pub fn default_colorator() -> String {
-String::from("const lowp vec3 icoVerts[12] = vec3[](
-    vec3(-0.59807, -0.25358,  0.76027),
-    vec3(-0.52296,  0.73967,  0.42355),
-    vec3( 0.52296, -0.73967, -0.42355),
-    vec3( 0.59807,  0.25358, -0.76027),
-    vec3( 0.98339, -0.01299,  0.18103),
-    vec3( 0.29056,  0.28743,  0.91267),
-    vec3(-0.29056, -0.28743, -0.91267),
-    vec3(-0.98339,  0.01299, -0.18103),
-    vec3(-0.33291,  0.71875, -0.61038),
-    vec3( 0.45443,  0.88837,  0.06556),
-    vec3(-0.45443, -0.88837, -0.06556),
-    vec3( 0.33291, -0.71875,  0.61038)
-);
-
-const lowp vec3 icoMats1[20] = vec3[](
-    vec3(-1.09276,  0.51477,  0.59140),
-    vec3(-0.72726, -0.59140,  0.88028),
-    vec3(-0.18322, -0.88028, -0.04735),
-    vec3(-0.21249,  0.04735, -0.90954),
-    vec3(-0.77461,  0.90954, -0.51477),
-    vec3( 0.72726,  0.43081, -1.04087),
-    vec3( 1.09276, -0.08397, -0.16059),
-    vec3( 0.77461, -0.99351,  0.43081),
-    vec3( 0.21249, -1.04087, -0.08397),
-    vec3( 0.18322, -0.16059, -0.99351),
-    vec3( 0.21249,  0.90954, -0.04735),
-    vec3( 0.18322,  0.04735,  0.88028),
-    vec3( 0.72726, -0.88028,  0.59140),
-    vec3( 1.09276, -0.59140, -0.51477),
-    vec3( 0.77461,  0.51477, -0.90954),
-    vec3(-0.21249,  0.08397,  1.04087),
-    vec3(-0.18322,  0.99351,  0.16059),
-    vec3(-0.72726,  1.04087, -0.43081),
-    vec3(-1.09276,  0.16059,  0.08397),
-    vec3(-0.77461, -0.43081,  0.99351)
-);
-
-const lowp vec3 icoMats2[20] = vec3[](
-    vec3(-0.16625,  0.81245, -1.00775),
-    vec3(-0.78907,  1.00775,  0.18963),
-    vec3(-0.67187, -0.18963,  1.12494),
-    vec3( 0.02339, -1.12494,  0.50562),
-    vec3( 0.33588, -0.50562, -0.81245),
-    vec3( 0.78907, -0.29804,  0.52008),
-    vec3( 0.16625, -1.11049,  0.70971),
-    vec3(-0.33588, -0.60487, -0.29804),
-    vec3(-0.02339,  0.52008, -1.11049),
-    vec3( 0.67187,  0.70971, -0.60487),
-    vec3(-0.02339, -0.50562,  1.12494),
-    vec3( 0.67187, -1.12494,  0.18963),
-    vec3( 0.78907, -0.18963, -1.00775),
-    vec3( 0.16625,  1.00775, -0.81245),
-    vec3(-0.33588,  0.81245,  0.50562),
-    vec3( 0.02339,  1.11049, -0.52008),
-    vec3(-0.67187,  0.60487, -0.70971),
-    vec3(-0.78907, -0.52008,  0.29804),
-    vec3(-0.16625, -0.70971,  1.11049),
-    vec3( 0.33588,  0.29804,  0.60487)
-);
-
-const lowp vec3 icoMats3[20] = vec3[](
-    vec3( 0.40025,  0.67594,  0.12909),
-    vec3( 0.48003, -0.12909,  0.75572),
-    vec3( 0.94709, -0.75572,  0.33797),
-    vec3( 1.15597, -0.33797, -0.54685),
-    vec3( 0.81800,  0.54685, -0.67594),
-    vec3(-0.48003,  1.05240,  0.16758),
-    vec3(-0.40025,  0.37646,  0.92331),
-    vec3(-0.81800, -0.17039,  1.05240),
-    vec3(-1.15597,  0.16758,  0.37646),
-    vec3(-0.94709,  0.92331, -0.17039),
-    vec3(-1.15597,  0.54685,  0.33797),
-    vec3(-0.94709, -0.33797,  0.75572),
-    vec3(-0.48003, -0.75572,  0.12909),
-    vec3(-0.40025, -0.12909, -0.67594),
-    vec3(-0.81800,  0.67594, -0.54685),
-    vec3( 1.15597, -0.37646, -0.16758),
-    vec3( 0.94709,  0.17039, -0.92331),
-    vec3( 0.48003, -0.16758, -1.05240),
-    vec3( 0.40025, -0.92331, -0.37646),
-    vec3( 0.81800, -1.05240,  0.17039)
-);
-
-const highp vec3 icoNorms[20] = vec3[](
-    vec3( 0.01065, -0.28730,  0.95778),
-    vec3(-0.34836,  0.32447,  0.87941),
-    vec3(-0.88274,  0.20935,  0.42064),
-    vec3(-0.85400, -0.47356,  0.21547),
-    vec3(-0.30185, -0.78051,  0.54744),
-    vec3( 0.09313,  0.80348,  0.58800),
-    vec3( 0.67403, -0.18638,  0.71481),
-    vec3( 0.16839, -0.98441,  0.05087),
-    vec3(-0.72500, -0.48776, -0.48627),
-    vec3(-0.77152,  0.61721, -0.15430),
-    vec3( 0.85400,  0.47356, -0.21547),
-    vec3( 0.88274, -0.20935, -0.42064),
-    vec3( 0.34836, -0.32447, -0.87941),
-    vec3(-0.01065,  0.28730, -0.95778),
-    vec3( 0.30185,  0.78051, -0.54744),
-    vec3( 0.72500,  0.48776,  0.48627),
-    vec3( 0.77152, -0.61721,  0.15430),
-    vec3(-0.09313, -0.80348, -0.58800),
-    vec3(-0.67403,  0.18638, -0.71481),
-    vec3(-0.16839,  0.98441, -0.05087)
-);
-
-vec3 normUnit(vec3 v) {
-    vec3 L = abs(v);
-    return v / (L.x + L.y + L.z);
-}
-
-float maxElem(vec3 v) {
-    return max(v.x, max(v.y, v.z));
-}
-
-const float DROPOFF = 0.2;
-
-// output:
-vec3 tc1;
-vec3 tc2;
-vec3 tc3;
-
-vec3 lultex(vec2 uv) {
-    uv *= 1.0;
-    float r = fract(0.5 * (floor(uv.x) + floor(uv.y)));
-    float bw = step(r, 0.4);
-    return vec3(fract(uv), 0.5) * bw;
-}
-
-vec2 projectIntoUvSpace(vec3 position, vec3 normal) {
-    float x1 = normal.x;
-    float y1 = normal.y;
-    float z1 = normal.z;
-    float x2 = y1 + z1;
-    float y2 = x1 + z1;
-    float z2 = (-x1 * x2 - y1 * y2) / z1;
-
-    vec3 dir1 = normalize(vec3(x2, y2, z2));
-    vec3 dir2 = cross(dir1, normal);
-
-    // project onto plane
-    vec3 onPlane = position - normal * dot(position, normal);
-
-    float u = dot(onPlane, dir1);
-    float v = dot(onPlane, dir2);
-    return vec2(u, v);
-}
-
-vec3 color(vec3 normal, vec3 position)
+String::from("vec3 color(vec3 normal, vec3 position)
 {
-    vec3 n = normalize(normal);
-
-    float d1 = 0.0;
-    float d2 = 0.0;
-    float dp = 0.0;
-    int i1 = 0;
-    int i2 = 0;
-    int ip = 0;
-
-    // find highest and second-highest scoring hexagon
-    for (int i = 0; i < 20; ++i) {
-        float d = dot(n, icoNorms[i]);
-        if (d > d1) {
-            d2 = d1;
-            i2 = i1;
-            d1 = d;
-            i1 = i;
-        } else if (d > d2) {
-            d2 = d;
-            i2 = i;
-        }
-    }
-
-    // find highest-scoring pentagon
-    for (int i = 0; i < 12; ++i) {
-        float d = dot(n, icoVerts[i]);
-        if (d > dp) {
-            dp = d;
-            ip = i;
-        }
-    }
-
-    // normals of this triangle/hexagon, neighbor triangle/hexagon, and pentagon
-    vec3 thisHexNorm = icoNorms[i1];
-    vec3 neighborHexNorm = icoNorms[i2];
-    vec3 pentNorm = icoVerts[ip];
-
-    // barycentric coordinates of N in this and the neighbor hexagon/triangle UVW space
-    vec3 thisUvw = normUnit(mat3(icoMats1[i1], icoMats2[i1], icoMats3[i1]) * n);
-    vec3 neighborUvw = normUnit(mat3(icoMats1[i2], icoMats2[i2], icoMats3[i2]) * n);
-
-    // relative distance to the neighbor hexagon border, 0 is the border, 1 is this hexagon's center
-    float neighborDist = 1.4142 * 3.0 * maxElem(-neighborUvw);
-
-    // UV spaces for the three adjacent surfaces
-    vec2 thisUv = projectIntoUvSpace(position, thisHexNorm);
-    vec2 neighborUv = projectIntoUvSpace(position, neighborHexNorm);
-    vec2 pentUv = projectIntoUvSpace(position, pentNorm);
-
-    if (all(lessThan(thisUvw, vec3(2.0 / 3.0)))) {
-        // relative distance to the pentagon border, 0 is in the border, 1 is this hexagon's center
-        float pentDist = 2.0 - 3.0 * maxElem(thisUvw);
-
-        if (neighborDist > DROPOFF && pentDist > DROPOFF) {
-            tc1 = vec3(thisUv, 1.0);
-            tc2 = vec3(0.0);
-            tc3 = vec3(0.0);
-        }
-        else {
-            float fNeighbor = pow(1.0 - min(neighborDist / DROPOFF, 1.0), 2.0);
-            float fPentagon = pow(1.0 - min(pentDist / DROPOFF, 1.0), 2.0);
-            float sum = 1.0 + fNeighbor + fPentagon;
-
-            tc1 = vec3(thisUv, 1.0 / sum);
-            tc2 = vec3(neighborUv, fNeighbor / sum);
-            tc3 = vec3(pentUv, fPentagon / sum);
-        }
-    }
-    else {
-        // relative distance to the pentagon border, 0 is in the border, 1 is this hexagon's center
-        float mainDist = 3.0 * maxElem(thisUvw) - 2.0;
-
-        if (mainDist > DROPOFF) {
-            tc1 = vec3(pentUv, 1.0);
-            tc2 = vec3(0.0);
-            tc3 = vec3(0.0);
-        }
-        else {
-            float fNeighbor = pow(1.0 - min(neighborDist / DROPOFF, 1.0), 2.0);
-            float fMain = pow(1.0 - min(mainDist / DROPOFF, 1.0), 2.0);
-            float sum = 1.0 + fMain * (1.0 + fNeighbor);
-
-            tc1 = vec3(pentUv, 1.0 / sum);
-            tc2 = vec3(thisUv, fMain / sum);
-            tc3 = vec3(neighborUv, fMain * fNeighbor  / sum);
-        }
-    }
-
-    vec3 ret = vec3(0.0);
-    ret += lultex(tc1.xy) * tc1.z;
-    ret += lultex(tc2.xy) * tc2.z;
-    ret += lultex(tc3.xy) * tc3.z;
-    return ret;
+    return vec3(1.0);
 }")
 }
 
 impl Renderer {
-    fn create_planet(&mut self, generator: &str, channels: &Channels, update_errors: bool) -> bool {
-        let conf = super::Configuration {
-            size: self.planet_depth as _,
-            radius: self.planet_radius,
-            detail: (255.0 * self.vertex_detail) as _,
-            generator: generator.to_string(),
-            channels: channels.clone(),
-        };
-
-        let planet = tree::Planet::new(&conf);
+    fn create_planet(&mut self, generator: &str, channels: Channels, update_errors: bool) -> bool {
+        let planet = tree::Planet::new(self.planet_depth as _, self.planet_radius, generator, &channels);
 
         match planet {
             Ok(mut planet) => {
                 // start data generation for the first levels
                 let culler = culling::Culler::new(&self.camera.mvp((2, 1)));
+                planet.set_detail((255.0 * self.vertex_detail) as _);
                 planet.update_quad_tree(&self.camera.eye(), &culler, 3, self.hide_backside);
                 planet.start_data_generation(30);
 
                 // Clear errors
                 self.planet = Some(planet);
                 self.generator = generator.to_string();
-                self.channels = channels.clone();
+                self.channels = channels;
                 if update_errors {
                     self.errors_generator = None;
-                    self.errors_channels = None;
                 }
 
                 true
             },
             Err(errs) => {
                 if update_errors {
-                    self.errors_generator = errs.0;
-                    self.errors_channels = errs.1;
+                    self.errors_generator = Some(errs);
                 }
                 false
             },
@@ -426,12 +328,14 @@ impl Renderer {
 
     pub fn new() -> Self {
         let colorator = default_colorator();
-        let channels = Channels::new(&Vec::new());
+        let channels = Channels::new();
 
         let mut ret = Renderer {
             camera: FlyCamera::new(100.0),
-            program: None,
-            default_program: create_render_program(&colorator, &channels, &Vec::new()),
+            // TOOD: recreate when channels change
+            program_scene: Some(create_scene_program(&channels)),
+            program_color: None,
+            program_color_default: create_color_program(&colorator, &channels, &Vec::new()),
 
             planet: None,
             planet_depth: 6,
@@ -446,7 +350,9 @@ impl Renderer {
             rendered_plates: 0,
             rendered_triangles: 0,
 
-            fbo: None,
+            fbo_scene: None,
+            fbo_color: None,
+            fsquad: tinygl::shapes::FullscreenQuad::new(),
 
             generator: default_generator(),
             channels,
@@ -454,16 +360,23 @@ impl Renderer {
             textures: Vec::new(),
 
             errors_generator: None,
-            errors_channels: None,
             errors_colorator: None,
         };
 
-        ret.create_planet(&default_generator(), &Channels::new(&Vec::new()), false);
+        ret.create_planet(&default_generator(), Channels::new(), false);
         ret
     }
 
-    pub fn fbo(&self) -> Option<&tinygl::OffscreenBuffer> {
-        self.fbo.as_ref()
+    pub fn out_position(&self) -> &tinygl::Texture {
+        self.fbo_scene.as_ref().unwrap().texture("position").as_ref().unwrap()
+    }
+
+    pub fn out_normal(&self) -> &tinygl::Texture {
+        self.fbo_scene.as_ref().unwrap().texture("normal").as_ref().unwrap()
+    }
+
+    pub fn out_color(&self) -> &tinygl::Texture {
+        self.fbo_color.as_ref().unwrap().texture("color").as_ref().unwrap()
     }
 
     pub fn camera(&mut self) -> &mut FlyCamera {
@@ -476,10 +389,6 @@ impl Renderer {
 
     pub fn errors_colorator(&self) -> Option<&String> {
         self.errors_colorator.as_ref()
-    }
-
-    pub fn errors_channels(&self) -> Option<&String> {
-        self.errors_channels.as_ref()
     }
 
     pub fn rendered_triangles(&self) -> usize {
@@ -513,7 +422,7 @@ impl Renderer {
         self.planet_depth = depth;
         let gen = self.generator.clone();
         let chan = self.channels.clone();
-        self.create_planet(&gen, &chan, false);
+        self.create_planet(&gen, chan, false);
     }
 
     pub fn radius(&self) -> f32 {
@@ -524,87 +433,91 @@ impl Renderer {
         self.planet_radius = radius;
         let gen = self.generator.clone();
         let chan = self.channels.clone();
-        self.create_planet(&gen, &chan, false);
+        self.create_planet(&gen, chan, false);
         self.camera.scale_with_planet(radius);
     }
 
     pub fn set_colorator(&mut self, colorator: &str) -> bool {
-        let new_program = create_render_program(colorator, &self.channels, &self.textures);
+        let new_program = create_color_program(colorator, &self.channels, &self.textures);
         let ret = new_program.valid();
 
         if ret {
             self.colorator = colorator.to_string();
             self.errors_colorator = None;
-            self.program = Some(new_program);
+            self.program_color = Some(new_program);
         } else {
             self.errors_colorator = Some(new_program.fragment_log());
         }
         ret
     }
 
-    pub fn set_generator_and_channels(&mut self, generator: &str, channels: &Channels) -> bool {
-        let ret = self.create_planet(generator, channels, true);
+    pub fn set_generator_and_channels(&mut self, generator: &str, channels: &HashMap<String, usize>) -> bool {
+        let ret = self.create_planet(generator, Channels::from(channels), true);
         if ret {
             self.generator = generator.to_string();
-            self.channels = channels.clone();
+            self.channels = Channels::from(channels);
+            self.program_scene = Some(create_scene_program(&self.channels));
+            self.fbo_scene = None;  // need to re-create channels FBOs
         }
         ret
     }
 
     pub fn set_generator(&mut self, generator: &str) -> bool {
-        let chan = self.channels.clone();
-        let ret = self.create_planet(generator, &chan, true);
+        let chans = self.channels.clone();
+        let ret = self.create_planet(generator, chans, true);
         if ret {
             self.generator = generator.to_string();
         }
         ret
     }
 
-    fn recreate_proram(&mut self) {
+    fn recreate_program(&mut self) {
         // need to check if our colorator still fits with all those new channels and textures coming in
-        let new_program = create_render_program(&self.colorator, &self.channels, &self.textures);
+        let new_program = create_color_program(&self.colorator, &self.channels, &self.textures);
 
         if new_program.valid() {
             self.errors_colorator = None;
-            self.program = Some(new_program);
+            self.program_color = Some(new_program);
         } else {
             self.errors_colorator = Some(new_program.fragment_log());
-            self.program = None;
+            self.program_color = None;
         }
     }
 
-    pub fn set_channels(&mut self, channels: &Channels, generator: &str) -> bool {
-        let ret = self.create_planet(generator, channels, true);
+    pub fn set_channels(&mut self, channels: &HashMap<String, usize>, generator: &str) -> bool {
+        let ret = self.create_planet(generator, Channels::from(channels), true);
 
         if ret {
             self.generator = generator.to_string();
-            self.channels = channels.clone();
-            self.recreate_proram();
+            self.channels = Channels::from(channels);
+            self.recreate_program();
+            self.program_scene = Some(create_scene_program(&self.channels));
+            self.fbo_scene = None;  // need to re-create channels FBOs
         }
         ret
     }
 
     pub fn clear_textures(&mut self) {
         self.textures.clear();
-        self.recreate_proram();
+        self.recreate_program();
     }
 
     pub fn add_texture(&mut self, name: &str, texture: tinygl::Texture) {
         self.textures.push((name.to_string(), texture));
-        self.recreate_proram();
+        self.recreate_program();
     }
 
     pub fn rename_texture(&mut self, index: usize, new_name: &str) {
         if index < self.textures.len() {
             self.textures[index].0 = new_name.to_string();
-            self.recreate_proram();
+            self.recreate_program();
         }
     }
 
     pub fn remove_texture(&mut self, index: usize) {
         if index < self.textures.len() {
             self.textures.remove(index);
-            self.recreate_proram();
+            self.recreate_program();
         }
     }
 
@@ -631,54 +544,58 @@ impl Renderer {
         planet.start_data_generation(3);
 
         //
-        // Update and bind Render Target
+        // Update and bind Scene Render Target
         //
-        if self.fbo.as_ref().map(|fbo| fbo.size() != windowsize).unwrap_or(true) {
+        if self.fbo_scene.as_ref().map(|fbo| fbo.size() != windowsize).unwrap_or(true) {
             let mut fbo = tinygl::OffscreenBuffer::new((windowsize.0 as _, windowsize.1 as _));
-            fbo.add("colorWf", gl::RGBA8, gl::RGBA, gl::UNSIGNED_BYTE);
-            fbo.add("normal", gl::RGBA8, gl::RGBA, gl::UNSIGNED_BYTE);
+            fbo.add("normal", gl::RGBA32F, gl::RGBA, gl::FLOAT);
             fbo.add("position", gl::RGBA32F, gl::RGBA, gl::FLOAT);
+            fbo.add("wireframe", gl::R8, gl::RED, gl::UNSIGNED_BYTE);
+            // TODO: avoid duplication
+            for chan in self.channels.iter() {
+                let int_fmt = match chan.1 {
+                    1 => (gl::R8, gl::RED),
+                    2 => (gl::RG8, gl::RG),
+                    3 => (gl::RGB8, gl::RGB),
+                    4 => (gl::RGBA8, gl::RGBA),
+                    _ => { panic!("Does not compute"); },
+                };
+                fbo.add(&chan.0, int_fmt.0, int_fmt.1, gl::UNSIGNED_BYTE);
+            }
             fbo.add_depth_renderbuffer();
-            self.fbo = Some(fbo);
+            self.fbo_scene = Some(fbo);
         }
-        self.fbo.as_ref().unwrap().bind();
+        self.fbo_scene.as_ref().unwrap().bind();
 
         unsafe {
             gl::ClearColor(0.0, 0.0, 0.0, 0.0);
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
             gl::Enable(gl::CULL_FACE);
             gl::Enable(gl::DEPTH_TEST);
-            gl::Enable(gl::BLEND);
+            gl::Disable(gl::BLEND);
             gl::DepthFunc(gl::LEQUAL);
         }
 
         //
-        // Render sphere
+        // Prepare scene program
         //
-        let program = match self.program.as_mut() {
-            Some(prog) => prog,
-            None => &mut self.default_program
-        };
-        program.bind();
-        program.uniform("mvp", tinygl::Uniform::Mat4(mvp));
-        program.uniform("Far", tinygl::Uniform::Float(self.camera.far()));
-        program.uniform("eye", tinygl::Uniform::Vec3(self.camera.eye()));
-        program.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
-        program.uniform("normals", tinygl::Uniform::Signed(self.textures.len() as _));
-        program.uniform("heights", tinygl::Uniform::Signed((self.textures.len() + 1) as _));
-        program.vertex_attrib_buffer("plateCoords", planet.plate_coords(), 2, gl::UNSIGNED_SHORT, true, 4, 0);
-
-        // Bind Textures
-        for tex in self.textures.iter().enumerate() {
-            (tex.1).1.bind_at(tex.0 as _);
-            program.uniform(&(tex.1).0, tinygl::Uniform::Signed(tex.0 as _));
-        }
+        let program_scene = self.program_scene.as_ref().unwrap();
+        program_scene.bind();
+        program_scene.uniform("mvp", tinygl::Uniform::Mat4(mvp));
+        // program_scene.uniform("Far", tinygl::Uniform::Float(self.camera.far()));
+        program_scene.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
+        program_scene.uniform("tex_normals", tinygl::Uniform::Signed(0));
+        program_scene.uniform("tex_heights", tinygl::Uniform::Signed(1));
+        program_scene.vertex_attrib_buffer("plateCoords", planet.plate_coords(), 2, gl::UNSIGNED_SHORT, true, 4, 0);
 
         self.rendered_triangles = 0;
         let rendered_plates = planet.rendered_plates();
 
+        //
+        // Render scene into position/normal FBO
+        //
         for plate in &rendered_plates {
-            plate.borrow().bind_render_data(program, self.textures.len());
+            plate.borrow().bind_render_data(program_scene, 0);
 
             // Render Triangles
             self.rendered_triangles += if self.reduce_poly_count {
@@ -689,21 +606,60 @@ impl Renderer {
 
             // Maybe Render Wireframe
             if self.wireframe {
-                program.uniform("wf", tinygl::Uniform::Float(1.0));
+                program_scene.uniform("wf", tinygl::Uniform::Float(1.0));
                 if self.reduce_poly_count {
                     plate.borrow().wireframe().draw_all(gl::LINES);
                 } else {
                     planet.wireframe_indices().draw_all(gl::LINES);
                 }
-                program.uniform("wf", tinygl::Uniform::Float(0.0));
+                program_scene.uniform("wf", tinygl::Uniform::Float(0.0));
             }
         };
 
-        program.disable_all_vertex_attribs();
-
+        program_scene.disable_all_vertex_attribs();
         self.rendered_plates = rendered_plates.len();
 
-        unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, 0) }
+        //
+        // Update and bind Color Render Target
+        //
+        if self.fbo_color.as_ref().map(|fbo| fbo.size() != windowsize).unwrap_or(true) {
+            let mut fbo = tinygl::OffscreenBuffer::new((windowsize.0 as _, windowsize.1 as _));
+            fbo.add("color", gl::RGB, gl::RGB, gl::UNSIGNED_BYTE);
+            self.fbo_color = Some(fbo);
+        }
+        self.fbo_color.as_ref().unwrap().bind();
+
+        let program_color = match self.program_color.as_mut() {
+            Some(prog) => prog,
+            None => &mut self.program_color_default
+        };
+
+        // bind scene textures
+        program_color.bind();
+        program_color.uniform("scene_normal", tinygl::Uniform::Signed(0));
+        program_color.uniform("scene_position", tinygl::Uniform::Signed(1));
+        self.fbo_scene.as_ref().unwrap().texture("normal").unwrap().bind_at(0);
+        self.fbo_scene.as_ref().unwrap().texture("position").unwrap().bind_at(1);
+
+        // Bind Textures
+        for tex in self.textures.iter().enumerate() {
+            let idx = tex.0 + 2;
+            (tex.1).1.bind_at(idx as _);
+            program_color.uniform(&format!("_texture_{}", (tex.1).0), tinygl::Uniform::Signed(idx as _));
+        }
+
+        // Bind channel textures
+        // TODO: avoid duplication
+        for chan in self.channels.iter().enumerate() {
+            let idx = 2 + self.textures.len() + chan.0;
+            self.fbo_scene.as_ref().unwrap().texture((chan.1).0).unwrap().bind_at(idx as _);
+            program_color.uniform(&format!("_channel_texture_{}", (chan.1).0), tinygl::Uniform::Signed(idx as _));
+        }
+
+        self.fsquad.render(program_color, "vertex");
+        program_color.disable_all_vertex_attribs();
+
+        unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, 0); }
     }
 
     pub fn render_for(&self, program: &tinygl::Program, eye: Vector3<f32>, mvp: Matrix4<f32>) {

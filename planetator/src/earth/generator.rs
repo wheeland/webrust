@@ -3,7 +3,8 @@ use array2d::Array2D;
 
 use super::plate;
 use super::plateoptimizer;
-use super::noise;
+use super::channels::Channels;
+use util3d::noise;
 
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -13,34 +14,13 @@ use cgmath::*;
 
 pub type Idx = u16;
 
-static mut MEM_USAGE: i32 = 0;
-
-fn add_mem_usage(delta: usize) { unsafe { MEM_USAGE += delta as i32; } }
-fn del_mem_usage(delta: usize) { unsafe { MEM_USAGE -= delta as i32; } }
-
 //
 // Result of a triangle-optimization stage
 //
 pub struct Triangulation {
-    detail: u8,
+    // detail: u8,
     pub triangles: Vec<Idx>,
     pub wireframe: Vec<Idx>,
-}
-
-impl Triangulation {
-    fn new(detail: u8, triangles: Vec<Idx>, wireframe: Vec<Idx>,) -> Self {
-        add_mem_usage((triangles.capacity() + wireframe.capacity()) * std::mem::size_of::<Idx>());
-        Triangulation {
-            detail,
-            triangles,
-            wireframe,
-        }
-    }
-}
-impl Drop for Triangulation {
-    fn drop(&mut self) {
-        del_mem_usage((self.triangles.capacity() + self.wireframe.capacity()) * std::mem::size_of::<Idx>());
-    }
 }
 
 //
@@ -49,42 +29,12 @@ impl Drop for Triangulation {
 pub struct Result {
     pub height_extent: (f32, f32),
     pub heights: Vec<f32>,
-    pub height_texture: Texture,
     pub vertex_data: Vec<Vector4<f32>>,
     pub detail: Vec<u8>,
-    pub normals: Texture,
+    pub tex_heights: Texture,
+    pub tex_normals: Texture,
     pub channels: HashMap<String, Texture>,
-    pub triangulation: Option<Triangulation>
-}
-
-impl Result {
-    fn new(height_extent: (f32, f32),
-           heights: Vec<f32>,
-           height_texture: Texture,
-           vertex_data: Vec<Vector4<f32>>,
-           detail: Vec<u8>,
-           normals: Texture,
-           triangulation: Option<Triangulation>,
-           channels: HashMap<String, Texture>
-    ) -> Self {
-        add_mem_usage(heights.capacity() * 4 + vertex_data.capacity() * 16);
-        Result {
-            height_extent,
-            heights,
-            height_texture,
-            vertex_data,
-            detail,
-            normals,
-            channels,
-            triangulation
-        }
-    }
-}
-
-impl Drop for Result {
-    fn drop(&mut self) {
-        del_mem_usage(self.heights.capacity() * 4 + self.vertex_data.capacity() * 16);
-    }
+    pub triangulation: Option<Triangulation>,
 }
 
 //
@@ -100,11 +50,11 @@ pub struct PlateDataManager {
 pub type PlateDataManagerPtr = Rc<RefCell<PlateDataManager>>;
 
 impl PlateDataManager {
-    pub fn new(pow2size: i32, radius: f32, vertex_generator: Program, post_generator: Program, channels: &super::Channels) -> Self {
+    pub fn new(pow2size: i32, radius: f32, vertex_generator: Program, channels: &Channels) -> Self {
         PlateDataManager {
             size: 2i32.pow(pow2size as _),
             radius,
-            generator: Generator::new(pow2size, 100, radius, 3, vertex_generator, post_generator, channels),
+            generator: Generator::new(pow2size, 100, radius, 3, vertex_generator, channels),
             cache: LruCache::new(400),
             waiting: HashMap::new()
         }
@@ -173,10 +123,6 @@ impl PlateDataManager {
     pub fn waiting(&self) -> usize {
         self.waiting.len()
     }
-
-    pub fn memory_usage(&self) -> usize {
-        unsafe { MEM_USAGE as usize }
-    }
 }
 
 //
@@ -188,11 +134,12 @@ struct GeneratorBuffers {
 }
 
 impl GeneratorBuffers {
-    fn new(size: i32, channels: &super::Channels) -> Self {
+    fn new(size: i32, channels: &Channels) -> Self {
         let mut position_pass = OffscreenBuffer::new((size, size));
         position_pass.add("position", gl::RGBA32F, gl::RGBA, gl::FLOAT);
         position_pass.add("height", gl::R32F, gl::RED, gl::FLOAT);
-        for chan in channels.channels() {
+        // TODO: avoid duplication
+        for chan in channels.iter() {
             let int_fmt = match chan.1 {
                 1 => (gl::R8, gl::RED),
                 2 => (gl::RG8, gl::RG),
@@ -217,15 +164,7 @@ impl GeneratorBuffers {
 //
 // Shaders for Vertex + Height (+ Channels) generation
 //
-pub fn compile_generator(generator: &str, channels: &super::Channels) -> Program {
-    let declarations = channels.declarations()
-        .iter()
-        .enumerate()
-        .map(|chan| {
-            format!("layout(location = {}) out {};\n", chan.0 + 1, chan.1)
-        })
-        .fold(String::new(), |acc, x| acc + &x);
-
+pub fn compile_generator(generator: &str, channels: &Channels) -> Program {
     let vert = "
         in vec2 xy;
         void main()
@@ -246,7 +185,7 @@ pub fn compile_generator(generator: &str, channels: &super::Channels) -> Program
         layout(location = 0) out vec4 posHeight;
         layout(location = 1) out float height;
         "
-        + &declarations + "
+        + &channels.glsl_output_declarations(2) + "
         \n#line 1\n"
         + generator + "
 
@@ -274,85 +213,66 @@ pub fn compile_generator(generator: &str, channels: &super::Channels) -> Program
 //
 // Shader for Normals, Interpolation, Vertex Merging (and Channels)
 //
-pub fn compile_postvertex(channels: &super::Channels) -> Program {
-    let declarations = channels.declarations()
-        .iter()
-        .enumerate()
-        .map(|chan| {
-            format!("layout(location = {}) out {};\n", chan.0 + 2, chan.1)
-        })
-        .fold(String::new(), |acc, x| acc + &x);
-
+fn compile_postvertex() -> Program {
     let vert = "
-            in vec2 xy;
-            void main()
-            {
-                gl_Position = vec4(xy, 0.0, 1.0);
-            }";
+        in vec2 xy;
+        void main()
+        {
+            gl_Position = vec4(xy, 0.0, 1.0);
+        }";
 
-    let frag = noise::ShaderNoise::declarations() + "
-            uniform float size;
-            uniform float radius;
-            uniform sampler2D positions;
-            uniform sampler2D parentCoords;
+    let frag = "
+        uniform float size;
+        uniform float radius;
+        uniform sampler2D positions;
+        uniform sampler2D parentCoords;
 
-            layout(location = 0) out vec3 normal;
-            layout(location = 1) out vec4 detail;
-            "
-        + &declarations +
-        "
-#line 1
-"
-        //+ channels.source() +
-        + "
-            vec3 _pos(vec2 tc) {
-                vec4 heightPos = texture(positions, tc / (size + 3.0));
-                return heightPos.xyz * (radius + heightPos.w);
+        layout(location = 0) out vec3 normal;
+        layout(location = 1) out vec4 detail;
+
+        vec3 _pos(vec2 tc) {
+            vec4 heightPos = texture(positions, tc / (size + 3.0));
+            return heightPos.xyz * (radius + heightPos.w);
+        }
+
+        void main()
+        {
+            //
+            // Get coordinates of neighbor vertices
+            //
+            vec4 heightPosCenter = texture(positions, gl_FragCoord.xy / (size + 3.0));
+            vec3 pCenter = heightPosCenter.xyz * (radius + heightPosCenter.w);
+            vec3 xp = _pos(gl_FragCoord.xy + vec2(1.0,  0.0));
+            vec3 xn = _pos(gl_FragCoord.xy + vec2(-1.0, 0.0));
+            vec3 yp = _pos(gl_FragCoord.xy + vec2(0.0,  1.0));
+            vec3 yn = _pos(gl_FragCoord.xy + vec2(0.0, -1.0));
+
+            vec3 norm = normalize(cross(xp - xn, yp - yn));
+            if (dot(norm, xp) < 0.0)
+                norm = -norm;
+
+            // get position of parent vertices within this tile (range: [0..1])
+            vec4 parents = texture(parentCoords, (gl_FragCoord.xy - vec2(1.0)) / (size + 1.0));
+
+            //
+            // calculate interpolated position
+            //
+            float interpolation = 0.0;
+            if (parents.xy != parents.zw) {
+                // read parent world positions
+                vec3 pparent1 = _pos(vec2(1.5) + parents.xy * size);
+                vec3 pparent2 = _pos(vec2(1.5) + parents.zw * size);
+                vec3 mid = mix(pparent1, pparent2, 0.5);
+
+                // calculate relative difference to this position
+                float dParents = length(pparent1 - pparent2);
+                float dMid = length(mid - pCenter);
+                interpolation = 0.5 * dMid / dParents * sqrt(length(parents.xy - parents.zw));
             }
 
-            void main()
-            {
-                //
-                // Get coordinates of neighbor vertices
-                //
-                vec4 heightPosCenter = texture(positions, gl_FragCoord.xy / (size + 3.0));
-                vec3 xp = _pos(gl_FragCoord.xy + vec2(1.0,  0.0));
-                vec3 xn = _pos(gl_FragCoord.xy + vec2(-1.0, 0.0));
-                vec3 yp = _pos(gl_FragCoord.xy + vec2(0.0,  1.0));
-                vec3 yn = _pos(gl_FragCoord.xy + vec2(0.0, -1.0));
-
-                vec3 norm = normalize(cross(xp - xn, yp - yn));
-                if (dot(norm, xp) < 0.0)
-                    norm = -norm;
-
-                // get position of parent vertices within this tile (range: [0..1])
-                vec4 parents = texture(parentCoords, (gl_FragCoord.xy - vec2(1.0)) / (size + 1.0));
-
-                //
-                // calculate interpolated position
-                //
-                float interpolation = 0.0;
-                if (parents.xy != parents.zw) {
-                    // read parent world positions
-                    vec3 pparent1 = _pos(vec2(1.5) + parents.xy * size);
-                    vec3 pparent2 = _pos(vec2(1.5) + parents.zw * size);
-                    vec3 mid = mix(pparent1, pparent2, 0.5);
-
-                    vec3 pCenter = heightPosCenter.xyz * (radius + heightPosCenter.w);
-
-                    // calculate relative difference to this position
-                    float dParents = length(pparent1 - pparent2);
-                    float dMid = length(mid - pCenter);
-                    interpolation = 0.5 * dMid / dParents * sqrt(length(parents.xy - parents.zw));
-                }
-
-                normal = norm;
-                detail = vec4(5.0 * interpolation * sqrt(size));
-            " +
-        //+ if channels.source().is_empty() { "" } else { "generate(heightPosCenter.xyz, heightPosCenter.w, normal.xyz);" } +
-        "
-            }
-            " + &noise::ShaderNoise::definitions();
+            normal = norm;
+            detail = vec4(5.0 * interpolation * sqrt(size));
+        }";
 
     Program::new(vert, &frag)
 }
@@ -364,7 +284,7 @@ struct Generator {
     depth: usize,
     size: usize,
     pub detail: u8,
-    channels: super::Channels,
+    channels: Channels,
 
     quad: VertexBuffer,
     vertex_generator: Program,
@@ -411,8 +331,7 @@ impl Generator {
                radius: f32,
                max_framebuffer_cache: usize,
                vertex_generator: Program,
-               post_generator: Program,
-               channels: &super::Channels
+               channels: &Channels
     ) -> Self {
         let size = 2i32.pow(pow2size as _) as usize;
 
@@ -438,7 +357,6 @@ impl Generator {
         }
 
         let mut offset_texture = Texture::new(gl::TEXTURE_2D);
-        offset_texture.bind();
         offset_texture.filter(gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
         offset_texture.filter(gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
         unsafe { offset_texture.teximage(((size+1) as _, (size+1) as _), gl::RGBA32F, gl::RGBA, gl::FLOAT, offset_tex_data.as_ptr() as _); }
@@ -451,6 +369,7 @@ impl Generator {
         vertex_generator.uniform("radius", Uniform::Float(radius));
 
         // Set uniforms for normal generator / optimizer / channel generator
+        let post_generator = compile_postvertex();
         post_generator.bind();
         post_generator.uniform("size", Uniform::Float(size as f32));
         post_generator.uniform("radius", Uniform::Float(radius));
@@ -622,7 +541,10 @@ impl Generator {
             data.detail[x + 1 +  tex_size * (y + 1)] < 255 - self.detail
         });
 
-        Triangulation::new(self.detail, optimized.triangles, optimized.wireframe)
+        Triangulation {
+            triangles: optimized.triangles,
+            wireframe: optimized.wireframe
+        }
     }
 
 
@@ -634,9 +556,9 @@ impl Generator {
             let mut fbos = self.framebuffers.remove(&pos).expect("No FBO found");
 
             // sorry, we need this
-            let mut height_texture = fbos.position_pass.take("height").expect("No Height texture found");
-            height_texture.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR);
-            height_texture.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR);
+            let mut tex_heights = fbos.position_pass.take("height").expect("No Height texture found");
+            tex_heights.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR);
+            tex_heights.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR);
 
             //
             // Allocate buffers for regular attributes
@@ -653,7 +575,7 @@ impl Generator {
                 fbos.position_pass.read("position", buf_positions.as_mut_ptr() as _);
                 fbos.normal_pass.read("detail", buf_detail.as_mut_ptr() as _);
 
-                for chan in self.channels.channels() {
+                for chan in self.channels.iter() {
                     if let Some(mut tex) = fbos.position_pass.take(chan.0) {
                         tex.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
                         tex.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR_MIPMAP_LINEAR as _);
@@ -686,18 +608,27 @@ impl Generator {
             //
             // Prepare normals texture
             //
-            let mut normals = fbos.normal_pass.take("normal").unwrap();
-            normals.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
-            normals.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR_MIPMAP_LINEAR as _);
-            normals.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
-            normals.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
-            normals.gen_mipmaps();
+            let mut tex_normals = fbos.normal_pass.take("normal").unwrap();
+            tex_normals.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
+            tex_normals.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR_MIPMAP_LINEAR as _);
+            tex_normals.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
+            tex_normals.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
+            tex_normals.gen_mipmaps();
 
             //
             // adjust ribbon heights and positions
             //
             self.postprocess_ribbons(&mut buf_positions, max - min);
-            let mut result = Result::new((min, max), buf_heights, height_texture, buf_positions, buf_detail_u8, normals, None, channels);
+            let mut result = Result {
+                height_extent: (min, max),
+                heights: buf_heights,
+                vertex_data: buf_positions,
+                detail: buf_detail_u8,
+                tex_heights,
+                tex_normals,
+                channels,
+                triangulation: None,
+            };
             result.triangulation = Some(self.triangulate(&result));
 
             if self.framebuffer_cache.len() < self.max_framebuffer_cache {

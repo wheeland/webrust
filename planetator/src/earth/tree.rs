@@ -3,9 +3,10 @@ use std::cell::RefCell;
 
 use cgmath::prelude::*;
 use cgmath::*;
-use super::super::culling;
+use util3d::culling;
 use super::generator;
 use super::plate;
+use super::channels::Channels;
 
 pub struct Planet {
     plate_size: i32,
@@ -21,23 +22,22 @@ pub struct Planet {
 }
 
 impl Planet {
-    pub fn new(conf: &super::Configuration) -> Result<Planet, (Option<String>, Option<String>)> {
-        let size = 2i32.pow(conf.size as _);
+    pub fn new(
+        size: u32,
+        radius: f32,
+        generator: &str,
+        channels: &Channels,
+    ) -> Result<Planet, String> {
+        let plate_size = 2i32.pow(size as _);
 
         // Create Generator program
-        let generator = generator::compile_generator(&conf.generator, &conf.channels);
-        let generator_errs = if generator.valid() { None } else { Some(generator.fragment_log()) };
+        let generator = generator::compile_generator(generator, channels);
 
-        // Create normals / channels / optimization program
-        let post = generator::compile_postvertex(&super::Channels::new(&Vec::new()));
-        let post_errs = if post.valid() { None } else { Some(post.fragment_log()) };
-
-        if !generator.valid() || !post.valid() {
-            return Err((generator_errs, post_errs));
+        if !generator.valid() {
+            return Err(generator.fragment_log());
         }
 
-        let mut manager = generator::PlateDataManager::new(conf.size as _, conf.radius,generator, post, &conf.channels);
-        manager.set_detail(conf.detail as _);
+        let mut manager = generator::PlateDataManager::new(size as _, radius, generator, channels);
 
         let indices = manager.generate_indices();
         let plate_coords = tinygl::VertexBuffer::from(&manager.generate_plate_coords());
@@ -50,8 +50,8 @@ impl Planet {
         }).collect();
 
         Ok(Planet {
-            plate_size: size,
-            radius: conf.radius,
+            plate_size,
+            radius,
             seed: cgmath::Vector3::new(0.0, 0.0, 0.0),
             plate_coords,
             triangles: tinygl::IndexBuffer::from16(&indices.0),
@@ -171,7 +171,7 @@ impl Planet {
             let old_length = out.len();
 
             // see if we will render the children instead
-            let mut render_self = match node.children.as_ref() {
+            let render_self = match node.children.as_ref() {
                 None => true,
                 Some(children) => !split(node) || !children.iter().all(|child| Self::collect_rendered_plates(child, out, visible, split))
             };
@@ -230,7 +230,7 @@ impl GpuData {
     fn new(data: &generator::Result, tex_size: i32) -> Self {
         let triangulation = data.triangulation.as_ref().expect("No Triangulation data found");
 
-        let mut ret = GpuData {
+        let ret = GpuData {
             positions: tinygl::VertexBuffer::from(&data.vertex_data),
             triangles: tinygl::IndexBuffer::from16(&triangulation.triangles),
             wireframe: tinygl::IndexBuffer::from16(&triangulation.wireframe),
@@ -330,7 +330,7 @@ impl Plate {
             total_priority: 0.0,
             data_manager,
             generated_data: None,
-            debug_color: tinygl::util::hsv(((position.x() + 100) * (position.y() + 200)) as f32, 1.0, 1.0),
+            debug_color: util3d::hsv(((position.x() + 100) * (position.y() + 200)) as f32, 1.0, 1.0),
             gpu_data: None,
             children: None
         };
@@ -484,13 +484,13 @@ impl Plate {
         for channel in self.generated_data.as_ref().unwrap().channels.iter().enumerate() {
             let idx = channel.0 + first_tex_unit + 2;
             (channel.1).1.bind_at(idx as _);
-            program.uniform(&(String::from("texture_") + (channel.1).0), tinygl::Uniform::Signed(idx as i32));
+            program.uniform(&(String::from("_channel_texture_") + (channel.1).0), tinygl::Uniform::Signed(idx as i32));
         }
 
         program.uniform("debugColor", tinygl::Uniform::Vec3(self.debug_color));
 
-        self.generated_data.as_ref().unwrap().normals.bind_at(first_tex_unit as _);
-        self.generated_data.as_ref().unwrap().height_texture.bind_at((first_tex_unit + 1) as _);
+        self.generated_data.as_ref().unwrap().tex_normals.bind_at(first_tex_unit as _);
+        self.generated_data.as_ref().unwrap().tex_heights.bind_at((first_tex_unit + 1) as _);
     }
 
     pub fn debug_color(&self) -> Vector3<f32> {
