@@ -269,13 +269,16 @@ fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(St
                 outColor = vec3(0.0);
                 return;
             }
+
+            vec4 scenePosTex = texture(scene_position, tc_screen);
+
             sceneNormal = vec3(-1.0) + 2.0 * normalFromTex;
-            scenePosition = texture(scene_position, tc_screen).xyz;
+            scenePosition = scenePosTex.xyz;
 
             _generateUvMaps(sceneNormal, scenePosition);
 
         " + &channels.glsl_assignments("tc_screen") + "
-            outColor = color(sceneNormal, scenePosition);
+            outColor = color(sceneNormal, scenePosition, scenePosTex.w);
         }";
 
     tinygl::Program::new(vert_source, &frag_source)
@@ -294,7 +297,7 @@ pub fn default_generator() -> String {
 }
 
 pub fn default_colorator() -> String {
-String::from("vec3 color(vec3 normal, vec3 position)
+String::from("vec3 color(vec3 normal, vec3 position, float height)
 {
     return vec3(1.0);
 }")
