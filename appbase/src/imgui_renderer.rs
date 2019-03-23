@@ -81,7 +81,7 @@ impl Renderer {
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
             gl::Disable(gl::CULL_FACE);
             gl::Disable(gl::DEPTH_TEST);
-
+            gl::ActiveTexture(gl::TEXTURE0);
 
             let (width, height) = ui.imgui().display_size();
             let fb_width = width * ui.imgui().display_framebuffer_scale().0;
@@ -137,6 +137,10 @@ impl Renderer {
 
                 Ok(())
             });
+
+            gl::DisableVertexAttribArray(ploc);
+            gl::DisableVertexAttribArray(puv);
+            gl::DisableVertexAttribArray(pcolor);
 
             gl::Disable(gl::SCISSOR_TEST);
         }
