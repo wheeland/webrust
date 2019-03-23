@@ -100,15 +100,38 @@ fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(St
         .fold(String::new(), |acc, tex| {
             let texname = String::from("_texture_") + &tex.0;
             acc + "uniform sampler2D " + &texname + ";\n" +
-            "vec3 " + &tex.0 + "(float scale) {\n" +
+            "vec3 " + &tex.0 + "(float scale, float dropoff) {\n" +
+                // build actual scale factors for this and the two neighbor tiles, based on dropoff factor
+                "vec3 adjustedDists = clamp(uvDists / dropoff, vec3(0.0), vec3(1.0));\n" +
+                "vec2 factors = pow(vec2(1.0) - adjustedDists.xy, vec2(2.0));" +
+                "if (adjustedDists.z > 0.0) factors.y *= factors.x;\n" +
+
+                // calculate some arbitrary, but stable gradient, so that texture filtering doesn't screw up
                 "vec2 globalUV = (scenePosition.xy + scenePosition.yz + scenePosition.zx) * scale;\n" +
                 "vec2 dUVdx = dFdx(globalUV);\n" +
                 "vec2 dUVdy = dFdy(globalUV);\n" +
-                "vec3 ret = vec3(0.0);\n" +
-                "ret += textureGrad(" + &texname + ", uv1 * scale, dUVdx, dUVdy).rgb * uvAlpha.x;\n" +
-                "ret += textureGrad(" + &texname + ", uv23.xy * scale, dUVdx, dUVdy).rgb * uvAlpha.y;\n" +
-                "ret += textureGrad(" + &texname + ", uv23.zw * scale, dUVdx, dUVdy).rgb * uvAlpha.z;\n" +
-                "return ret;\n}\n"
+
+                // calculate how much the prime value is ahead of the others
+                "float primeness = smoothstep(1.2, 1.6, 1.0 / max(0.001, max(factors.x, factors.y)));\n" +
+
+                "vec3 ret = textureGrad(" + &texname + ", uv1 * scale, dUVdx, dUVdy).rgb;\n" +
+                "if (primeness > 0.0) {\n" +
+                    // improve on inigo quilez' algorithm a bit by stretching and invsmoothstep()ing the index
+                    "float r = -0.1 + 1.2 * noise(uv1 * scale);\n" +
+                    "r = (r + (r - (r * r * (3.0 - 2.0 * r))));\n;" +
+                    "float index = 4.0 * clamp(r, 0.0, 1.0);\n;" +
+                    "float i = floor(index);\n" +
+                    "float f = fract(index);\n" +
+                    "vec2 off1 = sin(vec2(3.0,7.0)*(i+0.0));\n" +
+                    "vec2 off2 = sin(vec2(3.0,7.0)*(i+1.0));\n" +
+                    "vec3 jumble1 = textureGrad(" + &texname + ", uv1 * scale + off1, dUVdx, dUVdy).rgb;\n" +
+                    "vec3 jumble2 = textureGrad(" + &texname + ", uv1 * scale + off2, dUVdx, dUVdy).rgb;\n" +
+                    "vec3 jumble = mix(jumble1, jumble2, smoothstep(0.1, 1.0, f));\n" +
+                    "ret = mix(ret, jumble, primeness);\n" +
+                "}\n" +
+                "if (factors.x > 0.0) ret += textureGrad(" + &texname + ", uv23.xy * scale, dUVdx, dUVdy).rgb * factors.x;\n" +
+                "if (factors.y > 0.0) ret += textureGrad(" + &texname + ", uv23.zw * scale, dUVdx, dUVdy).rgb * factors.y;\n" +
+                "return ret / (1.0 + factors.x + factors.y);\n}\n"
         });
 
     let channel_variables = channels.glsl_base_declarations().iter().fold(
@@ -123,15 +146,15 @@ fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(St
 
         vec2 uv1;
         vec4 uv23;
-        vec3 uvAlpha;
+        vec3 uvDists;
 
         vec3 sceneNormal;
         vec3 scenePosition;
 
         ") + &channels.glsl_texture_declarations() + "
         " + &channel_variables + "
-        " + &texture_function_definitions + "
         " + &noise::ShaderNoise::declarations() + "
+        " + &texture_function_definitions + "
         \n#line 1\n" + colorator + "
 
         " + &noise::ShaderNoise::definitions() + "
@@ -145,8 +168,6 @@ fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(St
         float _maxElem(vec3 v) {
             return max(v.x, max(v.y, v.z));
         }
-
-        const float DROPOFF = 0.2;
 
         vec2 _projectIntoUvSpace(vec3 position, vec3 normal) {
             float x2 = normal.y + normal.z;
@@ -221,39 +242,23 @@ fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(St
                 // relative distance to the pentagon border, 0 is in the border, 1 is this hexagon's center
                 float pentDist = 2.0 - 3.0 * _maxElem(thisUvw);
 
-                if (neighborDist > DROPOFF && pentDist > DROPOFF) {
-                    uv1 = thisUv;
-                    uv23 = vec4(0.0);
-                    uvAlpha = vec3(1.0, 0.0, 0.0);
-                }
-                else {
-                    float fNeighbor = pow(1.0 - min(neighborDist / DROPOFF, 1.0), 2.0);
-                    float fPentagon = pow(1.0 - min(pentDist / DROPOFF, 1.0), 2.0);
-                    float sum = 1.0 + fNeighbor + fPentagon;
+                float fNeighbor = clamp(0.0, neighborDist, 1.0);
+                float fPentagon = clamp(0.0, pentDist, 1.0);
 
-                    uv1 = thisUv;
-                    uv23 = vec4(neighborUv, pentUv);
-                    uvAlpha = vec3(1.0, fNeighbor, fPentagon) / sum;
-                }
+                uv1 = thisUv;
+                uv23 = vec4(neighborUv, pentUv);
+                uvDists = vec3(fNeighbor, fPentagon, 0.0);
             }
             else {
                 // relative distance to the pentagon border, 0 is in the border, 1 is this hexagon's center
                 float mainDist = 3.0 * _maxElem(thisUvw) - 2.0;
 
-                if (mainDist > DROPOFF) {
-                    uv1 = pentUv;
-                    uv23 = vec4(0.0);
-                    uvAlpha = vec3(1.0, 0.0, 0.0);
-                }
-                else {
-                    float fNeighbor = pow(1.0 - min(neighborDist / DROPOFF, 1.0), 2.0);
-                    float fMain = pow(1.0 - min(mainDist / DROPOFF, 1.0), 2.0);
-                    float sum = 1.0 + fMain * (1.0 + fNeighbor);
+                float fNeighbor = clamp(0.0, neighborDist, 1.0);
+                float fMain = clamp(0.0, mainDist, 1.0);
 
-                    uv1 = pentUv;
-                    uv23 = vec4(thisUv, neighborUv);
-                    uvAlpha = vec3(1.0, fMain, fMain * fNeighbor) / sum;
-                }
+                uv1 = pentUv;
+                uv23 = vec4(thisUv, neighborUv);
+                uvDists = vec3(fMain, fNeighbor, 1.0);
             }
         }
 
