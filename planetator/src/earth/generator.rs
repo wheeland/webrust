@@ -53,7 +53,7 @@ impl PlateDataManager {
         PlateDataManager {
             size: 2i32.pow(pow2size as _),
             radius,
-            generator: Generator::new(pow2size, 100, radius, 3, vertex_generator, channels),
+            generator: Generator::new(pow2size, 100, radius, 12, vertex_generator, channels),
             cache: LruCache::new(400),
             waiting: HashMap::new()
         }
@@ -83,8 +83,14 @@ impl PlateDataManager {
         let mut entries: Vec<(&plate::Position, &f32)> = self.waiting.iter().collect();
         entries.sort_by(|a,b| b.1.partial_cmp(a.1).unwrap());
 
-        for i in 0..entries.len().min(max) {
-            self.generator.generate(*entries[i].0);
+        let mut count = 0;
+        for entry in entries {
+            if self.generator.start_generation(*entry.0) {
+                count += 1;
+                if (count >= max) {
+                    break;
+                }
+            }
         }
     }
 
@@ -294,7 +300,8 @@ struct Generator {
     framebuffer_cache: Vec<GeneratorBuffers>,
     max_framebuffer_cache: usize,
 
-    generation_order: Vec<plate::Position>,
+    current_operations: Vec<plate::Position>,
+    previous_operations: Vec<plate::Position>,
     framebuffers: HashMap<plate::Position, GeneratorBuffers>
 }
 
@@ -388,7 +395,8 @@ impl Generator {
             offset_texture,
 
             framebuffer_cache: Vec::new(),
-            generation_order: Vec::new(),
+            current_operations: Vec::new(),
+            previous_operations: Vec::new(),
             max_framebuffer_cache,
             framebuffers: HashMap::new()
         }
@@ -451,13 +459,12 @@ impl Generator {
         (triangles, wireframe)
     }
 
-    pub fn generate(&mut self, pos: plate::Position) {
+    pub fn start_generation(&mut self, pos: plate::Position) -> bool {
         //
         // Generate FBOs
         //
         if self.framebuffers.contains_key(&pos) {
-            println!("Already started generation for {}", pos);
-            return;
+            return false;
         }
 
         let tex_size = (self.size + 3) as i32;
@@ -479,7 +486,9 @@ impl Generator {
             gl::Disable(gl::BLEND);
         }
 
+        //
         // Prepare program
+        //
         self.vertex_generator.bind();
         self.vertex_generator.uniform("ofs", Uniform::Vec2(Vector2::new(xofs, yofs)));
         self.vertex_generator.uniform("mul", Uniform::Float(fac));
@@ -503,8 +512,10 @@ impl Generator {
 
         FrameBufferObject::unbind();
 
-        self.generation_order.push(pos);
+        self.current_operations.push(pos);
         self.framebuffers.insert(pos, fbos);
+
+        true
     }
 
     fn postprocess_ribbons(&self, buffer: &mut Vec<Vector4<f32>>, ribbon_height: f32) {
@@ -550,7 +561,7 @@ impl Generator {
         let mut ret = HashMap::new();
 
         // get generator results in order, in order to leave them as much time as possible on the GPU
-        for pos in &self.generation_order {
+        for pos in &self.previous_operations {
             let mut fbos = self.framebuffers.remove(&pos).expect("No FBO found");
 
             // sorry, we need this
@@ -635,7 +646,8 @@ impl Generator {
             ret.insert(*pos, result);
         }
 
-        self.generation_order.clear();
+        self.previous_operations = self.current_operations.drain(..).collect();
+        self.current_operations.clear();
 
         ret
     }
