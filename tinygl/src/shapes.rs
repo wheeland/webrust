@@ -31,7 +31,7 @@ impl FullscreenQuad {
         program.bind();
         program.vertex_attrib_buffer(attrname, &self.vertices, 2, gl::FLOAT, false, 0, 0);
         unsafe { gl::DrawArrays(gl::TRIANGLES, 0, 6) }
-        program.disable_vertex_attrib(attrname);
+        program.disable_all_vertex_attribs();
     }
 }
 

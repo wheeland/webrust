@@ -163,7 +163,6 @@ impl ShadowCascade {
         {
             // let tex = fbo.texture_mut("depth").unwrap();
             let tex = fbo.depth_texture_mut().unwrap();
-            tex.bind();
             tex.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
             tex.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
             // tex.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
@@ -490,6 +489,7 @@ impl ShadowMap {
     }
 
     pub fn finish_render(&self) {
+        self.program().disable_all_vertex_attribs();
         // reset GL
         unsafe {
             gl::Disable(gl::POLYGON_OFFSET_FILL);
