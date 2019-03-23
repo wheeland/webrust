@@ -411,12 +411,13 @@ impl webrunner::WebApp for MyApp {
                 }
             });
 
-        let planet_opt_win_size = (260.0, 390.0 + 24.0 * self.select_channels.len() as f32);
+        let planet_opt_win_size = (260.0, 300.0);
 
         ui.window(im_str!("Planet Options"))
-            .flags(ImGuiWindowFlags::NoResize | ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar)
-            .size(planet_opt_win_size, ImGuiCond::Always)
+            .flags(ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar)
+            .size(planet_opt_win_size, ImGuiCond::Appearing)
             .position((self.windowsize.0 as f32 - planet_opt_win_size.0, 0.0), ImGuiCond::Always)
+            .constraints(planet_opt_win_size, (planet_opt_win_size.0, 1000.0))
             .build(|| {
                 //
                 // Slider for Plate Size and Planet Radius
