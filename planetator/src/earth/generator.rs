@@ -151,7 +151,7 @@ impl GeneratorBuffers {
         }
 
         let mut normal_pass = OffscreenBuffer::new((size, size));
-        normal_pass.add("normal", gl::RGBA32F, gl::RGBA, gl::FLOAT);
+        normal_pass.add("normal", gl::RGB, gl::RGB, gl::UNSIGNED_BYTE);
         normal_pass.add("detail", gl::RGBA, gl::RGBA, gl::UNSIGNED_BYTE);
 
         GeneratorBuffers {
@@ -270,7 +270,7 @@ fn compile_postvertex() -> Program {
                 interpolation = 0.5 * dMid / dParents * sqrt(length(parents.xy - parents.zw));
             }
 
-            normal = norm;
+            normal = vec3(0.5) + 0.5 * norm;
             detail = vec4(5.0 * interpolation * sqrt(size));
         }";
 

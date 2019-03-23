@@ -167,7 +167,7 @@ fn create_postprocess_shader() -> tinygl::Program {
         }
 
         void main() {
-            vec3 normalFromTex = texture(planetNormal, vec2(0.5) + 0.5 * clipPos).rgb;
+            vec4 normalFromTex = texture(planetNormal, vec2(0.5) + 0.5 * clipPos);
 
             // calculate eye direction in that pixel
             vec4 globalPosV4 = inverseViewProjectionMatrix * vec4(clipPos, 0.0, 1.0);
@@ -180,7 +180,8 @@ fn create_postprocess_shader() -> tinygl::Program {
                 //
                 // Load position/normal/color from planet rendering textures
                 //
-                vec3 normal = vec3(-1.0) + 2.0 * normalFromTex;
+                vec3 normal = vec3(-1.0) + 2.0 * normalFromTex.xyz;
+                float wireframe = normalFromTex.w;
                 vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
                 vec3 pPos = texture(planetPosition, vec2(0.5) + 0.5 * clipPos).rgb;
                 float dist = length(pPos - eyePosition);
@@ -228,6 +229,10 @@ fn create_postprocess_shader() -> tinygl::Program {
                 ground_radiance = ground_radiance * transmittance + in_scatter;
 
                 color = pow(vec3(1.0) - exp(-ground_radiance / white_point * exposure), vec3(1.0 / 2.2));
+
+                // draw wireframes on top?
+                float brightness = dot(vec3(0.2126, 0.7152, 0.0722), color);
+                color = mix(color, vec3(step(brightness, 0.4)), wireframe);
             }
             else {
                 // Compute the radiance of the sky.

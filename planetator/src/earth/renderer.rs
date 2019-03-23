@@ -64,25 +64,24 @@ fn create_scene_program(channels: &Channels) -> tinygl::Program {
             // wpos.z = (2.0 * log(C * wpos.w + 1.0) / log(C * Far + 1.0) - 1.0) * wpos.w;
             gl_Position = mvp * vec4(pos, 1.0);
         }",
-        &(String::from("uniform float wf;
+        &(String::from("
+        uniform float wf;
         uniform float radius;
         uniform sampler2D tex_normals;
         uniform sampler2D tex_heights;
         in vec2 plateTc;
         in vec3 pos;
-        layout(location = 0) out vec3 outNormal;
-        layout(location = 1) out vec3 outPosition;
-        layout(location = 2) out float outWireframe;
+        layout(location = 0) out vec4 outNormalWf;
+        layout(location = 1) out vec4 outPositionHeight;
         ") + &channels.glsl_texture_declarations() + "
         " + &channels.glsl_output_declarations(3) + "
 
         void main()
         {
-            vec3 normal = texture(tex_normals, plateTc).xyz;
+            vec3 normalFromTex = texture(tex_normals, plateTc).xyz;
             float height = texture(tex_heights, plateTc).r;
-            outNormal = normal;
-            outPosition = normalize(pos) * (radius + height);
-            outWireframe = wf;
+            outNormalWf = vec4(normalFromTex, wf);
+            outPositionHeight = vec4(normalize(pos) * (radius + height), height);
             " + &channels.glsl_assignments("plateTc") + "
         }"), 300)
 }
@@ -260,11 +259,12 @@ fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(St
 
         void main()
         {
-            sceneNormal = texture(scene_normal, tc_screen).xyz;
-            if (sceneNormal == vec3(0.0)) {
+            vec3 normalFromTex = texture(scene_normal, tc_screen).xyz;
+            if (normalFromTex == vec3(0.0)) {
                 outColor = vec3(0.0);
                 return;
             }
+            sceneNormal = vec3(-1.0) + 2.0 * normalFromTex;
             scenePosition = texture(scene_position, tc_screen).xyz;
 
             _generateUvMaps(sceneNormal, scenePosition);
@@ -332,7 +332,6 @@ impl Renderer {
 
         let mut ret = Renderer {
             camera: FlyCamera::new(100.0),
-            // TOOD: recreate when channels change
             program_scene: Some(create_scene_program(&channels)),
             program_color: None,
             program_color_default: create_color_program(&colorator, &channels, &Vec::new()),
@@ -368,11 +367,11 @@ impl Renderer {
     }
 
     pub fn out_position(&self) -> &tinygl::Texture {
-        self.fbo_scene.as_ref().unwrap().texture("position").as_ref().unwrap()
+        self.fbo_scene.as_ref().unwrap().texture("positionHeight").as_ref().unwrap()
     }
 
     pub fn out_normal(&self) -> &tinygl::Texture {
-        self.fbo_scene.as_ref().unwrap().texture("normal").as_ref().unwrap()
+        self.fbo_scene.as_ref().unwrap().texture("normalWf").as_ref().unwrap()
     }
 
     pub fn out_color(&self) -> &tinygl::Texture {
@@ -548,9 +547,8 @@ impl Renderer {
         //
         if self.fbo_scene.as_ref().map(|fbo| fbo.size() != windowsize).unwrap_or(true) {
             let mut fbo = tinygl::OffscreenBuffer::new((windowsize.0 as _, windowsize.1 as _));
-            fbo.add("normal", gl::RGBA32F, gl::RGBA, gl::FLOAT);
-            fbo.add("position", gl::RGBA32F, gl::RGBA, gl::FLOAT);
-            fbo.add("wireframe", gl::R8, gl::RED, gl::UNSIGNED_BYTE);
+            fbo.add("normalWf", gl::RGBA, gl::RGBA, gl::UNSIGNED_BYTE);
+            fbo.add("positionHeight", gl::RGBA32F, gl::RGBA, gl::FLOAT);
             // TODO: avoid duplication
             for chan in self.channels.iter() {
                 let int_fmt = match chan.1 {
@@ -638,8 +636,8 @@ impl Renderer {
         program_color.bind();
         program_color.uniform("scene_normal", tinygl::Uniform::Signed(0));
         program_color.uniform("scene_position", tinygl::Uniform::Signed(1));
-        self.fbo_scene.as_ref().unwrap().texture("normal").unwrap().bind_at(0);
-        self.fbo_scene.as_ref().unwrap().texture("position").unwrap().bind_at(1);
+        self.fbo_scene.as_ref().unwrap().texture("normalWf").unwrap().bind_at(0);
+        self.fbo_scene.as_ref().unwrap().texture("positionHeight").unwrap().bind_at(1);
 
         // Bind Textures
         for tex in self.textures.iter().enumerate() {
