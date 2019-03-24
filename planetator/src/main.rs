@@ -142,6 +142,8 @@ fn create_postprocess_shader() -> tinygl::Program {
         uniform float planetRadius;
         uniform vec3 eyePosition;
         uniform vec3 sunDirection;
+        uniform float angleToHorizon;
+        uniform float terrainMaxHeight;
         uniform mat4 inverseViewProjectionMatrix;
         uniform sampler2D planetColor;
         uniform sampler2D planetNormal;
@@ -158,13 +160,6 @@ fn create_postprocess_shader() -> tinygl::Program {
         uniform float exposure;
         uniform vec2 sun_size;
         const vec3 kGroundAlbedo = vec3(0.0, 0.0, 0.04);
-
-        vec3 clampVecLen(vec3 vec, float minLen) {
-            float vecLen = length(vec);
-            if (vecLen < minLen)
-                vec *= minLen / vecLen;
-            return vec;
-        }
 
         void main() {
             vec4 normalFromTex = texture(planetNormal, vec2(0.5) + 0.5 * clipPos);
@@ -197,8 +192,8 @@ fn create_postprocess_shader() -> tinygl::Program {
                 float sunVisibility = 0.5 * shadow;
                 float skyVisibility = 1.0;
 
-                vec3 fakedEyePos = clampVecLen(eyePosition / planetRadius, 1.01);
-                vec3 fakedTerrainPos = clampVecLen(pPos / planetRadius, 1.01);
+                vec3 atmoEyePos = eyePosition / planetRadius;
+                vec3 atmoSurfPos = pPos / planetRadius;
 
                 //
                 // Compute the radiance reflected by the ground.
@@ -214,20 +209,28 @@ fn create_postprocess_shader() -> tinygl::Program {
                 //     lightshaft_fadein_hack;
                 float shadow_length = 0.0;
 
-                vec3 transmittance;
+                // if we are looking 'up', i.e. our view ray doesn't intersect the normalized
+                // planet sphere, we'll have to adjust that because otherwise the in-scatter
+                // light will look shitty. we'll also have to make sure that our terrain heights
+                // are clipped at the atmosphere boundary.
+                float ES = length(atmoEyePos);
+                float EP = length(atmoEyePos - atmoSurfPos);
+                float SP = length(atmoSurfPos);
+                float angleToView = acos((ES*ES + EP*EP - SP*SP) / (2.0 * ES * EP));
+                float atmSurfRadius = SP;
 
-                vec3 in_scatter = GetSkyRadianceToPoint(
-                    fakedEyePos,
-                    normalize(pPos),
-                    // TODO: fake the position to make sure that we are not looking 'up', i.e.
-                    // that we always look below the horizon line.
-                    // we can optimize this further a bit, because we might not have to reduce it all the way down to 1.0
-                    // but only so far as to match the horizon
-                    // TODO: also make sure that eyePosition is never < radius
-                    shadow_length, sunDirection, transmittance
-                );
+                float deltaAngle = angleToView - 0.99 * angleToHorizon;
+                if (deltaAngle > 0.0)
+                    atmSurfRadius = SP - tan(deltaAngle) * EP;
+                atmSurfRadius = min(atmSurfRadius, 0.9999 * terrainMaxHeight);
+                atmoSurfPos *= atmSurfRadius / SP;
+
+                // compute transmittance of the original terrain color + in-scattering of the sun
+                vec3 transmittance;
+                vec3 in_scatter = GetSkyRadianceToPoint(atmoEyePos, atmoSurfPos, shadow_length, sunDirection, transmittance);
                 ground_radiance = ground_radiance * transmittance + in_scatter;
 
+                // do final color mapping
                 color = pow(vec3(1.0) - exp(-ground_radiance / white_point * exposure), vec3(1.0 / 2.2));
 
                 // draw wireframes on top?
@@ -338,6 +341,8 @@ impl webrunner::WebApp for MyApp {
         self.shadows.prepare_postprocess(&self.postprocess, 4);
         self.postprocess.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
         self.postprocess.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
+        self.postprocess.uniform("angleToHorizon", tinygl::Uniform::Float((radius / eye.magnitude()).min(1.0).asin()));
+        self.postprocess.uniform("terrainMaxHeight", tinygl::Uniform::Float(atmosphere::raleigh_height()));
         self.postprocess.uniform("planetColor", tinygl::Uniform::Signed(0));
         self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
         self.postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));
