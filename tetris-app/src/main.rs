@@ -3,7 +3,9 @@ extern crate sdl2;
 extern crate imgui;
 extern crate cgmath;
 extern crate appbase;
+extern crate util3d;
 extern crate webutil;
+#[cfg(target_os = "emscripten")] extern crate emscripten_util;
 extern crate tetris;
 extern crate rand;
 extern crate tinygl;
@@ -80,8 +82,13 @@ struct TetrisApp {
 
     server: client::ServerConfig,
     requests: Vec<client::Request>,
-    load_idtag: appbase::localstorage::StorageLoad,
-    load_player: appbase::localstorage::StorageLoad,
+
+    // a unique ID tag will be stored in the browsers local storage, and will be attached to
+    // the replays when they get uploaded
+    #[cfg(target_os = "emscripten")] load_idtag: emscripten_util::localstorage::StorageLoad,
+
+    // player settings, cached in the local storage
+    #[cfg(target_os = "emscripten")] load_player: emscripten_util::localstorage::StorageLoad,
 
     scores_global: Vec<tetris::PlayedGame>,
     scores_local: Vec<tetris::PlayedGame>,
@@ -94,11 +101,13 @@ struct TetrisApp {
 }
 
 fn play_sound(tagname: &str) {
-    appbase::webrunner::run_javascript(&(String::from("{
-        let element = document.getElementById('") + tagname + "');
-        element.currentTime = 0;
-        element.play();
-    }"));
+    #[cfg(target_os = "emscripten")] {
+        emscripten_util::run_javascript(&(String::from("{
+            let element = document.getElementById('") + tagname + "');
+            element.currentTime = 0;
+            element.play();
+        }"));
+    }
 }
 
 impl TetrisApp {
@@ -170,36 +179,43 @@ impl TetrisApp {
     }
 
     fn check_idtag(&mut self) {
-        if let Some(new_idtag) = self.load_idtag.consume(|data| {
-            let mut idtag = String::from_utf8(data).unwrap_or(client::gen_idtag());
-            if idtag.len() != 32 {
-                idtag = client::gen_idtag();
+        // TODO non-emscripten: load from local settings file?
+        #[cfg(target_os = "emscripten")] {
+            if let Some(new_idtag) = self.load_idtag.consume(|data| {
+                let mut idtag = String::from_utf8(data).unwrap_or(client::gen_idtag());
+                if idtag.len() != 32 {
+                    idtag = client::gen_idtag();
+                }
+                idtag
+            }, || {
+                client::gen_idtag()
+            }) {
+                emscripten_util::localstorage::store("TETRIS", "idtag", &new_idtag.clone().into_bytes());
+                self.server.set_idtag(&new_idtag);
+                self.request_highscores();
             }
-            idtag
-        }, || {
-            client::gen_idtag()
-        }) {
-            appbase::localstorage::store("TETRIS", "idtag", &new_idtag.clone().into_bytes());
-            self.server.set_idtag(&new_idtag);
-            self.request_highscores();
         }
     }
 
     fn check_player_data(&mut self) {
-        if let Some(data) = self.load_player.consume(|data| {
-            String::from_utf8(data).ok().and_then(|data| tetris::networking::decode(&data))
-        }, || { None }) {
-            if let Some(data) = data {
-                self.player = data;
-                self.config.level = self.player.level;
-                self.renderer.ghost_piece = self.player.ghost;
-                self.renderer.threed = self.player.render3d;
+        // TODO non-emscripten: load from local settings file?
+        #[cfg(target_os = "emscripten")] {
+            if let Some(data) = self.load_player.consume(|data| {
+                String::from_utf8(data).ok().and_then(|data| tetris::networking::decode(&data))
+            }, || { None }) {
+                if let Some(data) = data {
+                    self.player = data;
+                    self.config.level = self.player.level;
+                    self.renderer.ghost_piece = self.player.ghost;
+                    self.renderer.threed = self.player.render3d;
+                }
             }
         }
     }
 
     fn save_player_data(&mut self) {
-        appbase::localstorage::store("TETRIS", "player", tetris::networking::encode(&self.player).as_bytes());
+        #[cfg(target_os = "emscripten")]
+            emscripten_util::localstorage::store("TETRIS", "player", tetris::networking::encode(&self.player).as_bytes());
     }
 }
 
@@ -236,8 +252,8 @@ impl webrunner::WebApp for TetrisApp {
             rotr: false,
             server: client::ServerConfig::new(),
             requests: Vec::new(),
-            load_idtag: appbase::localstorage::load("TETRIS", "idtag"),
-            load_player: appbase::localstorage::load("TETRIS", "player"),
+            #[cfg(target_os = "emscripten")] load_idtag: emscripten_util::localstorage::load("TETRIS", "idtag"),
+            #[cfg(target_os = "emscripten")] load_player: emscripten_util::localstorage::load("TETRIS", "player"),
             scores_global: Vec::new(),
             scores_local: Vec::new(),
             last_global: Vec::new(),
@@ -246,6 +262,7 @@ impl webrunner::WebApp for TetrisApp {
             fpswidget: appbase::fpswidget::FpsWidget::new(180),
         };
 
+        #[cfg(not(target_os = "emscripten"))] ret.server.set_idtag(&client::gen_idtag());
         ret.request_highscores();
 
         ret

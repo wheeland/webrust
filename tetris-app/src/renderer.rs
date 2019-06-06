@@ -1,9 +1,9 @@
 use imgui::*;
-use cgmath::{Vector2, Vector3, Vector4};
+// use cgmath::prelude::*;
+use cgmath::{Vector2, Vector3, Vector4, Matrix3};
 use appbase::imgui_helper::staticwindow;
 use rand::{Rng,SeedableRng};
 
-use tinygl::util;
 use tetris::piece;
 use tetris::state::*;
 
@@ -144,7 +144,7 @@ impl Renderer {
         let mut piece_colors = Vec::new();
 
         for lvl in 0..100 {
-            let col = util::hsv(rnd(0.0, 360.0), rnd(0.4, 0.8), 1.0);
+            let col = util3d::hsv(rnd(0.0, 360.0), rnd(0.4, 0.8), 1.0);
             let ratio = (1.0 - 0.1 * lvl as f32).max(0.17);
             let fac = 0.7;
             piece_colors.push([
@@ -382,6 +382,7 @@ impl Renderer {
         self.draw_square(self.pos_field.expanded(50.0), self.z - 100.0, Vector4::new(0.2, 0.0, 0.0, 0.0));
         self.draw_square(self.pos_next.scaled(1.3), 1.3 * self.z, Vector4::new(0.0, 0.0, 0.0, 1.0));
         self.draw_square(self.pos_field.scaled(1.3), 1.3 * self.z, Vector4::new(0.0, 0.0, 0.0, 1.0));
+        self.program.disable_all_vertex_attribs();
 
         let buffers = self.collect_blocks();
         unsafe { gl::DepthFunc(gl::LEQUAL) }
