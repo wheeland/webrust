@@ -16,13 +16,6 @@ pub struct Result {
     pub wireframe_count: usize,
 }
 
-#[derive(Copy)]
-#[derive(Clone)]
-struct VertexData {
-    pub mutable: bool,
-    pub rendered: bool,
-}
-
 impl PlateOptimizer {
     pub fn new(depth: Idx) -> Self {
         PlateOptimizer {
