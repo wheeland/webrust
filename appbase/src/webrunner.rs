@@ -88,6 +88,13 @@ impl<T: WebApp> AppRunner<T> {
         };
     }
 
+    fn push_event(private: &mut T, imgui: &mut imgui::ImGui, imgui_sdl2: &mut imgui_sdl2::ImguiSdl2, event: &sdl2::event::Event) {
+        if !imgui_sdl2.ignore_event(event) {
+            private.event(event);
+        }
+        imgui_sdl2.handle_event(imgui, event);
+    }
+
     fn frame(&mut self) {
         let now = std::time::SystemTime::now();
 
@@ -131,11 +138,15 @@ impl<T: WebApp> AppRunner<T> {
                         private.resize((w as u32, h as u32));
                     }
                 }
+                sdl2::event::Event::MouseWheel{timestamp, window_id, which, x, y, direction} => {
+                    let sgn = |x| if x > 0 { 1 } else if x < 0 { -1 } else { 0 };
+                    let xx = sgn(x);
+                    let yy = sgn(y);
+                    let normalized_wheel_event = sdl2::event::Event::MouseWheel{timestamp, window_id, which, x: xx, y: yy, direction};
+                    Self::push_event(private, &mut self.imgui, &mut self.imgui_sdl2, &normalized_wheel_event);
+                }
                 _ => {
-                    if !self.imgui_sdl2.ignore_event(&event) {
-                        private.event(&event);
-                    }
-                    self.imgui_sdl2.handle_event(&mut self.imgui, &event);
+                    Self::push_event(private, &mut self.imgui, &mut self.imgui_sdl2, &event);
                 }
             }
         }
