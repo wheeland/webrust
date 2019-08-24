@@ -1,5 +1,12 @@
-#!/bin/sh
+#!/bin/bash
 
+# source emscripten env vars
+OLD=`pwd`
+cd ~/software/web/emsdk
+. ~/software/web/emsdk/emsdk_env.sh
+cd "$OLD"
+
+# build SDL2 for emscripten
 embuilder.py build sdl2
 
 export EMMAKEN_CFLAGS="\
