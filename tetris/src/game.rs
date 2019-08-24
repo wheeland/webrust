@@ -288,7 +288,7 @@ impl Game {
         self.drop_timer += 1;
 
         // If down is not pressed, we might want to move down becaue of gravity
-        if !self.down_pressed && self.drop_timer >= gravity {
+        if self.down <= 0 && self.drop_timer >= gravity {
             move_down = true;
         }
 
