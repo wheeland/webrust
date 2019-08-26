@@ -54,6 +54,7 @@ struct MyApp {
     sun_speed: f32,
     sun_lon: f32,
     sun_lat: f32,
+    water_level: f32,
 
     shadows: shadowmap::ShadowMap,
 
@@ -140,6 +141,7 @@ fn create_postprocess_shader() -> tinygl::Program {
         }
         ", &(String::from("
         uniform float planetRadius;
+        uniform float waterLevel;
         uniform vec3 eyePosition;
         uniform vec3 sunDirection;
         uniform float angleToHorizon;
@@ -161,6 +163,15 @@ fn create_postprocess_shader() -> tinygl::Program {
         uniform vec2 sun_size;
         const vec3 kGroundAlbedo = vec3(0.0, 0.0, 0.04);
 
+        float planetRadiusIntersect(vec3 r0, vec3 rd, float radius) {
+            float a = dot(rd, rd);
+            float b = 2.0 * dot(rd, r0);
+            float c = dot(r0, r0) - (radius * radius);
+            if (b*b - 4.0*a*c < 0.0)
+                return -1.0;
+            return (-b - sqrt((b*b) - 4.0*a*c))/(2.0*a);
+        }
+
         void main() {
             vec4 normalFromTex = texture(planetNormal, vec2(0.5) + 0.5 * clipPos);
 
@@ -169,75 +180,12 @@ fn create_postprocess_shader() -> tinygl::Program {
             vec3 globalPos = globalPosV4.xyz / globalPosV4.w;
             vec3 eyeDir = normalize(globalPos - eyePosition);
 
-            vec3 color = vec3(0.0);
+            // TODO: if we are underwater, do something different
 
-            if (length(normalFromTex) > 0.0) {
-                //
-                // Load position/normal/color from planet rendering textures
-                //
-                vec3 normal = vec3(-1.0) + 2.0 * normalFromTex.xyz;
-                float wireframe = normalFromTex.w;
-                vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
-                vec3 pPos = texture(planetPosition, vec2(0.5) + 0.5 * clipPos).rgb;
-                float dist = length(pPos - eyePosition);
-                float dotSun = dot(normal, sunDirection);
-
-                //
-                // Find out if we are shadowed by the terrain, and interpolate between last and curr sun position
-                //
-                vec3 shadowMapDebugColor;
-                float shadow = getShadow(pPos, dotSun, dist, shadowMapDebugColor);
-
-                // visibility of the sky and sun, based on shadows cast by the terrain
-                float sunVisibility = 0.5 * shadow;
-                float skyVisibility = 1.0;
-
-                vec3 atmoEyePos = eyePosition / planetRadius;
-                vec3 atmoSurfPos = pPos / planetRadius;
-
-                //
-                // Compute the radiance reflected by the ground.
-                //
-                vec3 sky_irradiance;
-                vec3 sun_irradiance = GetSunAndSkyIrradiance(pPos / planetRadius, normalize(pPos), sunDirection, sky_irradiance);
-                vec3 ground_radiance = pColor * (1.0 / PI) * (
-                    sun_irradiance * sunVisibility +
-                    sky_irradiance * skyVisibility);
-
-                // float shadow_length =
-                //     max(0.0, min(shadow_out, distance_to_intersection) - shadow_in) *
-                //     lightshaft_fadein_hack;
-                float shadow_length = 0.0;
-
-                // if we are looking 'up', i.e. our view ray doesn't intersect the normalized
-                // planet sphere, we'll have to adjust that because otherwise the in-scatter
-                // light will look shitty. we'll also have to make sure that our terrain heights
-                // are clipped at the atmosphere boundary.
-                float ES = length(atmoEyePos);
-                float EP = length(atmoEyePos - atmoSurfPos);
-                float SP = length(atmoSurfPos);
-                float angleToView = acos((ES*ES + EP*EP - SP*SP) / (2.0 * ES * EP));
-                float atmSurfRadius = SP;
-
-                float deltaAngle = angleToView - 0.99 * angleToHorizon;
-                if (deltaAngle > 0.0)
-                    atmSurfRadius = SP - tan(deltaAngle) * EP;
-                atmSurfRadius = min(atmSurfRadius, 0.9999 * terrainMaxHeight);
-                atmoSurfPos *= atmSurfRadius / SP;
-
-                // compute transmittance of the original terrain color + in-scattering of the sun
-                vec3 transmittance;
-                vec3 in_scatter = GetSkyRadianceToPoint(atmoEyePos, atmoSurfPos, shadow_length, sunDirection, transmittance);
-                ground_radiance = ground_radiance * transmittance + in_scatter;
-
-                // do final color mapping
-                color = pow(vec3(1.0) - exp(-ground_radiance / white_point * exposure), vec3(1.0 / 2.2));
-
-                // draw wireframes on top?
-                float brightness = dot(vec3(0.2126, 0.7152, 0.0722), color);
-                color = mix(color, vec3(step(brightness, 0.4)), wireframe);
-            }
-            else {
+            //
+            // Calculate color of the sky, if we are not looking at the earth
+            //
+            if (length(normalFromTex) <= 0.0) {
                 // Compute the radiance of the sky.
                 float shadow_length = 0.0;
                 vec3 transmittance;
@@ -249,8 +197,93 @@ fn create_postprocess_shader() -> tinygl::Program {
                 if (dot(eyeDir, sunDirection) > sun_size.y) {
                     radiance = radiance + transmittance * GetSolarRadiance();
                 }
-                color = pow(vec3(1.0) - exp(-radiance / white_point * exposure), vec3(1.0 / 2.2));
+                outColor = vec4(pow(vec3(1.0) - exp(-radiance / white_point * exposure), vec3(1.0 / 2.2)), 1.0);
+                return;
             }
+
+            vec3 color = vec3(0.0);
+
+            //
+            // Load position/color from planet rendering textures
+            //
+            float wireframe = normalFromTex.w;
+            vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
+            vec4 pPosHeight = texture(planetPosition, vec2(0.5) + 0.5 * clipPos);
+            float eyeToTerrainDist = length(pPosHeight.xyz - eyePosition);
+            vec3 actualSurfaceNormal = vec3(-1.0) + 2.0 * normalFromTex.xyz;
+
+            //
+            // check if we are actually looking at a water surface
+            //
+            vec3 actualSurfacePosition = pPosHeight.xyz;
+            vec3 actualSurfaceColor = pColor;
+            if (pPosHeight.w < waterLevel) {
+                // calculate water surface position - intersect view ray with water surface sphere
+                float eyeToWaterDist = planetRadiusIntersect(eyePosition, eyeDir, planetRadius + waterLevel);
+                actualSurfacePosition = eyePosition + eyeDir * eyeToWaterDist;
+
+                vec3 waterColor = vec3(0.1, 0.16, 0.4);
+                float opacity = clamp(40.0 * sqrt(eyeToTerrainDist - eyeToWaterDist), 0.2, 1.0);
+
+                actualSurfaceColor = mix(pColor, waterColor, opacity);
+                actualSurfaceNormal = normalize(actualSurfacePosition);
+            }
+
+            //
+            // Find out if we are shadowed by the terrain, and interpolate between last and curr sun position
+            //
+            float dotSun = dot(actualSurfaceNormal, sunDirection);
+            vec3 shadowMapDebugColor;
+            float shadow = getShadow(actualSurfacePosition, dotSun, eyeToTerrainDist, shadowMapDebugColor);
+
+            // visibility of the sky and sun, based on shadows cast by the terrain
+            float sunVisibility = 0.5 * shadow;
+            float skyVisibility = 1.0;
+
+            vec3 atmoEyePos = eyePosition / planetRadius;
+            vec3 atmoSurfPos = actualSurfacePosition / planetRadius;
+
+            //
+            // Compute the radiance reflected by the ground.
+            //
+            vec3 sky_irradiance;
+            vec3 sun_irradiance = GetSunAndSkyIrradiance(actualSurfacePosition / planetRadius, normalize(actualSurfacePosition), sunDirection, sky_irradiance);
+            vec3 ground_radiance = actualSurfaceColor * (1.0 / PI) * (
+                sun_irradiance * sunVisibility +
+                sky_irradiance * skyVisibility);
+
+            // float shadow_length =
+            //     max(0.0, min(shadow_out, distance_to_intersection) - shadow_in) *
+            //     lightshaft_fadein_hack;
+            float shadow_length = 0.0;
+
+            // if we are looking 'up', i.e. our view ray doesn't intersect the normalized
+            // planet sphere, we'll have to adjust that because otherwise the in-scatter
+            // light will look shitty. we'll also have to make sure that our terrain heights
+            // are clipped at the atmosphere boundary.
+            float ES = length(atmoEyePos);
+            float EP = length(atmoEyePos - atmoSurfPos);
+            float SP = length(atmoSurfPos);
+            float angleToView = acos((ES*ES + EP*EP - SP*SP) / (2.0 * ES * EP));
+            float atmSurfRadius = SP;
+
+            float deltaAngle = angleToView - 0.99 * angleToHorizon;
+            if (deltaAngle > 0.0)
+                atmSurfRadius = SP - tan(deltaAngle) * EP;
+            atmSurfRadius = min(atmSurfRadius, 0.9999 * terrainMaxHeight);
+            atmoSurfPos *= atmSurfRadius / SP;
+
+            // compute transmittance of the original terrain color + in-scattering of the sun
+            vec3 transmittance;
+            vec3 in_scatter = GetSkyRadianceToPoint(atmoEyePos, atmoSurfPos, shadow_length, sunDirection, transmittance);
+            ground_radiance = ground_radiance * transmittance + in_scatter;
+
+            // do final color mapping
+            color = pow(vec3(1.0) - exp(-ground_radiance / white_point * exposure), vec3(1.0 / 2.2));
+
+            // draw wireframes on top?
+            float brightness = dot(vec3(0.2126, 0.7152, 0.0722), color);
+            color = mix(color, vec3(step(brightness, 0.4)), wireframe);
 
             outColor = vec4(color, 1.0);
         }
@@ -279,6 +312,7 @@ impl webrunner::WebApp for MyApp {
             sun_speed: 0.0,
             sun_lon: 0.0,
             sun_lat: 0.0,
+            water_level: 0.0,
             renderer: earth::renderer::Renderer::new(),
             shadows: shadowmap::ShadowMap::new(100.0),
             postprocess: create_postprocess_shader(),
@@ -347,6 +381,7 @@ impl webrunner::WebApp for MyApp {
         self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
         self.postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));
         self.postprocess.uniform("planetRadius", tinygl::Uniform::Float(radius));
+        self.postprocess.uniform("waterLevel", tinygl::Uniform::Float(self.water_level));
         atmosphere::prepare_shader(self.postprocess.handle().unwrap(), 4 + self.shadows.num_textures());
 
         unsafe {
@@ -382,6 +417,7 @@ impl webrunner::WebApp for MyApp {
                     ui.checkbox(im_str!("Cull Backside"), &mut self.renderer.hide_backside);
 
                     let detail = guiutil::slider_float(ui, "Vertex Detail:", self.renderer.vertex_detail(), (0.0, 1.0), 1.0);
+                    self.water_level = guiutil::slider_float(ui, "Water Level", self.water_level, (-1.0, 1.0), 1.0);
                     self.renderer.set_vertex_detail(detail);
                 }
 

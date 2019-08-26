@@ -8,6 +8,24 @@ use util3d::flycamera::FlyCamera;
 use super::tree;
 use util3d::noise;
 
+/// Maintains a planetary 6-quad-tree and renders it into an FBO
+///
+/// The Renderer is told about
+/// # changes ot the camera position
+/// # the channels that should be additionally generated for each plate
+/// # the GLSL generator function that generates elevation and channel data
+/// # radius of the planet
+/// # size of the generated plates (in power of two)
+/// # the LOD detail threshold that controls whether quad-trees are refined or not
+/// # a few flags to debug rendering
+///
+/// Based on this information the Renderer
+/// # maintains the quad-tree according to camera position and LOD detail threshold
+/// # makes sure that new render data is generated and stale data is thrown away
+/// # maintains OpenGL textures (matching the screen-size) for position, normal and color, as
+///   rendered from the supplied camera position, using the colorator GLSL function
+/// # offers different methods of rendering the planet and accessing the results
+///
 pub struct Renderer {
     camera: FlyCamera,
     program_scene: Option<tinygl::Program>,
@@ -532,7 +550,10 @@ impl Renderer {
         &self.textures
     }
 
-    pub fn render(&mut self, windowsize: (u32, u32)){
+    /// Renders the planet into the internal FBO
+    ///
+    /// The results can be accessed through `out_position()`, `out_normal()`, and `out_color()`.
+    pub fn render(&mut self, windowsize: (u32, u32)) {
         //
         // Setup view/projection matrices
         //
@@ -668,6 +689,7 @@ impl Renderer {
         unsafe { gl::BindFramebuffer(gl::FRAMEBUFFER, 0); }
     }
 
+    /// Simply renders the planet for the given camera and using the given program
     pub fn render_for(&self, program: &tinygl::Program, eye: Vector3<f32>, mvp: Matrix4<f32>) {
         let planet = self.planet.as_ref().unwrap();
         let plates = planet.rendered_plates_for_camera(eye, mvp, 1.0);

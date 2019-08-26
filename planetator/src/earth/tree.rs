@@ -158,7 +158,7 @@ impl Planet {
     }
 
     // collects all plates that shall be rendered for this sub-tree and returns whether
-    // all is good
+    // all is good (i.e. whether this plate or its child plate can be rendered)
     fn collect_rendered_plates<T1: Fn(&Plate) -> bool, T2: Fn(&Plate) -> bool>(
         plate: &PlatePtr,
         out: &mut Vec<PlatePtr>,
@@ -202,7 +202,7 @@ impl Planet {
         ret
     }
 
-    // Collect all leaf nodes with RenderData
+    /// Collect all leaf nodes with RenderData
     pub fn rendered_plates(&self) -> Vec<PlatePtr> {
         self.get_rendered_plates(|n| n.visible, |n| true)
     }
@@ -240,6 +240,7 @@ impl GpuData {
 
 type PlatePtr = Rc<RefCell<Plate>>;
 
+/// A Plate corresponds to a node inside one of the 6 cube-faces quad-trees
 pub struct Plate {
     position: plate::Position,
     bogo_points: [Vector3<f32>;9],      // list of points covering all the extreme positions of this plate
