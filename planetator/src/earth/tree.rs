@@ -123,7 +123,7 @@ impl Planet {
             let plate_pos = node.position();
 
             if plate_pos.direction() == dir.0 {
-                let local = plate_pos.square_from_root(&dir.1);
+                let local = plate_pos.uv_from_square(&dir.1);
                 if local.x > 0.0 && local.x < 1.0 && local.y > 0.0 && local.y < 1.0 {
                     if let Some(node_height) = node.height_at(local) {
                         height = node_height;
@@ -306,15 +306,15 @@ impl Plate {
 
         let radius = data_manager.borrow().radius();
         let bogo_points = [
-            position.square_to_sphere(&Vector2::new(0.0, 0.0)),
-            position.square_to_sphere(&Vector2::new(0.5, 0.0)),
-            position.square_to_sphere(&Vector2::new(1.0, 0.0)),
-            position.square_to_sphere(&Vector2::new(0.0, 0.5)),
-            position.square_to_sphere(&Vector2::new(0.5, 0.5)),
-            position.square_to_sphere(&Vector2::new(1.0, 0.5)),
-            position.square_to_sphere(&Vector2::new(0.0, 1.0)),
-            position.square_to_sphere(&Vector2::new(0.5, 1.0)),
-            position.square_to_sphere(&Vector2::new(1.0, 1.0)),
+            position.uv_to_sphere(&Vector2::new(0.0, 0.0)),
+            position.uv_to_sphere(&Vector2::new(0.5, 0.0)),
+            position.uv_to_sphere(&Vector2::new(1.0, 0.0)),
+            position.uv_to_sphere(&Vector2::new(0.0, 0.5)),
+            position.uv_to_sphere(&Vector2::new(0.5, 0.5)),
+            position.uv_to_sphere(&Vector2::new(1.0, 0.5)),
+            position.uv_to_sphere(&Vector2::new(0.0, 1.0)),
+            position.uv_to_sphere(&Vector2::new(0.5, 1.0)),
+            position.uv_to_sphere(&Vector2::new(1.0, 1.0)),
         ];
         let bounds = Self::bogo_bounding_box(&bogo_points, radius, (minmax.1, minmax.2));
 
@@ -358,13 +358,13 @@ impl Plate {
 
     pub fn distance(&self, pos: &Vector3<f32>) -> f32 {
         let root = self.position.direction().spherical_to_square(pos);
-        let mut local = self.position.square_from_root(&root);
+        let mut local = self.position.uv_from_square(&root);
 
         local.x = local.x.min(1.0).max(0.0);
         local.y = local.y.min(1.0).max(0.0);
         let height = self.height_at(local).unwrap_or(0.0);
         let radius = self.data_manager.borrow().radius();
-        let global = self.position.square_to_sphere(&local) * (radius + height);
+        let global = self.position.uv_to_sphere(&local) * (radius + height);
 
         (global - pos).magnitude()
     }
@@ -382,10 +382,10 @@ impl Plate {
         // if the eye is on top of this plate, we should ignore the randomly scattered checkpoints
         // and look at the normal directly underneath us
         if self.position.direction() == dir {
-            let mut local = self.position.square_from_root(&root);
+            let mut local = self.position.uv_from_square(&root);
             local.x = local.x.min(1.0).max(0.0);
             local.y = local.y.min(1.0).max(0.0);
-            let pt = self.position.square_to_sphere(&local);
+            let pt = self.position.uv_to_sphere(&local);
             if (pt - eye).dot(pt) < 0.0 {
                return false
             }

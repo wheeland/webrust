@@ -1,5 +1,20 @@
+/// For spherical projection we use 3 coordinate systems:
+///
+/// "Square-Space":
+///     Space inside one of the 6 cube faces, values in [-1..1]
+/// "Cubic Space":
+///     Position on a cube with edge lengths 2 around (0,0,0).
+///     Coordinates are in the range of [-1..1], at least one of the coordinates is 1.0.
+///     The 2-dimensional coordinates on the cube face do not match the Square-UV-space exactly,
+///     they are stretched so that the size of the resuling (skewed) sub-squares is uniform across the sphere.
+/// "Spherical Spaces"
+///     Same as cubic space, but normalized onto unit sphere
+
+
 use cgmath::{Vector2, Vector3, InnerSpace, Matrix3};
 
+/// Coefficients for stretching the UV-coords of the sphere-ified cube, so
+/// that the (skewed) squares have a uniform size
 pub static STRETCH: f32 = 0.9;
 pub static STRETCH_ASIN: f32 = 1.1197695149986342;
 
@@ -11,6 +26,7 @@ fn unstretch(v: f32) -> f32 {
     (v * STRETCH_ASIN).sin() / STRETCH
 }
 
+/// Direction of a cube face
 #[derive(Debug)]
 #[derive(Copy)]
 #[derive(Clone)]
@@ -26,6 +42,7 @@ pub enum Direction {
 }
 
 impl Direction {
+    /// Split [-1..1] value into normalized coords and a boolean (true: positive coord, false; negative)
     fn split(value: f32) -> (bool, f32) {
         if value > 0.0 { (true, value) } else { (false, -value) }
     }
@@ -50,6 +67,7 @@ impl Direction {
         }
     }
 
+    /// Returns the cube face matching the direction of the given vector
     pub fn from(position: &Vector3<f32>) -> Self {
         let largest = Self::largest_component(position);
         match largest.0 {
@@ -60,6 +78,7 @@ impl Direction {
         }
     }
 
+    /// Returns the cubic space coordinates for the given square coordinates for this cube face
     pub fn square_to_cubic(&self, sq: &Vector2<f32>) -> Vector3<f32> {
         let lx = stretch(sq.x);
         let ly = stretch(sq.y);
@@ -74,6 +93,7 @@ impl Direction {
         }
     }
 
+    /// Returns the cube face and the squae space coordinates matching the direction of the given vector
     pub fn spherical_to_dir_and_square(pos: &Vector3<f32>) -> (Self, Vector2<f32>) {
         let e = 1e-10;
         let largest = Self::largest_component(pos);
@@ -90,6 +110,7 @@ impl Direction {
         result
     }
 
+    /// Returns the square coordinates for this cube face that match the given vector
     pub fn spherical_to_square(&self, p: &Vector3<f32>) -> Vector2<f32> {
         let e = 1e-10;
         let mut result = match self {
@@ -105,6 +126,7 @@ impl Direction {
         result
     }
 
+    /// Returns a 3x3 matrix transform that transforms square space coordinates into cubical coordinates for this cube face
     pub fn square_to_cubic_transform(&self) -> Matrix3<f32> {
         match self {
             Direction::PosX =>
@@ -147,6 +169,7 @@ impl Direction {
     }
 }
 
+/// Position inside one of the 6 quad-trees (one for each cube-face)
 #[derive(Copy)]
 #[derive(Clone)]
 #[derive(PartialEq)]
@@ -162,6 +185,7 @@ impl Eq for Position {
 }
 
 impl Position {
+    /// Returns the root quad-tree position for this cube face
     pub fn root(dir: Direction) -> Self {
         Position {
             direction: dir,
@@ -171,6 +195,7 @@ impl Position {
         }
     }
 
+    /// Returns the child of this quad-tree node. dx and dy are 0 or 1.
     pub fn child(&self, dx: i32, dy: i32) -> Self {
         debug_assert!(dx == 0 || dx == 1);
         debug_assert!(dy == 0 || dy == 1);
@@ -187,21 +212,25 @@ impl Position {
     pub fn x(&self) -> i32 { self.x }
     pub fn y(&self) -> i32 { self.y }
 
-    pub fn square_to_cube(&self, local: &Vector2<f32>) -> Vector3<f32> {
-        self.direction.square_to_cubic(&self.square_to_root(local))
+    pub fn uv_to_cube(&self, local: &Vector2<f32>) -> Vector3<f32> {
+        self.direction.square_to_cubic(&self.uv_to_square(local))
     }
 
-    pub fn square_to_sphere(&self, local: &Vector2<f32>) -> Vector3<f32> {
-        self.square_to_cube(local).normalize()
+    pub fn uv_to_sphere(&self, local: &Vector2<f32>) -> Vector3<f32> {
+        self.uv_to_cube(local).normalize()
     }
 
-    pub fn square_to_root(&self, local: &Vector2<f32>) -> Vector2<f32> {
+    /// Returns the square coordinates on this quad-trees cube face for the given local UV coordinates
+    ///
+    /// the local UV coordinates run from (0,0) to (1,1), the global square coordinates run from (-1,-1) to (1,1)
+    pub fn uv_to_square(&self, local: &Vector2<f32>) -> Vector2<f32> {
         let gx = -1.0 + (self.x as f32 + local.x) * 0.5f32.powi(self.depth - 1);
         let gy = -1.0 + (self.y as f32 + local.y) * 0.5f32.powi(self.depth - 1);
         Vector2::new(gx, gy)
     }
 
-    pub fn square_from_root(&self, global: &Vector2<f32>) -> Vector2<f32> {
+    /// Returns the local UV coordinates matching the given square coordinates for this quad-trees cube face
+    pub fn uv_from_square(&self, global: &Vector2<f32>) -> Vector2<f32> {
         let lx = (global.x + 1.0) * 2.0f32.powi(self.depth - 1) - self.x as f32;
         let ly = (global.y + 1.0) * 2.0f32.powi(self.depth - 1) - self.y as f32;
         Vector2::new(lx, ly)
