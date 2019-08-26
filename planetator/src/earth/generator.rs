@@ -87,7 +87,7 @@ impl PlateDataManager {
         for entry in entries {
             if self.generator.start_generation(*entry.0) {
                 count += 1;
-                if (count >= max) {
+                if count >= max {
                     break;
                 }
             }
