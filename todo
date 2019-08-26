@@ -1,0 +1,40 @@
+- for all GL objects:
+    - refactor so that they can be used without the Option<> thing always, this sucks
+    - shader: 
+        - automatically make sure that it is bound via unique static ID check
+        - build the errors and reset(vert, frag) into the class -> no more .as_ref()
+    - textures
+        - maintain texture mapping internal through texture mapping manager, works together
+          wth shader
+    - buffermanager, texturemanager: both cooperate with program object
+
+- line number/carot im shader edit
+
+noise derivatives 
+    http://iquilezles.org/www/articles/gradientnoise/gradientnoise.htm
+    https://gist.github.com/patriciogonzalezvivo/670c22f3966e662d2f83
+
+use different hash to get rid of sin/cos errors
+    https://www.shadertoy.com/view/4djSRW
+
+improvement of technical awesomeness
+    - use GL_UNSIGNED_INT indices and see what happens
+        -> this would definitely need an extra processing thread then, to manage all the huge 512x512 triangulation madness
+    - maybe store for each tile only U16 height (based on minmax=atmosphereminmax), RGB_U8 norm, channels
+        -> can interpolate it's global positions based on uniforms, we do that in the generator, too, so why not
+    -> could also just generate a smaller map by default, and leave out the lowest vertices e.g.
+
+do ray tracing for trees with half-spheres
+    -
+
+how to generate em terrain
+    https://www.shadertoy.com/view/4slGD4
+
+get this one book
+
+
+rendering tasks
+    - add texturing via voronoi-blobs
+    - add 3d procedural texturing -> work from qt3d derivatives demo
+    - add ocean with water waves
+    - use atmospheric scattering global illumination maps for terrain coloring (PBR)
