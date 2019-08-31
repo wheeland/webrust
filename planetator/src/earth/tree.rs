@@ -9,7 +9,8 @@ use super::plate;
 use super::channels::Channels;
 
 pub struct Planet {
-    plate_size: i32,
+    plate_size: u32,        // number of sub-sqares in each of the two dimensions
+    texture_delta: u32,     // how many dimensions are the textures bigger than the vertex grid
     radius: f32,
     seed: cgmath::Vector3<f32>,
 
@@ -23,12 +24,14 @@ pub struct Planet {
 
 impl Planet {
     pub fn new(
-        size: u32,
+        plate_depth: u32,
+        texture_delta: u32,
         radius: f32,
         generator: &str,
         channels: &Channels,
     ) -> Result<Planet, String> {
-        let plate_size = 2i32.pow(size as _);
+        let texture_depth = plate_depth + texture_delta;
+        let plate_size = 2u32.pow(plate_depth);
 
         // Create Generator program
         let generator = generator::compile_generator(generator, channels);
@@ -37,7 +40,7 @@ impl Planet {
             return Err(generator.fragment_log());
         }
 
-        let mut manager = generator::PlateDataManager::new(size as _, radius, generator, channels);
+        let mut manager = generator::PlateDataManager::new(plate_depth, texture_delta, radius, generator, channels);
 
         let indices = manager.generate_indices();
         let plate_coords = tinygl::VertexBuffer::from(&manager.generate_plate_coords());
@@ -51,6 +54,7 @@ impl Planet {
 
         Ok(Planet {
             plate_size,
+            texture_delta,
             radius,
             seed: cgmath::Vector3::new(0.0, 0.0, 0.0),
             plate_coords,
@@ -72,7 +76,7 @@ impl Planet {
         self.traverse_mut(|node| {
             if node.generated_data.is_some() {
                 node.data_manager.borrow().retriangulate(node.generated_data.as_mut().unwrap());
-                node.gpu_data = Some(GpuData::new(node.generated_data.as_ref().unwrap(), sz));
+                node.gpu_data = Some(GpuData::new(node.generated_data.as_ref().unwrap(), sz as _));
             }
             true
         });
@@ -226,7 +230,7 @@ struct GpuData {
 }
 
 impl GpuData {
-    fn new(data: &generator::Result, tex_size: i32) -> Self {
+    fn new(data: &generator::Result, tex_size: u32) -> Self {
         let triangulation = data.triangulation.as_ref().expect("No Triangulation data found");
 
         let ret = GpuData {
@@ -295,7 +299,7 @@ impl Plate {
         let depth = self.position().depth();
         self.update_bounding_box((depth, data.height_extent.0, data.height_extent.1));
 
-        self.gpu_data = Some(GpuData::new(&data, self.data_manager.borrow().size() + 3));
+        self.gpu_data = Some(GpuData::new(&data, self.data_manager.borrow().vertex_tile_size() + 3));
         self.generated_data = Some(data);
     }
 
@@ -346,12 +350,12 @@ impl Plate {
 
     pub fn height_at(&self, local: Vector2<f32>) -> Option<f32> {
         self.generated_data.as_ref().map(|rd| {
-            let sz = self.data_manager.borrow().size();
+            let sz = self.data_manager.borrow().vertex_tile_size();
             let x = local.x.min(1.0).max(0.0);
             let y = local.y.min(1.0).max(0.0);
             let x = (x * sz as f32) as i32 + 1;
             let y = (y * sz as f32) as i32 + 1;
-            let idx = y * (sz + 3) + x;
+            let idx = y * (sz as i32 + 3) + x;
             let ret = rd.heights[idx as usize];
             if ret.is_nan() { 0.0 } else { ret }
         })

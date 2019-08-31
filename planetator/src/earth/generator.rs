@@ -40,7 +40,7 @@ pub struct Result {
 // Central instance for requesting and returning tile data
 //
 pub struct PlateDataManager {
-    size: i32,
+    vertex_size: u32,
     radius: f32,
     generator: Generator,
     cache: LruCache<plate::Position, Result>,
@@ -49,11 +49,11 @@ pub struct PlateDataManager {
 pub type PlateDataManagerPtr = Rc<RefCell<PlateDataManager>>;
 
 impl PlateDataManager {
-    pub fn new(pow2size: i32, radius: f32, vertex_generator: Program, channels: &Channels) -> Self {
+    pub fn new(vertex_depth: u32, texture_delta: u32, radius: f32, vertex_generator: Program, channels: &Channels) -> Self {
         PlateDataManager {
-            size: 2i32.pow(pow2size as _),
+            vertex_size: 2u32.pow(vertex_depth),
             radius,
-            generator: Generator::new(pow2size, 100, radius, 12, vertex_generator, channels),
+            generator: Generator::new(vertex_depth, texture_delta as _, 100, radius, 12, vertex_generator, channels),
             cache: LruCache::new(400),
             waiting: HashMap::new()
         }
@@ -117,8 +117,8 @@ impl PlateDataManager {
         self.generator.generate_indices()
     }
 
-    pub fn size(&self) -> i32 {
-        self.size
+    pub fn vertex_tile_size(&self) -> u32 {
+        self.vertex_size
     }
 
     pub fn radius(&self) -> f32 {
@@ -145,8 +145,8 @@ struct GeneratorBuffers {
 }
 
 impl GeneratorBuffers {
-    fn new(size: i32, channels: &Channels) -> Self {
-        let mut position_pass = FrameBufferObject::new((size, size));
+    fn new(tex_size: i32, vert_size: i32, channels: &Channels) -> Self {
+        let mut position_pass = FrameBufferObject::new((tex_size, tex_size));
         position_pass.add("posHeight", gl::RGBA32F, gl::RGBA, gl::FLOAT);
         position_pass.add("height", gl::R32F, gl::RED, gl::FLOAT);
         // TODO: avoid duplication
@@ -161,10 +161,10 @@ impl GeneratorBuffers {
             position_pass.add(&chan.0, int_fmt.0, int_fmt.1, gl::UNSIGNED_BYTE);
         }
 
-        let mut normal_pass = FrameBufferObject::new((size, size));
+        let mut normal_pass = FrameBufferObject::new((tex_size, tex_size));
         normal_pass.add("normal", gl::RGB, gl::RGB, gl::UNSIGNED_BYTE);
 
-        let mut downscale_pass = FrameBufferObject::new((size, size));
+        let mut downscale_pass = FrameBufferObject::new((vert_size, vert_size));
         downscale_pass.add("posHeight", gl::RGBA32F, gl::RGBA, gl::FLOAT);
         downscale_pass.add("detail", gl::RGBA, gl::RGBA, gl::UNSIGNED_BYTE);
 
@@ -190,7 +190,8 @@ fn passthrough_vert() ->  & 'static str {
 pub fn compile_generator(generator: &str, channels: &Channels) -> Program {
     let frag = noise::ShaderNoise::declarations() + "
         uniform vec2 ofs;
-        uniform float invsize;
+        uniform float invTargetSize;
+        uniform float targetBorderOffset;
         uniform float stretch;
         uniform float stretchAsin;
         uniform float mul;
@@ -207,7 +208,7 @@ pub fn compile_generator(generator: &str, channels: &Channels) -> Program {
 
         void main()
         {
-            vec2 rel = (gl_FragCoord.xy - vec2(1.5)) * vec2(invsize, invsize);
+            vec2 rel = (gl_FragCoord.xy - vec2(targetBorderOffset)) * invTargetSize;
             vec2 rawXy = asin(stretch * (ofs + vec2(mul) * rel)) / stretchAsin;
 
             vec2 xy = clamp(vec2(-1.0), rawXy, vec2(1.0));
@@ -231,14 +232,14 @@ pub fn compile_generator(generator: &str, channels: &Channels) -> Program {
 //
 fn compile_normals_shader() -> Program {
     let frag = "
-        uniform float size;
+        uniform float invTargetSize;
         uniform float radius;
         uniform sampler2D positions;
 
         layout(location = 0) out vec3 normal;
 
-        vec3 _pos(vec2 tc) {
-            vec4 heightPos = texture(positions, tc / (size + 3.0));
+        vec3 _pos(vec2 pixel) {
+            vec4 heightPos = texture(positions, pixel * invTargetSize);
             return heightPos.xyz * (radius + heightPos.w);
         }
 
@@ -267,7 +268,9 @@ fn compile_normals_shader() -> Program {
 //
 fn compile_postvertex() -> Program {
     let frag = "
-        uniform float size;
+        uniform float vertexGridSize;
+        uniform float textureDelta;
+        uniform float textureSize;
         uniform float radius;
         uniform sampler2D positions;
         uniform sampler2D parentCoords;
@@ -275,8 +278,13 @@ fn compile_postvertex() -> Program {
         layout(location = 0) out vec4 posHeight;
         layout(location = 1) out vec4 detail;
 
+        vec4 getHeightPos(vec2 pixelCenter) {
+            vec2 texPixel = (pixelCenter - vec2(0.5)) * textureDelta + vec2(0.5);
+            return texture(positions, texPixel / textureSize);
+        }
+
         vec3 _pos(vec2 tc) {
-            vec4 heightPos = texture(positions, tc / (size + 3.0));
+            vec4 heightPos = getHeightPos(tc);
             return heightPos.xyz * (radius + heightPos.w);
         }
 
@@ -285,11 +293,11 @@ fn compile_postvertex() -> Program {
             //
             // Get coordinates of neighbor vertices
             //
-            vec4 heightPosCenter = texture(positions, gl_FragCoord.xy / (size + 3.0));
+            vec4 heightPosCenter = getHeightPos(gl_FragCoord.xy);
             vec3 pCenter = heightPosCenter.xyz * (radius + heightPosCenter.w);
 
             // get position of parent vertices within this tile (range: [0..1])
-            vec4 parents = texture(parentCoords, (gl_FragCoord.xy - vec2(1.0)) / (size + 1.0));
+            vec4 parents = texture(parentCoords, (gl_FragCoord.xy - vec2(1.0)) / (vertexGridSize + 1.0));
 
             //
             // calculate interpolated position
@@ -297,8 +305,8 @@ fn compile_postvertex() -> Program {
             float interpolation = 0.0;
             if (parents.xy != parents.zw) {
                 // read parent world positions
-                vec3 pparent1 = _pos(vec2(1.5) + parents.xy * size);
-                vec3 pparent2 = _pos(vec2(1.5) + parents.zw * size);
+                vec3 pparent1 = _pos(vec2(1.5) + parents.xy * vertexGridSize);
+                vec3 pparent2 = _pos(vec2(1.5) + parents.zw * vertexGridSize);
                 vec3 mid = mix(pparent1, pparent2, 0.5);
 
                 // calculate relative difference to this position
@@ -308,7 +316,7 @@ fn compile_postvertex() -> Program {
             }
 
             posHeight = heightPosCenter;
-            detail = vec4(5.0 * interpolation * sqrt(size));
+            detail = vec4(5.0 * interpolation * sqrt(vertexGridSize));
         }";
 
     Program::new(passthrough_vert(), &frag)
@@ -318,8 +326,10 @@ fn compile_postvertex() -> Program {
 // Responsible for actually generating the tile data using specialized shaders
 //
 struct Generator {
-    depth: usize,
-    size: usize,
+    vertex_depth: u32,
+    vertex_grid_size: u32,
+    texture_delta: u32,
+    texture_size: u32,      // actual size of the generated textures
     pub detail: u8,
     channels: Channels,
 
@@ -365,14 +375,16 @@ impl Generator {
         }
     }
 
-    pub fn new(pow2size: i32,
+    pub fn new(vertex_depth: u32,
+               texture_delta: u32,
                detail: u8,
                radius: f32,
                max_framebuffer_cache: usize,
                vertex_generator: Program,
                channels: &Channels
     ) -> Self {
-        let size = 2i32.pow(pow2size as _) as usize;
+        let vertex_size = 2u32.pow(vertex_depth);
+        let texture_size = (vertex_size + 2) * 2u32.pow(texture_delta) + 1;
 
         // Screen-Space Quad
         let quad_verts: Vec<f32> = vec![-1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0,];
@@ -382,55 +394,60 @@ impl Generator {
         // The Offset texture decribes for each vertex the higher-level neighbor vertices,
         // against which the vertex has to compare itself
         //
-        let mut vertex_parents = Array2D::new(size+1, size+1, ((0,0), (0,0)));
-        Self::fill_offsets(0, pow2size as _, 0, 0, size as Idx, size as Idx, &mut vertex_parents);
+        let mut vertex_parents = Array2D::new((vertex_size+1) as _, (vertex_size+1) as _, ((0,0), (0,0)));
+        Self::fill_offsets(0, vertex_depth as _, 0, 0, vertex_size as Idx, vertex_size as Idx, &mut vertex_parents);
         let mut offset_tex_data = Vec::new();
-        for y in 0..(size+1) {
-            for x in 0..(size+1) {
-                let parents = vertex_parents.at(x, y);
-                offset_tex_data.push((parents.0).0 as f32 / size as f32);
-                offset_tex_data.push((parents.0).1 as f32 / size as f32);
-                offset_tex_data.push((parents.1).0 as f32 / size as f32);
-                offset_tex_data.push((parents.1).1 as f32 / size as f32);
+        for y in 0..(vertex_size+1) {
+            for x in 0..(vertex_size+1) {
+                let parents = vertex_parents.at(x as _, y as _);
+                offset_tex_data.push((parents.0).0 as f32 / vertex_size as f32);
+                offset_tex_data.push((parents.0).1 as f32 / vertex_size as f32);
+                offset_tex_data.push((parents.1).0 as f32 / vertex_size as f32);
+                offset_tex_data.push((parents.1).1 as f32 / vertex_size as f32);
             }
         }
 
         let mut offset_texture = Texture::new(gl::TEXTURE_2D);
         offset_texture.filter(gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
         offset_texture.filter(gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
-        unsafe { offset_texture.teximage(((size+1) as _, (size+1) as _), gl::RGBA32F, gl::RGBA, gl::FLOAT, offset_tex_data.as_ptr() as _); }
+        unsafe { offset_texture.teximage(((vertex_size+1) as _, (vertex_size+1) as _), gl::RGBA32F, gl::RGBA, gl::FLOAT, offset_tex_data.as_ptr() as _); }
 
         // Set uniforms for Vertex/Height/Channels Generator
         vertex_generator.bind();
         vertex_generator.uniform("stretch", Uniform::Float(plate::STRETCH));
         vertex_generator.uniform("stretchAsin", Uniform::Float(plate::STRETCH_ASIN));
-        vertex_generator.uniform("invsize", Uniform::Float(1.0 / size as f32));
+        vertex_generator.uniform("invTargetSize", Uniform::Float(0.5f32.powi((vertex_depth + texture_delta) as _)));
+        vertex_generator.uniform("targetBorderOffset", Uniform::Float(2.0f32.powi(texture_delta as _) + 0.5));
         vertex_generator.uniform("radius", Uniform::Float(radius));
 
         // Set uniforms for normal generator
         let normals_generator = compile_normals_shader();
         normals_generator.bind();
-        normals_generator.uniform("size", Uniform::Float(size as f32));
+        normals_generator.uniform("invTargetSize", Uniform::Float(1.0 / texture_size as f32));
         normals_generator.uniform("radius", Uniform::Float(radius));
         normals_generator.uniform("positions", Uniform::Signed(0));
 
         // Set uniforms for downscaling and detail computation shader
         let post_generator = compile_postvertex();
         post_generator.bind();
-        post_generator.uniform("size", Uniform::Float(size as f32));
+        post_generator.uniform("vertexGridSize", Uniform::Float(vertex_size as f32));
+        post_generator.uniform("textureDelta", Uniform::Float(2.0f32.powi(texture_delta as _)));
+        post_generator.uniform("textureSize", Uniform::Float(texture_size as f32));
         post_generator.uniform("radius", Uniform::Float(radius));
         post_generator.uniform("positions", Uniform::Signed(0));
         post_generator.uniform("parentCoords", Uniform::Signed(1));
 
         Generator {
-            depth: pow2size as _,
-            size,
+            vertex_depth,
+            vertex_grid_size: vertex_size,
+            texture_delta,
+            texture_size,
             detail: detail,
             channels: channels.clone(),
 
             quad,
             vertex_generator,
-            optimizer: plateoptimizer::PlateOptimizer::new(pow2size as _),
+            optimizer: plateoptimizer::PlateOptimizer::new(vertex_depth as _),
             post_generator,
             normals_generator,
             offset_texture,
@@ -444,16 +461,18 @@ impl Generator {
     }
 
     // tile coords ranging from [1..size+1] for normal texture lookup
+    // this is one of the vertex attributes used for plate rendering
     pub fn generate_plate_coords(&self) -> Vec<u16> {
         let mut tile_coords = Vec::new();
+        let mult = 2u32.pow(self.texture_delta + 1);
 
-        for j in 0..(self.size+3) {
-            let j = j.max(1).min(self.size+1);
-            let y = (2*j + 1) * 0x7FFF / (self.size+3);
+        for j in 0..(self.vertex_grid_size+3) {
+            let j = j.max(1).min(self.vertex_grid_size+1);
+            let y = (mult*j + 1) * 0x7FFF / self.texture_size;
 
-            for i in 0..(self.size+3) {
-                let i = i.max(1).min(self.size+1);
-                let x = (2*i+1) * 0x7FFF / (self.size+3);
+            for i in 0..(self.vertex_grid_size+3) {
+                let i = i.max(1).min(self.vertex_grid_size+1);
+                let x = (mult*i + 1) * 0x7FFF / self.texture_size;
 
                 tile_coords.push(x as u16);
                 tile_coords.push(y as u16);
@@ -467,16 +486,16 @@ impl Generator {
         let mut triangles = Vec::new();
         let mut wireframe = Vec::new();
 
-        for i in 0..(self.size+2) {
-            let i_edge = (i == 0) || (i == self.size + 1);
+        for i in 0..(self.vertex_grid_size+2) {
+            let i_edge = (i == 0) || (i == self.vertex_grid_size + 1);
 
-            for j in 0..(self.size+2) {
-                let j_edge = (j == 0) || (j == self.size + 1);
+            for j in 0..(self.vertex_grid_size+2) {
+                let j_edge = (j == 0) || (j == self.vertex_grid_size + 1);
 
-                let i00 = i       + j       * (self.size + 3);
-                let i01 = i       + (j + 1) * (self.size + 3);
-                let i10 = (i + 1) + j       * (self.size + 3);
-                let i11 = (i + 1) + (j + 1) * (self.size + 3);
+                let i00 = i       + j       * (self.vertex_grid_size + 3);
+                let i01 = i       + (j + 1) * (self.vertex_grid_size + 3);
+                let i10 = (i + 1) + j       * (self.vertex_grid_size + 3);
+                let i11 = (i + 1) + (j + 1) * (self.vertex_grid_size + 3);
 
                 if !i_edge || !j_edge {
                     triangles.push(i00 as Idx);
@@ -508,10 +527,10 @@ impl Generator {
             return false;
         }
 
-        let tex_size = (self.size + 3) as i32;
+        let vert_size = (self.vertex_grid_size + 3) as i32;
         let fbos = match self.framebuffer_cache.pop() {
             Some(fbos) => fbos,
-            None => GeneratorBuffers::new(tex_size, &self.channels)
+            None => GeneratorBuffers::new(self.texture_size as _, vert_size, &self.channels)
         };
 
         //
@@ -569,7 +588,8 @@ impl Generator {
     }
 
     fn postprocess_ribbons(&self, buffer: &mut Vec<Vector4<f32>>, ribbon_height: f32) {
-        let tex_size = (self.size + 3) as usize;
+        // size of the pos/height buffer texture
+        let tex_size = (self.vertex_grid_size + 3) as usize;
 
         //
         // adjust heights for ribbon vertices
@@ -595,7 +615,8 @@ impl Generator {
     }
 
     pub fn triangulate(&self, data: &Result) -> Triangulation {
-        let tex_size = (self.size + 3) as usize;
+        // size of the pos/height buffer texture
+        let tex_size = (self.vertex_grid_size + 3) as usize;
 
         let optimized = self.optimizer.optimize(|x,y| {
             data.detail[x + 1 +  tex_size * (y + 1)] < 255 - self.detail
@@ -622,7 +643,7 @@ impl Generator {
             //
             // Allocate buffers for regular attributes
             //
-            let tex_size = (self.size + 3) as usize;
+            let tex_size = (self.vertex_grid_size + 3) as usize;    // size of the pos/height buffer texture
             let mut buf_positions = Vec::<Vector4<f32>>::with_capacity(tex_size * tex_size);
             let mut buf_heights = Vec::<f32>::with_capacity(tex_size * tex_size);
             let mut buf_detail = Vec::<u8>::with_capacity(4 * tex_size * tex_size);

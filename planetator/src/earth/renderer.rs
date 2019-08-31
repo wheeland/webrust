@@ -33,7 +33,8 @@ pub struct Renderer {
     program_color_default: tinygl::Program,
 
     planet: Option<tree::Planet>,
-    planet_depth: i32,
+    plate_depth: u32,
+    texture_delta: u32,
     planet_radius: f32,
 
     pub wireframe: bool,
@@ -323,7 +324,7 @@ String::from("vec3 color(vec3 normal, vec3 position, float height)
 
 impl Renderer {
     fn create_planet(&mut self, generator: &str, channels: Channels, update_errors: bool) -> bool {
-        let planet = tree::Planet::new(self.planet_depth as _, self.planet_radius, generator, &channels);
+        let planet = tree::Planet::new(self.plate_depth as _, self.texture_delta, self.planet_radius, generator, &channels);
 
         match planet {
             Ok(mut planet) => {
@@ -363,7 +364,8 @@ impl Renderer {
             program_color_default: create_color_program(&colorator, &channels, &Vec::new()),
 
             planet: None,
-            planet_depth: 6,
+            plate_depth: 6,
+            texture_delta: 0,
             planet_radius: 100.0,
 
             wireframe: false,
@@ -439,12 +441,23 @@ impl Renderer {
         self.planet.as_ref().unwrap().get_surface_height(position)
     }
 
-    pub fn depth(&self) -> i32 {
-        self.planet_depth
+    pub fn depth(&self) -> u32 {
+        self.plate_depth
     }
 
-    pub fn set_depth(&mut self, depth: i32) {
-        self.planet_depth = depth;
+    pub fn set_depth(&mut self, depth: u32) {
+        self.plate_depth = depth;
+        let gen = self.generator.clone();
+        let chan = self.channels.clone();
+        self.create_planet(&gen, chan, false);
+    }
+
+    pub fn texture_delta(&self) -> u32 {
+        self.texture_delta
+    }
+
+    pub fn set_texture_delta(&mut self, delta: u32) {
+        self.texture_delta = delta;
         let gen = self.generator.clone();
         let chan = self.channels.clone();
         self.create_planet(&gen, chan, false);

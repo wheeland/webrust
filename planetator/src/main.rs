@@ -461,14 +461,19 @@ impl webrunner::WebApp for MyApp {
             .constraints(planet_opt_win_size, (planet_opt_win_size.0, 1000.0))
             .build(|| {
                 //
-                // Slider for Plate Size and Planet Radius
+                // Slider for Plate Size, Texture Delta, and Planet Radius
                 //
-                let mut depth = self.renderer.depth();
-                let platesz = 2i32.pow(self.renderer.depth() as u32);
+                let mut depth = self.renderer.depth() as i32;
+                let platesz = 2i32.pow(self.renderer.depth());
                 if ui.slider_int(im_str!("Plate Size##platesizeslider"), &mut depth, 3, 7)
                         .display_format(im_str!("%.0f ({}x{})", platesz, platesz))
                         .build() {
-                    self.renderer.set_depth(depth);
+                    self.renderer.set_depth(depth as u32);
+                }
+
+                let mut delta = self.renderer.texture_delta() as i32;
+                if ui.slider_int(im_str!("Texture Delta##texturedeltaslider"), &mut delta, 0, 4).build() {
+                    self.renderer.set_texture_delta(delta as u32);
                 }
 
                 let mut radius = self.renderer.radius();
