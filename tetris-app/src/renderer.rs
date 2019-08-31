@@ -1,6 +1,6 @@
 use imgui::*;
 // use cgmath::prelude::*;
-use cgmath::{Vector2, Vector3, Vector4, Matrix3};
+use cgmath::{Vector2, Vector3, Vector4, Matrix3, InnerSpace};
 use appbase::imgui_helper::staticwindow;
 use rand::{Rng,SeedableRng};
 
@@ -125,8 +125,19 @@ impl Renderer {
         );
     }
 
+    fn gen_level_base_color<F>(rnd: &F) -> Vector3<f32> where F: Fn(f32, f32) -> f32 {
+        let hue = rnd(0.0, 360.0);
+        let mut saturation = rnd(0.4, 0.9);
+        let mut col = util3d::hsv(hue, saturation, 1.0);
+        // if it's too dark, let's adjust it a little bit
+        while col.dot(Vector3::new(0.3, 0.59, 0.11)) < 0.55 {
+            saturation -= 0.05;
+            col = util3d::hsv(hue, saturation, 1.0);
+        }
+        return col;
+    }
+
     fn gen_level_colors() -> Vec<[Vector3<f32>; 7]> {
-        let rng = std::cell::RefCell::new(rand::rngs::SmallRng::from_seed([0,1,2,3,4,5,6,7,8,9,9,8,7,6,5,4]));
         let rng = std::cell::RefCell::new(rand::rngs::OsRng::new().unwrap());
         let rnd = |min: f32, max: f32| { min + (max-min) * rng.borrow_mut().gen::<f32>() };
 
@@ -144,7 +155,7 @@ impl Renderer {
         let mut piece_colors = Vec::new();
 
         for lvl in 0..100 {
-            let col = util3d::hsv(rnd(0.0, 360.0), rnd(0.4, 0.8), 1.0);
+            let col = Self::gen_level_base_color(&rnd);
             let ratio = (1.0 - 0.1 * lvl as f32).max(0.17);
             let fac = 0.7;
             piece_colors.push([
