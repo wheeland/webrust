@@ -166,17 +166,18 @@ impl GeneratorBuffers {
     }
 }
 
+fn passthrough_vert() ->  & 'static str {
+    "in vec2 xy;
+    void main()
+    {
+        gl_Position = vec4(xy, 0.0, 1.0);
+    }"
+}
+
 //
 // Shaders for Vertex + Height (+ Channels) generation
 //
 pub fn compile_generator(generator: &str, channels: &Channels) -> Program {
-    let vert = "
-        in vec2 xy;
-        void main()
-        {
-            gl_Position = vec4(xy, 0.0, 1.0);
-        }";
-
     let frag = noise::ShaderNoise::declarations() + "
         uniform vec2 ofs;
         uniform float invsize;
@@ -212,20 +213,13 @@ pub fn compile_generator(generator: &str, channels: &Channels) -> Program {
             posHeight = vec4(position, height);
         }" + &noise::ShaderNoise::definitions();
 
-    Program::new(vert, &frag)
+    Program::new(passthrough_vert(), &frag)
 }
 
 //
 // Shader for Normals, Interpolation, Vertex Merging (and Channels)
 //
 fn compile_postvertex() -> Program {
-    let vert = "
-        in vec2 xy;
-        void main()
-        {
-            gl_Position = vec4(xy, 0.0, 1.0);
-        }";
-
     let frag = "
         uniform float size;
         uniform float radius;
@@ -279,7 +273,7 @@ fn compile_postvertex() -> Program {
             detail = vec4(5.0 * interpolation * sqrt(size));
         }";
 
-    Program::new(vert, &frag)
+    Program::new(passthrough_vert(), &frag)
 }
 
 //
