@@ -134,14 +134,20 @@ impl PlateDataManager {
 // Offscreen FBOs used during the plate data generation and optimization phases
 //
 struct GeneratorBuffers {
+    // high-res, contains one RGBA f32 texture with Pos/Height, plus one texture for each channel
     position_pass: FrameBufferObject,
+
+    // high-res, contains only one normal RGB8 texture
     normal_pass: FrameBufferObject,
+
+    // low-res, contains heights and detail numbers for each vertex and
+    downscale_pass: FrameBufferObject,
 }
 
 impl GeneratorBuffers {
     fn new(size: i32, channels: &Channels) -> Self {
         let mut position_pass = FrameBufferObject::new((size, size));
-        position_pass.add("position", gl::RGBA32F, gl::RGBA, gl::FLOAT);
+        position_pass.add("posHeight", gl::RGBA32F, gl::RGBA, gl::FLOAT);
         position_pass.add("height", gl::R32F, gl::RED, gl::FLOAT);
         // TODO: avoid duplication
         for chan in channels.iter() {
@@ -157,11 +163,15 @@ impl GeneratorBuffers {
 
         let mut normal_pass = FrameBufferObject::new((size, size));
         normal_pass.add("normal", gl::RGB, gl::RGB, gl::UNSIGNED_BYTE);
-        normal_pass.add("detail", gl::RGBA, gl::RGBA, gl::UNSIGNED_BYTE);
+
+        let mut downscale_pass = FrameBufferObject::new((size, size));
+        downscale_pass.add("posHeight", gl::RGBA32F, gl::RGBA, gl::FLOAT);
+        downscale_pass.add("detail", gl::RGBA, gl::RGBA, gl::UNSIGNED_BYTE);
 
         GeneratorBuffers {
             position_pass,
             normal_pass,
+            downscale_pass,
         }
     }
 }
@@ -217,7 +227,43 @@ pub fn compile_generator(generator: &str, channels: &Channels) -> Program {
 }
 
 //
-// Shader for Normals, Interpolation, Vertex Merging (and Channels)
+// Shader for Normals generation
+//
+fn compile_normals_shader() -> Program {
+    let frag = "
+        uniform float size;
+        uniform float radius;
+        uniform sampler2D positions;
+
+        layout(location = 0) out vec3 normal;
+
+        vec3 _pos(vec2 tc) {
+            vec4 heightPos = texture(positions, tc / (size + 3.0));
+            return heightPos.xyz * (radius + heightPos.w);
+        }
+
+        void main()
+        {
+            //
+            // Get coordinates of neighbor vertices and build normal
+            //
+            vec3 xp = _pos(gl_FragCoord.xy + vec2(1.0,  0.0));
+            vec3 xn = _pos(gl_FragCoord.xy + vec2(-1.0, 0.0));
+            vec3 yp = _pos(gl_FragCoord.xy + vec2(0.0,  1.0));
+            vec3 yn = _pos(gl_FragCoord.xy + vec2(0.0, -1.0));
+
+            vec3 norm = normalize(cross(xp - xn, yp - yn));
+            if (dot(norm, xp) < 0.0)
+                norm = -norm;
+
+            normal = vec3(0.5) + 0.5 * norm;
+        }";
+
+    Program::new(passthrough_vert(), &frag)
+}
+
+//
+// Shader for Downscaling and detail computation
 //
 fn compile_postvertex() -> Program {
     let frag = "
@@ -226,7 +272,7 @@ fn compile_postvertex() -> Program {
         uniform sampler2D positions;
         uniform sampler2D parentCoords;
 
-        layout(location = 0) out vec3 normal;
+        layout(location = 0) out vec4 posHeight;
         layout(location = 1) out vec4 detail;
 
         vec3 _pos(vec2 tc) {
@@ -241,14 +287,6 @@ fn compile_postvertex() -> Program {
             //
             vec4 heightPosCenter = texture(positions, gl_FragCoord.xy / (size + 3.0));
             vec3 pCenter = heightPosCenter.xyz * (radius + heightPosCenter.w);
-            vec3 xp = _pos(gl_FragCoord.xy + vec2(1.0,  0.0));
-            vec3 xn = _pos(gl_FragCoord.xy + vec2(-1.0, 0.0));
-            vec3 yp = _pos(gl_FragCoord.xy + vec2(0.0,  1.0));
-            vec3 yn = _pos(gl_FragCoord.xy + vec2(0.0, -1.0));
-
-            vec3 norm = normalize(cross(xp - xn, yp - yn));
-            if (dot(norm, xp) < 0.0)
-                norm = -norm;
 
             // get position of parent vertices within this tile (range: [0..1])
             vec4 parents = texture(parentCoords, (gl_FragCoord.xy - vec2(1.0)) / (size + 1.0));
@@ -269,7 +307,7 @@ fn compile_postvertex() -> Program {
                 interpolation = 0.5 * dMid / dParents * sqrt(length(parents.xy - parents.zw));
             }
 
-            normal = vec3(0.5) + 0.5 * norm;
+            posHeight = heightPosCenter;
             detail = vec4(5.0 * interpolation * sqrt(size));
         }";
 
@@ -287,6 +325,7 @@ struct Generator {
 
     quad: VertexBuffer,
     vertex_generator: Program,
+    normals_generator: Program,
     post_generator: Program,
     optimizer: plateoptimizer::PlateOptimizer,
 
@@ -361,14 +400,21 @@ impl Generator {
         offset_texture.filter(gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
         unsafe { offset_texture.teximage(((size+1) as _, (size+1) as _), gl::RGBA32F, gl::RGBA, gl::FLOAT, offset_tex_data.as_ptr() as _); }
 
-        // Set uniforms for Vertex Generator
+        // Set uniforms for Vertex/Height/Channels Generator
         vertex_generator.bind();
         vertex_generator.uniform("stretch", Uniform::Float(plate::STRETCH));
         vertex_generator.uniform("stretchAsin", Uniform::Float(plate::STRETCH_ASIN));
         vertex_generator.uniform("invsize", Uniform::Float(1.0 / size as f32));
         vertex_generator.uniform("radius", Uniform::Float(radius));
 
-        // Set uniforms for normal generator / optimizer / channel generator
+        // Set uniforms for normal generator
+        let normals_generator = compile_normals_shader();
+        normals_generator.bind();
+        normals_generator.uniform("size", Uniform::Float(size as f32));
+        normals_generator.uniform("radius", Uniform::Float(radius));
+        normals_generator.uniform("positions", Uniform::Signed(0));
+
+        // Set uniforms for downscaling and detail computation shader
         let post_generator = compile_postvertex();
         post_generator.bind();
         post_generator.uniform("size", Uniform::Float(size as f32));
@@ -386,6 +432,7 @@ impl Generator {
             vertex_generator,
             optimizer: plateoptimizer::PlateOptimizer::new(pow2size as _),
             post_generator,
+            normals_generator,
             offset_texture,
 
             framebuffer_cache: Vec::new(),
@@ -496,11 +543,20 @@ impl Generator {
         //
         // Calculate normals
         //
+        self.normals_generator.bind();
+        self.normals_generator.vertex_attrib_buffer("xy", &self.quad, 2, gl::FLOAT, false, 8, 0);
+        fbos.position_pass.texture("posHeight").unwrap().bind_at(0);
+        fbos.normal_pass.bind();
+        unsafe { gl::DrawArrays(gl::TRIANGLES, 0, 6) }
+        self.normals_generator.disable_all_vertex_attribs();
+
+        //
+        // Downscale heights and calculate detail factors
+        //
         self.post_generator.bind();
         self.post_generator.vertex_attrib_buffer("xy", &self.quad, 2, gl::FLOAT, false, 8, 0);
         self.offset_texture.bind_at(1);
-        fbos.position_pass.texture("position").unwrap().bind_at(0);
-        fbos.normal_pass.bind();
+        fbos.downscale_pass.bind();
         unsafe { gl::DrawArrays(gl::TRIANGLES, 0, 6) }
         self.post_generator.disable_all_vertex_attribs();
 
@@ -575,8 +631,8 @@ impl Generator {
             let mut channels = HashMap::new();
 
             unsafe {
-                fbos.position_pass.read("position", buf_positions.as_mut_ptr() as _);
-                fbos.normal_pass.read("detail", buf_detail.as_mut_ptr() as _);
+                fbos.downscale_pass.read("posHeight", buf_positions.as_mut_ptr() as _);
+                fbos.downscale_pass.read("detail", buf_detail.as_mut_ptr() as _);
 
                 for chan in self.channels.iter() {
                     if let Some(mut tex) = fbos.position_pass.take(chan.0) {
