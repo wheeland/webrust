@@ -30,6 +30,7 @@ graphical effects
     - stars
     - rain/snow with splashes
     - sort planes according to Z value to prevent overdraw
+    - voronoi on sphere: https://whenitsdone.org/2014/07/29/map-generation-on-spherical-planet-part-i/
 
 references
     http://advances.realtimerendering.com
@@ -37,6 +38,13 @@ references
 
 examples
     https://www.youtube.com/watch?v=-L_C3VMt4wM
+    
+    https://leatherbee.org/index.php/2018/10/06/terrain-generation-1-introduction/
+    https://www.redblobgames.com/maps/terrain-from-noise/
+    http://thingonitsown.blogspot.com/2018/11/building-better-terrain.html
+    http://squall-digital.com/ProceduralGeneration.html
+    http://libnoise.sourceforge.net/examples/complexplanet/index.html
+    http://squall-digital.com/ProceduralGeneration.html
 
 textures
     - additional entries in planet window

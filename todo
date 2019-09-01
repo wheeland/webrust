@@ -38,3 +38,4 @@ rendering tasks
     - add 3d procedural texturing -> work from qt3d derivatives demo
     - add ocean with water waves
     - use atmospheric scattering global illumination maps for terrain coloring (PBR)
+    - don't use heights texture, we don't really need it

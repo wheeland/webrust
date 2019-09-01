@@ -1,0 +1,10 @@
+voronoi-noise by using the cell-noise, but filtering out N% of the candidates, 
+and extending the search for candidates
+
+
+thoughts about noise:
+    - perlin noise has this inherent "blobby" characteristic, everything is round and shit
+    - we can un-blob perlin noise by either transforming the input coords, OR by
+      adding a 4th, noised parameter (https://thingonitsown.blogspot.com/2019/01/general-domain-warping.html)
+
+

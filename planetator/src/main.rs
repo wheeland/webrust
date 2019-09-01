@@ -215,6 +215,10 @@ fn create_postprocess_shader() -> tinygl::Program {
             //
             // check if we are actually looking at a water surface
             //
+            // TODO: this is not very accurate for shallow waters. to get an accurate rendering,
+            // we must use the high-resolution height texture, and for that we will probably need an additonal rendering step.
+            // another possibility is to just max(height, waterLevel) the vertices in the planet vertex shader!
+            //
             vec3 actualSurfacePosition = pPosHeight.xyz;
             vec3 actualSurfaceColor = pColor;
             if (pPosHeight.w < waterLevel) {
