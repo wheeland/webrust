@@ -336,7 +336,7 @@ impl webrunner::WebApp for MyApp {
         let cdz = (if self.pressed(Keycode::LShift) {0.0} else {1.0}) + (if self.pressed(Keycode::Space) {0.0} else {-1.0});
         let speed = if self.pressed(Keycode::LCtrl) { 0.2 * dt } else { dt };
         self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, cdz, cdy) * speed));
-        let mvp = self.renderer.camera().mvp(self.windowsize);
+        let mvp = self.renderer.camera().mvp(self.windowsize, false);
         let eye = self.renderer.camera().eye();
         let look = self.renderer.camera().look();
 

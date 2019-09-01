@@ -116,18 +116,18 @@ impl FlyCamera {
     }
 
     pub fn near(&self) -> f32 {
-        0.0001 * self.far()
+        0.00001 * self.far()
     }
 
     pub fn far(&self) -> f32 {
         self.position.magnitude() * 2.0
     }
 
-    pub fn mvp(&self, windowsize: (u32, u32)) -> Matrix4<f32> {
+    pub fn mvp(&self, windowsize: (u32, u32), highrange: bool) -> Matrix4<f32> {
         let proj = Matrix4::from(PerspectiveFov {
             fovy: Rad::from(Deg(45.0)),
             aspect: windowsize.0 as f32 / windowsize.1 as f32,
-            near: self.near(),
+            near: if highrange { self.near() } else { self.near() * 100.0 },
             far: self.far(),
         });
         proj * self.view_matrix()

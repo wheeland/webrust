@@ -329,7 +329,7 @@ impl Renderer {
         match planet {
             Ok(mut planet) => {
                 // start data generation for the first levels
-                let culler = culling::Culler::new(&self.camera.mvp((2, 1)));
+                let culler = culling::Culler::new(&self.camera.mvp((2, 1), false));
                 planet.set_detail((255.0 * self.vertex_detail) as _);
                 planet.update_quad_tree(&self.camera.eye(), &culler, 3, self.hide_backside);
                 planet.start_data_generation(30);
@@ -570,7 +570,7 @@ impl Renderer {
         //
         // Setup view/projection matrices
         //
-        let mvp = self.camera.mvp(windowsize);
+        let mvp = self.camera.mvp(windowsize, true);
         let culler = culling::Culler::new(&mvp);
 
         //
