@@ -20,6 +20,7 @@ fn glsl() -> String {
     uniform float shadowMapSize;
     uniform float shadowMapProgress;
     uniform float shadowBlurRadius;
+    uniform vec3 selfshadow;
 
     vec3 shadow_getDebugColor(float f) {
         f *= 3.0;
@@ -135,6 +136,8 @@ fn glsl() -> String {
         float sunCutOff = 0.2;
         if (dotSunNormal < sunCutOff)
             shadow *= max(dotSunNormal / sunCutOff, 0.0);
+
+        shadow *= mix(1.0, smoothstep(selfshadow.x, selfshadow.y, dotSunNormal), selfshadow.z);
 
         return shadow;
     }
@@ -268,6 +271,10 @@ pub struct ShadowMap {
     blur_radius: f32,
     program: Program,
 
+    selfshadow_min: f32,
+    selfshadow_max: f32,
+    selfshadow_intensity: f32,
+
     prev: Option<SunPositionCascades>,
     curr: Option<SunPositionCascades>,
     next: Option<SunPositionCascades>,
@@ -307,6 +314,9 @@ impl ShadowMap {
                 }",
                 300
             ),
+            selfshadow_min: 0.0,
+            selfshadow_max: 1.0,
+            selfshadow_intensity: 0.5,
             prev: Some(SunPositionCascades::new(size, radius, levels)),
             curr: Some(SunPositionCascades::new(size, radius, levels)),
             next: Some(SunPositionCascades::new(size, radius, levels)),
@@ -530,6 +540,7 @@ impl ShadowMap {
         program.uniform("shadowMapSize", Uniform::Float(2u32.pow(self.size_step as _) as f32));
         program.uniform("shadowMapProgress", Uniform::Float(progress));
         program.uniform("shadowBlurRadius", Uniform::Float(self.blur_radius));
+        program.uniform("selfshadow", Uniform::Vec3(cgmath::Vector3::new(self.selfshadow_min, self.selfshadow_max, self.selfshadow_intensity)));
     }
 
     pub fn num_textures(&self) -> usize {
@@ -551,5 +562,9 @@ impl ShadowMap {
 
         let smblur = guiutil::slider_float(ui, "Shadow Blur:", self.blur_radius(), (0.0, 5.0), 1.0);
         self.set_blur_radius(smblur);
+
+        self.selfshadow_min = guiutil::slider_float(ui, "Self-Shadowing Min:", self.selfshadow_min, (0.0, 1.0), 1.0);
+        self.selfshadow_max = guiutil::slider_float(ui, "Self-Shadowing Max:", self.selfshadow_max, (0.0, 1.0), 1.0);
+        self.selfshadow_intensity = guiutil::slider_float(ui, "Self-Shadowing Amount:", self.selfshadow_intensity, (0.0, 1.0), 1.0);
     }
 }
