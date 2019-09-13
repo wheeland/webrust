@@ -374,7 +374,15 @@ vec3 _noise_random3(vec3 pos)
 
 float _noise_random1(vec3 pos)
 {
-    return fract(cos(pos.x * 41.0 + pos.y * 23.0 + pos.z * 57.0) * 198237.0);
+    return fract(cos(pos.x * 4141.0 + pos.y * 2326.0 + pos.z * 5771.0) * 198237.0);
+}
+
+/// Coefficients for stretching the UV-coords of the sphere-ified cube, so that the (skewed) squares have a uniform size
+#define PLATE_STRETCH 0.8
+#define PLATE_STRETCH_ASIN asin(PLATE_STRETCH)
+
+vec3 plate_unstretch(vec3 v) {
+    return sin(v * PLATE_STRETCH_ASIN) / PLATE_STRETCH;
 }
 
 /*
@@ -406,7 +414,7 @@ vec2 worley(vec3 sphericalPos, float density)
     vec3 mainAxis = step(vec3(maxElem), absPos);
     vec3 sideAxis = vec3(1.0) - mainAxis;
 
-    vec3 cubicPos = mainAxis * sgnPos + sideAxis * sphericalPos / maxElem;
+    vec3 cubicPos = mainAxis * sgnPos + sideAxis * plate_unstretch(sphericalPos / maxElem);
     vec3 ofs1 = mainAxis.yzx;
     vec3 ofs2 = mainAxis.zxy;
 
