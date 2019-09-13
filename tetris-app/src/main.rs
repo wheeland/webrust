@@ -682,8 +682,8 @@ impl webrunner::WebApp for TetrisApp {
                                 5 => self.player.pause = keycode.unwrap() as i32,
                                 _ => {}
                             }
+                            *keyconfig = Some(-1);
                         }
-                        *keyconfig = Some(-1);
 ;                    }
                     _ => {}
                 }
