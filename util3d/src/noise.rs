@@ -405,6 +405,12 @@ vec3 _shifted_grid_pos(vec3 intPos, float density)
     return intPos + rdm * dimensionality;
 }
 
+float dist2(vec3 a, vec3 b)
+{
+    vec3 delta = b - a;
+    return dot(delta, delta);
+}
+
 vec2 worley(vec3 sphericalPos, float density)
 {
     // find axis with maximum extent
@@ -438,10 +444,10 @@ vec2 worley(vec3 sphericalPos, float density)
 
     // get min. distance to neighboring grid points
     vec4 dists2 = vec4(
-        dot(noisePos - gridPos0, noisePos - gridPos0),
-        dot(noisePos - gridPos1, noisePos - gridPos1),
-        dot(noisePos - gridPos2, noisePos - gridPos2),
-        dot(noisePos - gridPos3, noisePos - gridPos3)
+        dist2(noisePos, gridPos0),
+        dist2(noisePos, gridPos1),
+        dist2(noisePos, gridPos2),
+        dist2(noisePos, gridPos3)
     );
 
     float minDist2 = min(dists2.x, min(dists2.y, min(dists2.z, dists2.w)));
