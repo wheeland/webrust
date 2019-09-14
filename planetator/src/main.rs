@@ -60,6 +60,7 @@ struct MyApp {
 
     renderer: earth::renderer::Renderer,
     postprocess: tinygl::Program,
+    atmoshpere_in_scatter: f32,
 
     fsquad: tinygl::shapes::FullscreenQuad,
 }
@@ -144,6 +145,7 @@ fn create_postprocess_shader() -> tinygl::Program {
         uniform float waterLevel;
         uniform vec3 eyePosition;
         uniform vec3 sunDirection;
+        uniform float inScatterFac;
         uniform float angleToHorizon;
         uniform float terrainMaxHeight;
         uniform mat4 inverseViewProjectionMatrix;
@@ -280,7 +282,8 @@ fn create_postprocess_shader() -> tinygl::Program {
             // compute transmittance of the original terrain color + in-scattering of the sun
             vec3 transmittance;
             vec3 in_scatter = GetSkyRadianceToPoint(atmoEyePos, atmoSurfPos, shadow_length, sunDirection, transmittance);
-            ground_radiance = ground_radiance * transmittance + in_scatter;
+            ground_radiance *= transmittance;
+            ground_radiance += in_scatter * inScatterFac;
 
             // do final color mapping
             color = pow(vec3(1.0) - exp(-ground_radiance / white_point * exposure), vec3(1.0 / 2.2));
@@ -317,6 +320,7 @@ impl webrunner::WebApp for MyApp {
             sun_lon: 0.0,
             sun_lat: 0.0,
             water_level: 0.0,
+            atmoshpere_in_scatter: 1.0,
             renderer: earth::renderer::Renderer::new(),
             shadows: shadowmap::ShadowMap::new(100.0),
             postprocess: create_postprocess_shader(),
@@ -386,6 +390,7 @@ impl webrunner::WebApp for MyApp {
         self.postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));
         self.postprocess.uniform("planetRadius", tinygl::Uniform::Float(radius));
         self.postprocess.uniform("waterLevel", tinygl::Uniform::Float(self.water_level));
+        self.postprocess.uniform("inScatterFac", tinygl::Uniform::Float(self.atmoshpere_in_scatter));
         atmosphere::prepare_shader(self.postprocess.handle().unwrap(), 4 + self.shadows.num_textures());
 
         unsafe {
@@ -433,6 +438,7 @@ impl webrunner::WebApp for MyApp {
                     atmosphere::set_raleigh_height(guiutil::slider_float(ui, "Raleigh Height", atmosphere::raleigh_height(), (0.0, 10.0), 2.0));
                     atmosphere::set_mie_scattering(guiutil::slider_float(ui, "Mie Scattering", atmosphere::mie_scattering(), (0.1, 10.0), 2.0));
                     atmosphere::set_mie_height(guiutil::slider_float(ui, "Mie Height", atmosphere::mie_height(), (0.0, 10.0), 2.0));
+                    self.atmoshpere_in_scatter = guiutil::slider_float(ui, "In-Scattering", self.atmoshpere_in_scatter, (0.0, 2.0), 1.0);
                     let mut half_precision = atmosphere::half_precision();
                     ui.checkbox(im_str!("Half-Precision"), &mut half_precision);
                     atmosphere::set_half_precision(half_precision);
