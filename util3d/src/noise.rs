@@ -385,20 +385,11 @@ vec3 plate_unstretch(vec3 v) {
     return sin(v * PLATE_STRETCH_ASIN) / PLATE_STRETCH;
 }
 
-/*
-  GOAL:
-
-  to find a worley noise function that can be
-    a. evaluated given cubic coords (x,y,z), finding the closest grid point, and
-    b. iterated over all grid points on the surface of the cube
-
-  it acts on a cube square size of NxN, and densities for graphical features can be
-  set by only iterating over multiples of M.
-
- */
-vec3 _shifted_grid_pos(vec3 intPos, float density)
+vec3 _shifted_grid_pos(float density, float maxShift, vec3 intPos, vec3 offset)
 {
-    vec3 rdm = _noise_random3(intPos) * 0.5 - vec3(0.25);
+    intPos += offset;
+
+    vec3 rdm = _noise_random3(intPos) * 2.0 * maxShift - vec3(maxShift);
 
     // check dimensionality for this grid point and apply offset
     vec3 dimensionality = step(abs(intPos), vec3(density - 0.5));
@@ -411,18 +402,34 @@ float dist2(vec3 a, vec3 b)
     return dot(delta, delta);
 }
 
-vec2 worley(vec3 sphericalPos, float density)
+vec3 _worley_get_cubic_pos(vec3 spherical, inout vec3 mainAxis)
 {
     // find axis with maximum extent
-    vec3 absPos = abs(sphericalPos);
-    vec3 sgnPos = sign(sphericalPos);
+    vec3 absPos = abs(spherical);
+    vec3 sgnPos = sign(spherical);
     float maxElem = max(absPos.x, max(absPos.y, absPos.z));
-    vec3 mainAxis = step(vec3(maxElem), absPos);
-    vec3 sideAxis = vec3(1.0) - mainAxis;
+    mainAxis = step(vec3(maxElem), absPos);
 
-    vec3 cubicPos = mainAxis * sgnPos + sideAxis * plate_unstretch(sphericalPos / maxElem);
-    vec3 ofs1 = mainAxis.yzx;
-    vec3 ofs2 = mainAxis.zxy;
+    // if there were 3 main axes, pick one randomly
+    if (mainAxis == vec3(1.0))
+        mainAxis = vec3(1.0, 0.0, 0.0);
+
+    // if the position is directly on an edge, we just eliminate one of the
+    // two excess axes, so that only one remains. we don't care which one.
+    mainAxis -= mainAxis * mainAxis.yzx;
+
+    vec3 sideAxis = vec3(1.0) - mainAxis;
+    mainAxis *= sgnPos;
+    return mainAxis + sideAxis * plate_unstretch(spherical / maxElem);
+}
+
+vec2 worley2(vec3 sphericalPos, int density_i, float maxShift)
+{
+    float density = float(density_i);
+    vec3 mainAxis;
+    vec3 cubicPos = _worley_get_cubic_pos(sphericalPos, mainAxis);
+    vec3 ofs1 = abs(mainAxis.yzx);
+    vec3 ofs2 = abs(mainAxis.zxy);
 
     // each grid point can be classified as being 0-, 1-, or 2-dimensional.
     //   0-dimensional: corner (three dimensions are +/- 1.0)
@@ -437,10 +444,10 @@ vec2 worley(vec3 sphericalPos, float density)
     vec3 basePos = floor(noisePos);
 
     // now we check where exactly those 4 neighbor grid points are
-    vec3 gridPos0 = _shifted_grid_pos(basePos, density);
-    vec3 gridPos1 = _shifted_grid_pos(basePos + ofs1, density);
-    vec3 gridPos2 = _shifted_grid_pos(basePos + ofs2, density);
-    vec3 gridPos3 = _shifted_grid_pos(basePos + ofs1 + ofs2, density);
+    vec3 gridPos0 = _shifted_grid_pos(density, maxShift, basePos, vec3(0.0));
+    vec3 gridPos1 = _shifted_grid_pos(density, maxShift, basePos, ofs1);
+    vec3 gridPos2 = _shifted_grid_pos(density, maxShift, basePos, ofs2);
+    vec3 gridPos3 = _shifted_grid_pos(density, maxShift, basePos, ofs1 + ofs2);
 
     // get min. distance to neighboring grid points
     vec4 dists2 = vec4(
@@ -455,6 +462,87 @@ vec2 worley(vec3 sphericalPos, float density)
     float minDist22 = min(dists2.x, min(dists2.y, min(dists2.z, dists2.w)));
 
     return sqrt(vec2(minDist2, minDist22));
+}
+
+/**
+ * Calculates cell noise for the given spherical coordinates
+ *
+ * The magnitude of the coordinates is ignored, only the direction counts.
+ * 'density' defines the amount of grid points along one side of the cube-ified
+ * sphere.
+ * 'maxShift' defines how far each grid point should be moved at max.
+ */
+vec2 worley3(vec3 sphericalPos, int density_i, float maxShift)
+{
+    float density = float(density_i);
+    vec3 mainAxis;
+    vec3 cubicPos = _worley_get_cubic_pos(sphericalPos, mainAxis);
+    vec3 absMainAxis = abs(mainAxis);
+
+    // each grid point can be classified as being 0-, 1-, or 2-dimensional.
+    //   0-dimensional: corner (three dimensions are +/- 1.0)
+    //   1-dimensional: edge (two dimensions are +/- 1.0)
+    //   2-dimensional: square-face (one dimension is +/- 1.0)
+    // the grid point may be shifted across exactly the number of dimensions.
+
+    // we find out, for the given cubic position, which face this position is on.
+    // then we know which 4 grid points to check (the 4 neighbors on that face)
+
+    vec3 noisePos = cubicPos * density;
+    vec3 basePos = floor(noisePos + vec3(0.5));
+
+    //
+    // Along the current side of the cube, we check the nearest 9 neighbors.
+    // if the central point is on an edge or a corner of the cube,
+    // this means that we have to 'wrap around' the edge, changing the
+    // direction of the applied offset from one of the two horizontal directions
+    // 'into the cube', i.e. down along the neighbor face
+    //
+    vec3 ofs1n = -absMainAxis.yzx;
+    vec3 ofs1p = absMainAxis.yzx;
+    vec3 ofs2n = -absMainAxis.zxy;
+    vec3 ofs2p = absMainAxis.zxy;
+    if (dot(basePos, ofs1p) == density)
+        ofs1p = -mainAxis;
+    if (dot(basePos, ofs1n) == density)
+        ofs1n = -mainAxis;
+    if (dot(basePos, ofs2p) == density)
+        ofs2p = -mainAxis;
+    if (dot(basePos, ofs2n) == density)
+        ofs2n = -mainAxis;
+
+    //
+    // check where exactly those 9 neighbor grid points are
+    //
+    vec3 gridPos[9];
+    gridPos[0] = _shifted_grid_pos(density, maxShift, basePos, sign(ofs1n + ofs2n));
+    gridPos[1] = _shifted_grid_pos(density, maxShift, basePos, ofs1n);
+    gridPos[2] = _shifted_grid_pos(density, maxShift, basePos, sign(ofs1n + ofs2p));
+    gridPos[3] = _shifted_grid_pos(density, maxShift, basePos, ofs2n);
+    gridPos[4] = _shifted_grid_pos(density, maxShift, basePos, vec3(0.0));
+    gridPos[5] = _shifted_grid_pos(density, maxShift, basePos, ofs2p);
+    gridPos[6] = _shifted_grid_pos(density, maxShift, basePos, sign(ofs1p + ofs2n));
+    gridPos[7] = _shifted_grid_pos(density, maxShift, basePos, ofs1p);
+    gridPos[8] = _shifted_grid_pos(density, maxShift, basePos, sign(ofs1p + ofs2p));
+
+    //
+    // extract closest and second-closest distance
+    //
+    float d0 = dist2(noisePos, gridPos[0]);
+    float d1 = dist2(noisePos, gridPos[1]);
+    float first2 = min(d0, d1);
+    float second2 = max(d0, d1);
+    for (int i = 2; i < 9; ++i) {
+        float d2 = dist2(noisePos, gridPos[i]);
+        if (d2 < first2) {
+            second2 = first2;
+            first2 = d2;
+        } else {
+            second2 = min(second2, d2);
+        }
+    }
+
+    return sqrt(vec2(first2, second2));
 }
 
 float cubicPerlinNoise(vec3 cubicPos, mat3 offsets, float density)
@@ -487,7 +575,8 @@ float noise(vec2 v, int levels, float persistence);
 float noise(vec3 v, int levels, float persistence);
 float noise(vec4 v, int levels, float persistence);
 float noise_grad(vec3 v, out vec3 gradient);
-vec2 worley(vec3 cubicPos, float density);
+vec2 worley2(vec3 sphericalPos, int density_i, float maxShift);
+vec2 worley3(vec3 sphericalPos, int density_i, float maxShift);
 float cubicPerlinNoise(vec3 cubicPos, mat3 offsets, float density);
 ")
     }
