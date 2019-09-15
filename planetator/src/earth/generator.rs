@@ -110,7 +110,9 @@ impl PlateDataManager {
     }
 
     pub fn generate_plate_coords(&self) -> Vec<u16> {
-        self.generator.generate_plate_coords()
+        let vertex_depth = self.generator.vertex_depth;
+        let texture_delta = self.generator.texture_delta;
+        super::util::generate_tex_coords_buffer(vertex_depth, vertex_depth, texture_delta)
     }
 
     pub fn generate_indices(&self) -> (Vec<Idx>, Vec<Idx>) {
@@ -458,28 +460,6 @@ impl Generator {
             max_framebuffer_cache,
             framebuffers: HashMap::new()
         }
-    }
-
-    // tile coords ranging from [1..size+1] for normal texture lookup
-    // this is one of the vertex attributes used for plate rendering
-    pub fn generate_plate_coords(&self) -> Vec<u16> {
-        let mut tile_coords = Vec::new();
-        let mult = 2u32.pow(self.texture_delta + 1);
-
-        for j in 0..(self.vertex_grid_size+3) {
-            let j = j.max(1).min(self.vertex_grid_size+1);
-            let y = (mult*j + 1) * 0x7FFF / self.texture_size;
-
-            for i in 0..(self.vertex_grid_size+3) {
-                let i = i.max(1).min(self.vertex_grid_size+1);
-                let x = (mult*i + 1) * 0x7FFF / self.texture_size;
-
-                tile_coords.push(x as u16);
-                tile_coords.push(y as u16);
-            }
-        }
-
-        tile_coords
     }
 
     pub fn generate_indices(&self) -> (Vec<Idx>, Vec<Idx>) {
