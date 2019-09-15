@@ -208,7 +208,8 @@ fn create_postprocess_shader() -> tinygl::Program {
             // Load position/color from planet rendering textures
             //
             float wireframe = normalFromTex.w;
-            vec3 pColor = texture(planetColor, vec2(0.5) + 0.5 * clipPos).rgb;
+            vec4 pColorReflectivity = texture(planetColor, vec2(0.5) + 0.5 * clipPos);
+            vec3 pColor = pColorReflectivity.rgb;
             vec4 pPosHeight = texture(planetPosition, vec2(0.5) + 0.5 * clipPos);
             float eyeToTerrainDist = length(pPosHeight.xyz - eyePosition);
             vec3 actualSurfaceNormal = vec3(-1.0) + 2.0 * normalFromTex.xyz;
@@ -232,9 +233,19 @@ fn create_postprocess_shader() -> tinygl::Program {
             //
             vec3 sky_irradiance;
             vec3 sun_irradiance = GetSunAndSkyIrradiance(pPosHeight.xyz / planetRadius, normalize(pPosHeight.xyz), sunDirection, sky_irradiance);
-            vec3 ground_radiance = pColor * (1.0 / PI) * (
-                sun_irradiance * sunVisibility +
-                sky_irradiance * skyVisibility);
+            vec3 irradiance = sun_irradiance * sunVisibility + sky_irradiance * skyVisibility;
+            vec3 ground_radiance = pColor * (1.0 / PI) * irradiance;
+
+            //
+            // Incorporate reflectivity
+            //
+            vec3 reflectedSunlight = reflect(sunDirection, actualSurfaceNormal);
+            float shininess = 100.0;
+            float nf = (shininess + 2.0) / 2.0;
+            vec3 viewDirection = (pPosHeight.xyz - eyePosition) / eyeToTerrainDist;
+            float specular = nf * pow(max(dot(reflectedSunlight, viewDirection), 0.0), shininess);
+            vec3 sunlight = vec3(0.008, 0.008, 0.006);
+            ground_radiance += specular * pColorReflectivity.a * sunlight * (sun_irradiance + sky_irradiance);
 
             // float shadow_length =
             //     max(0.0, min(shadow_out, distance_to_intersection) - shadow_in) *

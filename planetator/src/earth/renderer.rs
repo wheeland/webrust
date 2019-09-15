@@ -214,7 +214,7 @@ fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(St
         uniform sampler2D scene_position;
         uniform float waterHeight;
         in vec2 tc_screen;
-        layout(location = 0) out vec3 outColor;
+        layout(location = 0) out vec4 outColorReflectivity;
 
         vec2 uv1;
         vec4 uv23;
@@ -340,7 +340,7 @@ fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(St
 
             // open sky is encoded as (0,0,0) normal
             if (normalFromTex == vec3(0.0)) {
-                outColor = vec3(0.0);
+                outColorReflectivity = vec4(0.0);
                 return;
             }
 
@@ -351,14 +351,15 @@ fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(St
 
             // water can have any color, so long as it's black.
             if (scenePosTex.w <= waterHeight) {
-                outColor = vec3(0.0, 0.0, 0.0);
+                outColorReflectivity = vec4(0.0, 0.0, 0.0, 1.0);
                 return;
             }
 
             _generateUvMaps(sceneNormal, scenePosition);
 
         " + &channels.glsl_assignments("tc_screen") + "
-            outColor = color(sceneNormal, scenePosition, scenePosTex.w);
+            vec3 col = color(sceneNormal, scenePosition, scenePosTex.w);
+            outColorReflectivity = vec4(col, 0.0);
         }";
 
     tinygl::Program::new(vert_source, &frag_source)
@@ -777,7 +778,7 @@ impl Renderer {
         //
         if self.fbo_color.as_ref().map(|fbo| fbo.size() != windowsize).unwrap_or(true) {
             let mut fbo = tinygl::FrameBufferObject::new((windowsize.0 as _, windowsize.1 as _));
-            fbo.add("color", gl::RGB, gl::RGB, gl::UNSIGNED_BYTE);
+            fbo.add("color", gl::RGBA, gl::RGBA, gl::UNSIGNED_BYTE);
             self.fbo_color = Some(fbo);
         }
         self.fbo_color.as_ref().unwrap().bind();
