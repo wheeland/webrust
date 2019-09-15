@@ -332,7 +332,7 @@ impl webrunner::WebApp for MyApp {
         //
         // render planet into FBO
         //
-        self.renderer.render(self.windowsize);
+        self.renderer.render(self.windowsize, dt);
 
         //
         // Move Sun

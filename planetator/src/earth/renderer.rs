@@ -62,6 +62,7 @@ pub struct Renderer {
     water_plate_factory: WaterPlateFactory,
     water_depth: u32,
     water_height: f32,
+    water_wavetime: f32,
 
     // errors to be picked up by y'all
     errors_generator: Option<String>,
@@ -73,6 +74,8 @@ fn create_water_program() -> tinygl::Program {
         uniform mat4 mvp;
         uniform float radius;
         uniform float waterHeight;
+        uniform float waterTime;
+        uniform float farPlane;
         in vec3 sphereCoords;
         in vec2 texCoords;
         out vec3 pos;
@@ -82,7 +85,12 @@ fn create_water_program() -> tinygl::Program {
         {
             tc = texCoords;
             pos = sphereCoords * (radius + waterHeight);
-            gl_Position = mvp * vec4(pos, 1.0);
+
+            vec4 cpos = mvp * vec4(pos, 1.0);
+            // float C = 1.0;
+            // cpos.z = (2.0 * log(C * wpos.w + 1.0) / log(C * farPlane + 1.0) - 1.0) * wpos.w;
+
+            gl_Position = cpos;
         }",
         "
         layout(location = 0) out vec4 outNormalWf;
@@ -109,7 +117,7 @@ fn create_scene_program(channels: &Channels) -> tinygl::Program {
         uniform mat4 mvp;
         uniform float radius;
         uniform float wf;
-        // uniform float Far;
+        uniform float farPlane;
         in vec4 posHeight;
         in vec2 plateCoords;
         out vec2 plateTc;
@@ -119,10 +127,12 @@ fn create_scene_program(channels: &Channels) -> tinygl::Program {
         {
             plateTc = plateCoords;
             pos = posHeight.xyz * (posHeight.w + radius + 0.0001 * wf);
-            // vec4 wpos = mvp * vec4(pos, 1.0);
+
+            vec4 cpos = mvp * vec4(pos, 1.0);
             // float C = 1.0;
-            // wpos.z = (2.0 * log(C * wpos.w + 1.0) / log(C * Far + 1.0) - 1.0) * wpos.w;
-            gl_Position = mvp * vec4(pos, 1.0);
+            // cpos.z = (2.0 * log(C * wpos.w + 1.0) / log(C * farPlane + 1.0) - 1.0) * wpos.w;
+
+            gl_Position = cpos;
         }",
         &(String::from("
         uniform float wf;
@@ -338,7 +348,7 @@ fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(St
             sceneNormal = vec3(-1.0) + 2.0 * normalFromTex;
             scenePosition = scenePosTex.xyz;
 
-            // water is encoded as 0 height
+            // water can have any color, so long as it's black.
             if (scenePosTex.w <= waterHeight) {
                 outColor = vec3(0.0, 0.0, 0.0);
                 return;
@@ -434,6 +444,7 @@ impl Renderer {
             water_plate_factory: WaterPlateFactory::new(6, 6, 0),
             water_height: 1.0,
             water_depth: 6,
+            water_wavetime: 0.0,
 
             generator: default_generator(),
             channels,
@@ -639,7 +650,7 @@ impl Renderer {
     /// Renders the planet into the internal FBO
     ///
     /// The results can be accessed through `out_position()`, `out_normal()`, and `out_color()`.
-    pub fn render(&mut self, windowsize: (u32, u32)) {
+    pub fn render(&mut self, windowsize: (u32, u32), dt: f32) {
         //
         // Setup view/projection matrices
         //
@@ -695,7 +706,7 @@ impl Renderer {
         let program_scene = self.program_scene.as_ref().unwrap();
         program_scene.bind();
         program_scene.uniform("mvp", tinygl::Uniform::Mat4(mvp));
-        // program_scene.uniform("Far", tinygl::Uniform::Float(self.camera.far()));
+        program_scene.uniform("farPlane", tinygl::Uniform::Float(self.camera.far()));
         program_scene.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
         program_scene.uniform("tex_normals", tinygl::Uniform::Signed(0));
         program_scene.uniform("tex_heights", tinygl::Uniform::Signed(1));
@@ -737,10 +748,13 @@ impl Renderer {
         // Render water on top of terrain
         //
         let water_plates = planet.rendered_water_plates(&culler, self.water_height);
+        self.water_wavetime = (self.water_wavetime + dt).fract();
         self.program_water.bind();
         self.program_water.uniform("mvp", tinygl::Uniform::Mat4(mvp));
+        self.program_water.uniform("farPlane", tinygl::Uniform::Float(self.camera.far()));
         self.program_water.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
         self.program_water.uniform("waterHeight", tinygl::Uniform::Float(self.water_height));
+        self.program_water.uniform("waterTime", tinygl::Uniform::Float(self.water_wavetime));
         self.program_water.uniform("heights", tinygl::Uniform::Signed(0));
         self.program_water.uniform("normals", tinygl::Uniform::Signed(1));
         self.program_water.vertex_attrib_buffer("texCoords", self.water_plate_factory.tex_coords(), 2, gl::UNSIGNED_SHORT, true, 4, 0);
