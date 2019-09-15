@@ -35,6 +35,65 @@ impl FullscreenQuad {
     }
 }
 
+#[derive(Copy)]
+#[derive(Clone)]
+#[derive(PartialEq)]
+pub enum Orientation {
+    Clockwise,
+    CounterClockwise,
+}
+
+pub struct Plane {
+    vertices: super::VertexBuffer,
+    indices: super::IndexBuffer,
+}
+
+impl Plane {
+    pub fn new(x_extent: u16, y_extent: u16, orientation: Orientation) -> Self {
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        for y in 0..y_extent+1 {
+            for x in 0..x_extent+1 {
+                vertices.push(x as f32 / x_extent as f32);
+                vertices.push(y as f32 / y_extent as f32);
+            }
+        }
+
+        for y in 0..y_extent {
+            let y0base = (x_extent + 1) * y;
+            let y1base = (x_extent + 1) * (y + 1);
+            for x in 0..x_extent {
+                let i00 = y0base + x;
+                let i01 = y1base + x;
+                let i10 = y0base + x + 1;
+                let i11 = y1base + x + 1;
+                indices.push(i00);
+                indices.push(if orientation == Orientation::Clockwise { i01 } else { i10 });
+                indices.push(i11);
+                indices.push(i11);
+                indices.push(if orientation == Orientation::Clockwise { i10 } else { i01 });
+                indices.push(i00);
+            }
+        }
+
+        Self {
+            vertices: super::VertexBuffer::from(&vertices),
+            indices: super::IndexBuffer::from16(&indices),
+        }
+    }
+
+    pub fn bind_vertex_data(&self, program: &super::Program, attrname: &str) {
+        program.bind();
+        program.vertex_attrib_buffer(attrname, &self.vertices, 2, gl::FLOAT, false, 0, 0);
+        self.indices.bind();
+    }
+
+    pub fn render(&self) {
+        unsafe { gl::DrawElements(gl::TRIANGLES, 0, self.indices.count() as _, std::ptr::null()) }
+    }
+}
+
 pub struct Cube {
     indices: Vec<u16>,
     vertices: Vec<Vector3<f32>>,
