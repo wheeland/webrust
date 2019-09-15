@@ -675,7 +675,7 @@ impl Renderer {
         //
         if self.fbo_scene.as_ref().map(|fbo| fbo.size() != windowsize).unwrap_or(true) {
             let mut fbo = tinygl::FrameBufferObject::new((windowsize.0 as _, windowsize.1 as _));
-            fbo.add("normalWf", gl::RGBA, gl::RGBA, gl::UNSIGNED_BYTE);
+            fbo.add("normalWf", gl::RGBA32F, gl::RGBA, gl::FLOAT);
             fbo.add("positionHeight", gl::RGBA32F, gl::RGBA, gl::FLOAT);
             // TODO: avoid duplication
             for chan in self.channels.iter() {
