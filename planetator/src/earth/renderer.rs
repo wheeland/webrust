@@ -30,6 +30,7 @@ use util3d::noise;
 pub struct Renderer {
     camera: FlyCamera,
     program_scene: Option<tinygl::Program>,
+    program_water: tinygl::Program,
     program_color: Option<tinygl::Program>,
     program_color_default: tinygl::Program,
 
@@ -65,6 +66,42 @@ pub struct Renderer {
     // errors to be picked up by y'all
     errors_generator: Option<String>,
     errors_colorator: Option<String>,
+}
+
+fn create_water_program() -> tinygl::Program {
+    tinygl::Program::new_versioned("
+        uniform mat4 mvp;
+        uniform float radius;
+        uniform float waterHeight;
+        in vec3 sphereCoords;
+        in vec2 texCoords;
+        out vec3 pos;
+        out vec2 tc;
+
+        void main()
+        {
+            tc = texCoords;
+            pos = sphereCoords * (radius + waterHeight);
+            gl_Position = mvp * vec4(pos, 1.0);
+        }",
+        "
+        layout(location = 0) out vec4 outNormalWf;
+        layout(location = 1) out vec4 outPositionHeight;
+        uniform float radius;
+        uniform float waterHeight;
+        uniform sampler2D heights;
+        uniform sampler2D normals;
+        in vec3 pos;
+        in vec2 tc;
+        void main()
+        {
+            float terrainHeight = texture(heights, tc).r;
+            vec3 terrainNormal = texture(normals, tc).xyz;
+            outNormalWf = vec4(terrainNormal, 0.0);
+            outPositionHeight = vec4(pos, terrainHeight);
+        }
+    ",
+    300)
 }
 
 fn create_scene_program(channels: &Channels) -> tinygl::Program {
@@ -164,6 +201,7 @@ fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(St
     let frag_source = String::from("
         uniform sampler2D scene_normal;
         uniform sampler2D scene_position;
+        uniform float waterHeight;
         in vec2 tc_screen;
         layout(location = 0) out vec3 outColor;
 
@@ -288,6 +326,8 @@ fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(St
         void main()
         {
             vec3 normalFromTex = texture(scene_normal, tc_screen).xyz;
+
+            // open sky is encoded as (0,0,0) normal
             if (normalFromTex == vec3(0.0)) {
                 outColor = vec3(0.0);
                 return;
@@ -297,6 +337,12 @@ fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(St
 
             sceneNormal = vec3(-1.0) + 2.0 * normalFromTex;
             scenePosition = scenePosTex.xyz;
+
+            // water is encoded as 0 height
+            if (scenePosTex.w <= waterHeight) {
+                outColor = vec3(0.0, 0.0, 0.0);
+                return;
+            }
 
             _generateUvMaps(sceneNormal, scenePosition);
 
@@ -366,6 +412,7 @@ impl Renderer {
             program_scene: Some(create_scene_program(&channels)),
             program_color: None,
             program_color_default: create_color_program(&colorator, &channels, &Vec::new()),
+            program_water: create_water_program(),
 
             planet: None,
             plate_depth: 6,
@@ -384,7 +431,7 @@ impl Renderer {
             fbo_scene: None,
             fbo_color: None,
             fsquad: tinygl::shapes::FullscreenQuad::new(),
-            water_plate_factory: WaterPlateFactory::new(6, 6),
+            water_plate_factory: WaterPlateFactory::new(6, 6, 0),
             water_height: 1.0,
             water_depth: 6,
 
@@ -454,7 +501,7 @@ impl Renderer {
 
     pub fn set_plate_depth(&mut self, depth: u32) {
         self.plate_depth = depth;
-        self.water_plate_factory = WaterPlateFactory::new(self.water_depth, self.plate_depth);
+        self.water_plate_factory = WaterPlateFactory::new(self.water_depth, self.plate_depth, self.texture_delta);
         let gen = self.generator.clone();
         let chan = self.channels.clone();
         self.create_planet(&gen, chan, false);
@@ -466,7 +513,7 @@ impl Renderer {
 
     pub fn set_water_depth(&mut self, depth: u32) {
         self.water_depth = depth;
-        self.water_plate_factory = WaterPlateFactory::new(self.water_depth, self.plate_depth);
+        self.water_plate_factory = WaterPlateFactory::new(self.water_depth, self.plate_depth, self.texture_delta);
     }
 
     pub fn texture_delta(&self) -> u32 {
@@ -475,6 +522,7 @@ impl Renderer {
 
     pub fn set_texture_delta(&mut self, delta: u32) {
         self.texture_delta = delta;
+        self.water_plate_factory = WaterPlateFactory::new(self.water_depth, self.plate_depth, self.texture_delta);
         let gen = self.generator.clone();
         let chan = self.channels.clone();
         self.create_planet(&gen, chan, false);
@@ -659,12 +707,13 @@ impl Renderer {
         //
         // Render scene into position/normal FBO
         //
-        for plate in &rendered_plates {
-            plate.borrow().bind_render_data(program_scene, 0);
+        for plate_ref in &rendered_plates {
+            let mut plate = plate_ref.borrow();
+            plate.bind_render_data(program_scene, 0);
 
             // Render Triangles
             self.rendered_triangles += if self.reduce_poly_count {
-                plate.borrow().indices().draw_all(gl::TRIANGLES)
+                plate.indices().draw_all(gl::TRIANGLES)
             } else {
                 planet.triangle_indices().draw_all(gl::TRIANGLES)
             } / 3;
@@ -673,7 +722,7 @@ impl Renderer {
             if self.wireframe {
                 program_scene.uniform("wf", tinygl::Uniform::Float(1.0));
                 if self.reduce_poly_count {
-                    plate.borrow().indices().draw(gl::LINES, plate.borrow().wireframe_count() as _, 0);
+                    plate.indices().draw(gl::LINES, plate.wireframe_count() as _, 0);
                 } else {
                     planet.triangle_indices().draw_all(gl::LINES);
                 }
@@ -683,6 +732,30 @@ impl Renderer {
 
         program_scene.disable_all_vertex_attribs();
         self.rendered_plates = rendered_plates.len();
+
+        //
+        // Render water on top of terrain
+        //
+        let water_plates = planet.rendered_water_plates(&culler, self.water_height);
+        self.program_water.bind();
+        self.program_water.uniform("mvp", tinygl::Uniform::Mat4(mvp));
+        self.program_water.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
+        self.program_water.uniform("waterHeight", tinygl::Uniform::Float(self.water_height));
+        self.program_water.uniform("heights", tinygl::Uniform::Signed(0));
+        self.program_water.uniform("normals", tinygl::Uniform::Signed(1));
+        self.program_water.vertex_attrib_buffer("texCoords", self.water_plate_factory.tex_coords(), 2, gl::UNSIGNED_SHORT, true, 4, 0);
+        unsafe { gl::ActiveTexture(gl::TEXTURE0); }
+        let water_idx_count = self.water_plate_factory.indices().count() as _;
+        self.water_plate_factory.indices().bind();
+        for water_plate in water_plates {
+            let mut water_plate = water_plate.borrow_mut();
+            water_plate.bind_height_texture(0);
+            water_plate.bind_normal_texture(1);
+            let water_buffer = water_plate.get_water_buffer(&self.water_plate_factory);
+            self.program_water.vertex_attrib_buffer("sphereCoords", &water_buffer, 3, gl::FLOAT, false, 12, 0);
+            unsafe { gl::DrawElements(gl::TRIANGLES, water_idx_count, gl::UNSIGNED_SHORT, std::ptr::null()); }
+        }
+        self.program_water.disable_all_vertex_attribs();
 
         //
         // Update and bind Color Render Target
@@ -701,6 +774,7 @@ impl Renderer {
 
         // bind scene textures
         program_color.bind();
+        program_color.uniform("waterHeight", tinygl::Uniform::Float(self.water_height));
         program_color.uniform("scene_normal", tinygl::Uniform::Signed(0));
         program_color.uniform("scene_position", tinygl::Uniform::Signed(1));
         self.fbo_scene.as_ref().unwrap().texture("normalWf").unwrap().bind_at(0);

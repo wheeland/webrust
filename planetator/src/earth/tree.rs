@@ -31,7 +31,6 @@ impl Planet {
         generator: &str,
         channels: &Channels,
     ) -> Result<Planet, String> {
-        let texture_depth = plate_depth + texture_delta;
         let plate_size = 2u32.pow(plate_depth);
 
         // Create Generator program
@@ -41,7 +40,7 @@ impl Planet {
             return Err(generator.fragment_log());
         }
 
-        let mut manager = generator::PlateDataManager::new(plate_depth, texture_delta, radius, generator, channels);
+        let manager = generator::PlateDataManager::new(plate_depth, texture_delta, radius, generator, channels);
 
         let indices = manager.generate_indices();
         let plate_coords = tinygl::VertexBuffer::from(&manager.generate_plate_coords());
@@ -212,6 +211,15 @@ impl Planet {
         self.get_rendered_plates(|n| n.visible, |n| true)
     }
 
+    /// Collect all leaf nodes with RenderData that
+    pub fn rendered_water_plates(&mut self, culler: &culling::Culler, water_level: f32) -> Vec<PlatePtr> {
+        self.traverse_mut(|mut node| {
+            node.update_water_bounding_box(water_level);
+            node.has_render_data()
+        });
+        self.get_rendered_plates(|node| culler.visible(&node.water_bounds.1), |n| true)
+    }
+
     // Collect all nodes according to given viewport and detail
     pub fn rendered_plates_for_camera(&self, eye: Vector3<f32>, mvp: Matrix4<f32>, detail: f32) -> Vec<PlatePtr> {
         let culler = culling::Culler::new(&mvp);
@@ -251,6 +259,7 @@ pub struct Plate {
     bogo_points: [Vector3<f32>;9],      // list of points covering all the extreme positions of this plate
     minmax: (i32, f32, f32),            // min/max height for this plate, computed from the Terrain Data of certain depth
     bounds: culling::Sphere,
+    water_bounds: (f32, culling::Sphere),
     visible: bool,
 
     my_priority: f32,
@@ -281,6 +290,11 @@ impl Plate {
         culling::Sphere::from(center, maxr)
     }
 
+    fn compute_water_bounding_box(&self, radius: f32, water_level: f32) -> (f32, culling::Sphere) {
+        let bounds = Self::bogo_bounding_box(&self.bogo_points, radius, (self.minmax.1, self.minmax.2.max(water_level)));
+        (water_level, bounds)
+    }
+
     // Updates the bounding box of this plate and it's children based on the newest and hottest terrain data
     fn update_bounding_box(&mut self, minmax: (i32, f32, f32)) {
         // if this node already has its own data, just ignore it
@@ -288,12 +302,20 @@ impl Plate {
             let radius = self.data_manager.borrow().radius();
             self.minmax = minmax;
             self.bounds = Self::bogo_bounding_box(&self.bogo_points, radius, (minmax.1, minmax.2));
+            self.water_bounds = self.compute_water_bounding_box(radius, self.water_bounds.0);
 
             if let Some(ref children) = self.children {
                 for child in children {
                     child.borrow_mut().update_bounding_box(minmax);
                 }
             }
+        }
+    }
+
+    // Updates and returns the bounding box for the water surface for this plate
+    pub fn update_water_bounding_box(&mut self, water_level: f32)  {
+        if self.water_bounds.0 != water_level {
+            self.water_bounds = self.compute_water_bounding_box(self.data_manager.borrow().radius(), water_level);
         }
     }
 
@@ -324,11 +346,14 @@ impl Plate {
             position.uv_to_sphere(&Vector2::new(1.0, 1.0)),
         ];
         let bounds = Self::bogo_bounding_box(&bogo_points, radius, (minmax.1, minmax.2));
+        let water_bounds = Self::bogo_bounding_box(&bogo_points, radius, (minmax.1, minmax.2.max(0.0)));
+        let water_bounds = (0.0, water_bounds);
 
         let mut ret = Plate {
             position,
             bogo_points,
             bounds,
+            water_bounds,
             minmax,
             visible: false,
             my_priority: 0.0,
@@ -350,6 +375,7 @@ impl Plate {
     pub fn is_leaf(&self) -> bool { self.children.is_none() }
     pub fn position(&self) -> plate::Position { self.position }
     pub fn has_render_data(&self) -> bool { self.generated_data.is_some() }
+    pub fn min_elevation(&self) -> f32 { self.minmax.1 }
 
     pub fn height_at(&self, local: Vector2<f32>) -> Option<f32> {
         self.generated_data.as_ref().map(|rd| {
@@ -481,6 +507,14 @@ impl Plate {
     pub fn get_pos_height_buffer(&self) -> &tinygl::VertexBuffer {
         let render_data = self.gpu_data.as_ref().expect("Expected GpuData");
         &render_data.positions
+    }
+
+    pub fn bind_height_texture(&self, unit: u32) {
+        self.generated_data.as_ref().unwrap().tex_heights.bind_at(unit);
+    }
+
+    pub fn bind_normal_texture(&self, unit: u32) {
+        self.generated_data.as_ref().unwrap().tex_normals.bind_at(unit);
     }
 
     pub fn bind_render_data(&self, program: &tinygl::Program, first_tex_unit: usize) {

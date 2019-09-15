@@ -214,46 +214,25 @@ fn create_postprocess_shader() -> tinygl::Program {
             vec3 actualSurfaceNormal = vec3(-1.0) + 2.0 * normalFromTex.xyz;
 
             //
-            // check if we are actually looking at a water surface
-            //
-            // TODO: this is not very accurate for shallow waters. to get an accurate rendering,
-            // we must use the high-resolution height texture, and for that we will probably need an additonal rendering step.
-            // another possibility is to just max(height, waterLevel) the vertices in the planet vertex shader!
-            //
-            vec3 actualSurfacePosition = pPosHeight.xyz;
-            vec3 actualSurfaceColor = pColor;
-            if (pPosHeight.w < waterLevel) {
-                // calculate water surface position - intersect view ray with water surface sphere
-                float eyeToWaterDist = planetRadiusIntersect(eyePosition, eyeDir, planetRadius + waterLevel);
-                actualSurfacePosition = eyePosition + eyeDir * eyeToWaterDist;
-
-                vec3 waterColor = vec3(0.1, 0.16, 0.4);
-                float opacity = clamp(40.0 * sqrt(eyeToTerrainDist - eyeToWaterDist), 0.2, 1.0);
-
-                actualSurfaceColor = mix(pColor, waterColor, opacity);
-                actualSurfaceNormal = normalize(actualSurfacePosition);
-            }
-
-            //
             // Find out if we are shadowed by the terrain, and interpolate between last and curr sun position
             //
             float dotSun = dot(actualSurfaceNormal, sunDirection);
             vec3 shadowMapDebugColor;
-            float shadow = getShadow(actualSurfacePosition, dotSun, eyeToTerrainDist, shadowMapDebugColor);
+            float shadow = getShadow(pPosHeight.xyz, dotSun, eyeToTerrainDist, shadowMapDebugColor);
 
             // visibility of the sky and sun, based on shadows cast by the terrain
             float sunVisibility = 0.5 * shadow;
             float skyVisibility = 1.0;
 
             vec3 atmoEyePos = eyePosition / planetRadius;
-            vec3 atmoSurfPos = actualSurfacePosition / planetRadius;
+            vec3 atmoSurfPos = pPosHeight.xyz / planetRadius;
 
             //
             // Compute the radiance reflected by the ground.
             //
             vec3 sky_irradiance;
-            vec3 sun_irradiance = GetSunAndSkyIrradiance(actualSurfacePosition / planetRadius, normalize(actualSurfacePosition), sunDirection, sky_irradiance);
-            vec3 ground_radiance = actualSurfaceColor * (1.0 / PI) * (
+            vec3 sun_irradiance = GetSunAndSkyIrradiance(pPosHeight.xyz / planetRadius, normalize(pPosHeight.xyz), sunDirection, sky_irradiance);
+            vec3 ground_radiance = pColor * (1.0 / PI) * (
                 sun_irradiance * sunVisibility +
                 sky_irradiance * skyVisibility);
 
