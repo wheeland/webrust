@@ -357,6 +357,7 @@ impl Program {
         if let Some(l) = self.vertex_attrib_location(attrib) {
             buffer.bind();
             unsafe {
+                // TODO: keep track of those to reduce GL calls:
                 gl::EnableVertexAttribArray(l);
                 gl::VertexAttribPointer(l, size, datatype, if normed {1} else {0}, stride, offset as *const GLvoid);
             }
