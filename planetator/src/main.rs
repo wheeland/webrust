@@ -54,7 +54,6 @@ struct MyApp {
     sun_speed: f32,
     sun_lon: f32,
     sun_lat: f32,
-    water_level: f32,
 
     shadows: shadowmap::ShadowMap,
 
@@ -319,7 +318,6 @@ impl webrunner::WebApp for MyApp {
             sun_speed: 0.0,
             sun_lon: 0.0,
             sun_lat: 0.0,
-            water_level: 0.0,
             atmoshpere_in_scatter: 1.0,
             renderer: earth::renderer::Renderer::new(),
             shadows: shadowmap::ShadowMap::new(100.0),
@@ -389,7 +387,7 @@ impl webrunner::WebApp for MyApp {
         self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
         self.postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));
         self.postprocess.uniform("planetRadius", tinygl::Uniform::Float(radius));
-        self.postprocess.uniform("waterLevel", tinygl::Uniform::Float(self.water_level));
+        // self.postprocess.uniform("waterLevel", tinygl::Uniform::Float(self.water_level));
         self.postprocess.uniform("inScatterFac", tinygl::Uniform::Float(self.atmoshpere_in_scatter));
         atmosphere::prepare_shader(self.postprocess.handle().unwrap(), 4 + self.shadows.num_textures());
 
@@ -426,8 +424,9 @@ impl webrunner::WebApp for MyApp {
                     ui.checkbox(im_str!("Cull Backside"), &mut self.renderer.hide_backside);
 
                     let detail = guiutil::slider_float(ui, "Vertex Detail:", self.renderer.vertex_detail(), (0.0, 1.0), 1.0);
-                    self.water_level = guiutil::slider_float(ui, "Water Level", self.water_level, (-1.0, 1.0), 1.0);
+                    let water_level = guiutil::slider_float(ui, "Water Level", self.renderer.water_height(), (-1.0, 1.0), 1.0);
                     self.renderer.set_vertex_detail(detail);
+                    self.renderer.set_water_height(water_level);
                 }
 
                 // Atmosphere settings
@@ -471,14 +470,22 @@ impl webrunner::WebApp for MyApp {
             .constraints(planet_opt_win_size, (planet_opt_win_size.0, 1000.0))
             .build(|| {
                 //
-                // Slider for Plate Size, Texture Delta, and Planet Radius
+                // Slider for Plate Size, Water Plate Size, Texture Delta, and Planet Radius
                 //
-                let mut depth = self.renderer.depth() as i32;
-                let platesz = 2i32.pow(self.renderer.depth());
-                if ui.slider_int(im_str!("Plate Size##platesizeslider"), &mut depth, 3, 7)
+                let mut plate_depth = self.renderer.plate_depth() as i32;
+                let platesz = 2i32.pow(self.renderer.plate_depth());
+                if ui.slider_int(im_str!("Plate Size##platesizeslider"), &mut plate_depth, 3, 7)
                         .display_format(im_str!("%.0f ({}x{})", platesz, platesz))
                         .build() {
-                    self.renderer.set_depth(depth as u32);
+                    self.renderer.set_plate_depth(plate_depth as u32);
+                }
+
+                let mut water_depth = self.renderer.water_depth() as i32;
+                let watersz = 2i32.pow(self.renderer.water_depth());
+                if ui.slider_int(im_str!("Water Size##platesizeslider"), &mut water_depth, 3, 7)
+                        .display_format(im_str!("%.0f ({}x{})", watersz, watersz))
+                        .build() {
+                    self.renderer.set_water_depth(water_depth as u32);
                 }
 
                 let mut delta = self.renderer.texture_delta() as i32;

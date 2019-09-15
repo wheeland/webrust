@@ -6,6 +6,7 @@ use util3d::culling;
 use super::channels::Channels;
 use util3d::flycamera::FlyCamera;
 use super::tree;
+use super::water::WaterPlateFactory;
 use util3d::noise;
 
 /// Maintains a planetary 6-quad-tree and renders it into an FBO
@@ -57,6 +58,9 @@ pub struct Renderer {
     fbo_scene: Option<tinygl::FrameBufferObject>,
     fbo_color: Option<tinygl::FrameBufferObject>,
     fsquad: tinygl::shapes::FullscreenQuad,
+    water_plate_factory: WaterPlateFactory,
+    water_depth: u32,
+    water_height: f32,
 
     // errors to be picked up by y'all
     errors_generator: Option<String>,
@@ -380,6 +384,9 @@ impl Renderer {
             fbo_scene: None,
             fbo_color: None,
             fsquad: tinygl::shapes::FullscreenQuad::new(),
+            water_plate_factory: WaterPlateFactory::new(6, 6),
+            water_height: 1.0,
+            water_depth: 6,
 
             generator: default_generator(),
             channels,
@@ -441,15 +448,25 @@ impl Renderer {
         self.planet.as_ref().unwrap().get_surface_height(position)
     }
 
-    pub fn depth(&self) -> u32 {
+    pub fn plate_depth(&self) -> u32 {
         self.plate_depth
     }
 
-    pub fn set_depth(&mut self, depth: u32) {
+    pub fn set_plate_depth(&mut self, depth: u32) {
         self.plate_depth = depth;
+        self.water_plate_factory = WaterPlateFactory::new(self.water_depth, self.plate_depth);
         let gen = self.generator.clone();
         let chan = self.channels.clone();
         self.create_planet(&gen, chan, false);
+    }
+
+    pub fn water_depth(&self) -> u32 {
+        self.water_depth
+    }
+
+    pub fn set_water_depth(&mut self, depth: u32) {
+        self.water_depth = depth;
+        self.water_plate_factory = WaterPlateFactory::new(self.water_depth, self.plate_depth);
     }
 
     pub fn texture_delta(&self) -> u32 {
@@ -473,6 +490,14 @@ impl Renderer {
         let chan = self.channels.clone();
         self.create_planet(&gen, chan, false);
         self.camera.scale_with_planet(radius);
+    }
+
+    pub fn water_height(&self) -> f32 {
+        self.water_height
+    }
+
+    pub fn set_water_height(&mut self, height: f32) {
+        self.water_height = height;
     }
 
     pub fn set_colorator(&mut self, colorator: &str) -> bool {
