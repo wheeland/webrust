@@ -475,9 +475,9 @@ impl Plate {
         Self::traverse_mut_helper(self, &mut functor);
     }
 
-    pub fn bind_pos_height_buffer(&self, program: &tinygl::Program) {
+    pub fn get_pos_height_buffer(&self) -> &tinygl::VertexBuffer {
         let render_data = self.gpu_data.as_ref().expect("Expected GpuData");
-        program.vertex_attrib_buffer("posHeight", &render_data.positions, 4, gl::FLOAT, false, 16, 0);
+        &render_data.positions
     }
 
     pub fn bind_render_data(&self, program: &tinygl::Program, first_tex_unit: usize) {

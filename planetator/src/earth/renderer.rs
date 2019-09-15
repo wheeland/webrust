@@ -735,7 +735,7 @@ impl Renderer {
         program.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
 
         for plate in &plates {
-            plate.borrow().bind_pos_height_buffer(program);
+            program.vertex_attrib_buffer("posHeight", plate.borrow().get_pos_height_buffer(), 4, gl::FLOAT, false, 16, 0);
             plate.borrow().indices().draw_all(gl::TRIANGLES);
         };
     }
