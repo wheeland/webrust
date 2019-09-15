@@ -6,6 +6,7 @@ use cgmath::*;
 use util3d::culling;
 use super::generator;
 use super::plate;
+use super::water;
 use super::channels::Channels;
 
 pub struct Planet {
@@ -258,6 +259,7 @@ pub struct Plate {
 
     generated_data: Option<generator::Result>,
     gpu_data: Option<GpuData>,
+    water_plate: Option<water::WaterPlate>,
     debug_color: Vector3<f32>,
 
     children: Option<[PlatePtr;4]>,
@@ -335,7 +337,8 @@ impl Plate {
             generated_data: None,
             debug_color: util3d::hsv(((position.x() + 100) * (position.y() + 200)) as f32, 1.0, 1.0),
             gpu_data: None,
-            children: None
+            children: None,
+            water_plate: None
         };
         if let Some(data) = render_data {
             ret.set_data(data);
@@ -503,6 +506,11 @@ impl Plate {
     pub fn indices(&self) -> &tinygl::IndexBuffer {
         let rd = self.gpu_data.as_ref().expect("Expected GpuData");
         &rd.indices
+    }
+
+    pub fn get_water_buffer(&mut self, water_plate_factory: &water::WaterPlateFactory) -> &tinygl::VertexBuffer {
+        water_plate_factory.update(&self.position(), &mut self.water_plate);
+        &self.water_plate.as_ref().unwrap().2
     }
 
     pub fn wireframe_count(&self) -> usize {
