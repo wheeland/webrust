@@ -15,18 +15,20 @@ pub struct WaterPlate (
 );
 
 impl WaterPlateFactory {
-    fn gen_indices(water_depth: u32) -> tinygl::IndexBuffer {
+    /// Generate index buffer for rendering of water-plates, with ribbons
+    fn gen_indices(water_depth: u32, ribbons: bool) -> tinygl::IndexBuffer {
         let mut indices = Vec::new();
-        let size = 2u16.pow(water_depth);
+        let size = 2i16.pow(water_depth);
+        let ofs = if ribbons { 1 } else { 0 };
 
-        for y in 0..size {
+        for y in -ofs..size+ofs {
             let y0base = (size + 3) * (y + 1);
             let y1base = (size + 3) * (y + 2);
-            for x in 0..size {
-                let i00 = y0base + x + 1;
-                let i01 = y1base + x + 1;
-                let i10 = y0base + x + 2;
-                let i11 = y1base + x + 2;
+            for x in -ofs..size+ofs {
+                let i00 = (y0base + x + 1) as u16;
+                let i01 = (y1base + x + 1) as u16;
+                let i10 = (y0base + x + 2) as u16;
+                let i11 = (y1base + x + 2) as u16;
                 indices.push(i00);
                 indices.push(i01);
                 indices.push(i11);
@@ -47,7 +49,7 @@ impl WaterPlateFactory {
             water_depth,
             texture_depth,
             tex_coords,
-            indices: Self::gen_indices(water_depth),
+            indices: Self::gen_indices(water_depth, false),
         }
     }
 
@@ -70,22 +72,29 @@ impl WaterPlateFactory {
         }
     }
 
+    /// Create vertex buffer with sphere coordinates for given position, including ribbon flag
     pub fn create(&self, plate: &super::plate::Position) -> tinygl::VertexBuffer {
         let mut vertices = Vec::new();
         let inv_vert_size = 1.0 / 2.0f32.powi(self.water_depth as _);
         let water_plate_size = 2i32.pow(self.water_depth);
+
         let mut vy = -inv_vert_size;
 
-        for _y in -1..water_plate_size+2 {
+        for y in -1..water_plate_size+2 {
             let mut vx = -inv_vert_size;
+            let yborder = (y == -1) || (y == water_plate_size + 1);
 
-            for _x in -1..water_plate_size+2 {
+            for x in -1..water_plate_size+2 {
+                let xborder = (x == -1) || (x == water_plate_size + 1);
                 let sphere = plate.uv_to_sphere(&Vector2::new(vx, vy));
                 vertices.push(sphere.x);
                 vertices.push(sphere.y);
                 vertices.push(sphere.z);
+                // vertices.push(if xborder || yborder { 1.0 } else { 0.0 });
+
                 vx += inv_vert_size;
             }
+
             vy += inv_vert_size;
         }
 
