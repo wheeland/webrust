@@ -76,7 +76,7 @@ fn create_water_program() -> tinygl::Program {
         uniform float waterHeight;
         uniform float waterTime;
         uniform float farPlane;
-        in vec3 sphereCoords;
+        in vec4 sphereCoordsBorder;
         in vec2 texCoords;
         out vec3 pos;
         out vec2 tc;
@@ -84,7 +84,8 @@ fn create_water_program() -> tinygl::Program {
         void main()
         {
             tc = texCoords;
-            pos = sphereCoords * (radius + waterHeight);
+            float ribbon = 0.01 * sphereCoordsBorder.w * 0.01;
+            pos = sphereCoordsBorder.xyz * (radius + waterHeight - ribbon);
 
             vec4 cpos = mvp * vec4(pos, 1.0);
             // float C = 1.0;
@@ -766,7 +767,7 @@ impl Renderer {
             water_plate.bind_height_texture(0);
             water_plate.bind_normal_texture(1);
             let water_buffer = water_plate.get_water_buffer(&self.water_plate_factory);
-            self.program_water.vertex_attrib_buffer("sphereCoords", &water_buffer, 3, gl::FLOAT, false, 12, 0);
+            self.program_water.vertex_attrib_buffer("sphereCoordsBorder", &water_buffer, 4, gl::FLOAT, false, 16, 0);
             unsafe { gl::DrawElements(gl::TRIANGLES, water_idx_count, gl::UNSIGNED_SHORT, std::ptr::null()); }
         }
         self.program_water.disable_all_vertex_attribs();

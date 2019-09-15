@@ -49,7 +49,7 @@ impl WaterPlateFactory {
             water_depth,
             texture_depth,
             tex_coords,
-            indices: Self::gen_indices(water_depth, false),
+            indices: Self::gen_indices(water_depth, true),
         }
     }
 
@@ -90,7 +90,7 @@ impl WaterPlateFactory {
                 vertices.push(sphere.x);
                 vertices.push(sphere.y);
                 vertices.push(sphere.z);
-                // vertices.push(if xborder || yborder { 1.0 } else { 0.0 });
+                vertices.push(if xborder || yborder { 1.0 } else { 0.0 });
 
                 vx += inv_vert_size;
             }
