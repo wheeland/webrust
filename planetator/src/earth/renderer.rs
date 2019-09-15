@@ -106,7 +106,7 @@ fn create_water_program() -> tinygl::Program {
         {
             float terrainHeight = texture(heights, tc).r;
             vec3 terrainNormal = texture(normals, tc).xyz;
-            outNormalWf = vec4(terrainNormal, 0.0);
+            outNormalWf = vec4(vec3(0.5) + 0.5 * normalize(pos), 0.0);
             outPositionHeight = vec4(pos, terrainHeight);
         }
     ",
