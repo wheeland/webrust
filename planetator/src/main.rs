@@ -60,6 +60,7 @@ struct MyApp {
     renderer: earth::renderer::Renderer,
     postprocess: tinygl::Program,
     atmoshpere_in_scatter: f32,
+    water_time: f32,
 
     fsquad: tinygl::shapes::FullscreenQuad,
 }
@@ -145,6 +146,7 @@ fn create_postprocess_shader() -> tinygl::Program {
         uniform vec3 eyePosition;
         uniform vec3 sunDirection;
         uniform float inScatterFac;
+        uniform float waterSeed;
         uniform float angleToHorizon;
         uniform float terrainMaxHeight;
         uniform mat4 inverseViewProjectionMatrix;
@@ -154,6 +156,7 @@ fn create_postprocess_shader() -> tinygl::Program {
 
         ")
         + &shadowmap::ShadowMap::glsl()
+        + &util3d::noise::ShaderNoise::definitions()
         + &atmosphere::shader_source().replace("#version 300 es", "") +
         "
         in vec2 clipPos;
@@ -211,22 +214,13 @@ fn create_postprocess_shader() -> tinygl::Program {
             vec4 pColorReflectivity = texture(planetColor, vec2(0.5) + 0.5 * clipPos);
             vec3 pColor = pColorReflectivity.rgb;
             vec4 pPosHeight = texture(planetPosition, vec2(0.5) + 0.5 * clipPos);
+            vec3 vertical = normalize(pPosHeight.xyz);
             float eyeToTerrainDist = length(pPosHeight.xyz - eyePosition);
             vec3 actualSurfaceNormal = vec3(-1.0) + 2.0 * normalFromTex.xyz;
 
-            //
-            // Incorporate reflectivity for water rendering
-            //
-            float waterSpecularity = 0.0;
-            if (pColorReflectivity.a > 0.0) {
-                // adjust normal
-                actualSurfaceNormal = normalize(pPosHeight.xyz);
-                vec3 reflectedSunlight = reflect(sunDirection, actualSurfaceNormal);
-                float shininess = 100.0;
-                float nf = (shininess + 2.0) / 2.0;
-                vec3 viewDirection = (pPosHeight.xyz - eyePosition) / eyeToTerrainDist;
-                waterSpecularity = nf * pow(max(dot(reflectedSunlight, viewDirection), 0.0), shininess);
-            }
+            // correct normal to be vertical for water (only for shadow computation for now)
+            if (pColorReflectivity.a > 0.0)
+                actualSurfaceNormal = vertical;
 
             //
             // Find out if we are shadowed by the terrain, and interpolate between last and curr sun position
@@ -250,9 +244,36 @@ fn create_postprocess_shader() -> tinygl::Program {
             vec3 irradiance = sun_irradiance * sunVisibility + sky_irradiance * skyVisibility;
             vec3 ground_radiance = pColor * (1.0 / PI) * irradiance;
 
-            // add water reflectivity
-            vec3 sunlight = vec3(0.008, 0.008, 0.006);
-            ground_radiance += waterSpecularity * pColorReflectivity.a * sunlight * (sun_irradiance + sky_irradiance);
+            //
+            // Incorporate reflectivity for water rendering
+            //
+            if (pColorReflectivity.a > 0.0) {
+                vec3 viewDirection = (pPosHeight.xyz - eyePosition) / eyeToTerrainDist;
+                float shininess = 100.0;
+                vec3 sunlight = vec3(0.008, 0.008, 0.006);
+
+                // add some distortion to water normal
+                // the amount of distortion depends on the viewing distance and angle,
+                // in order to not create pixely glitter artifacts
+
+                for (int i = 0; i <= 3; ++i) {
+                    vec3 grad;
+                    float glitter_scale = 150.0 * pow(4.0, float(i));
+                    noise_grad(pPosHeight.xyz * glitter_scale + vertical * waterSeed, grad);
+                    float glitter_angle = max(-dot(viewDirection, actualSurfaceNormal), 0.0);
+                    float glitter_dist = 1.0 / eyeToTerrainDist;
+                    float glitter = min(15.0 * glitter_angle * glitter_dist / glitter_scale, 1.0);
+                    actualSurfaceNormal += grad * glitter * 0.2;
+                }
+
+                actualSurfaceNormal = normalize(actualSurfaceNormal);
+
+                // compute specular highlight
+                vec3 reflectedSunlight = reflect(sunDirection, actualSurfaceNormal);
+                float nf = (shininess + 2.0) / 2.0;
+                float waterSpecularity = nf * pow(max(dot(reflectedSunlight, viewDirection), 0.0), shininess);
+                ground_radiance += waterSpecularity * pColorReflectivity.a * sunlight * (sun_irradiance + sky_irradiance);
+            }
 
             // float shadow_length =
             //     max(0.0, min(shadow_out, distance_to_intersection) - shadow_in) *
@@ -316,6 +337,7 @@ impl webrunner::WebApp for MyApp {
             sun_lon: 0.0,
             sun_lat: 0.0,
             atmoshpere_in_scatter: 1.0,
+            water_time: 0.0,
             renderer: earth::renderer::Renderer::new(),
             shadows: shadowmap::ShadowMap::new(100.0),
             postprocess: create_postprocess_shader(),
@@ -330,6 +352,12 @@ impl webrunner::WebApp for MyApp {
     fn render(&mut self, dt: f32) {
         self.fps.push(dt);
         let radius = self.renderer.radius();
+
+        // advance water glitter
+        self.water_time += dt;
+        let water_phase = 1000.0;
+        if self.water_time > water_phase { self.water_time -= water_phase; };
+        let water_seed = (water_phase - self.water_time * 2.0).abs();
 
         //
         // advance camera
@@ -384,7 +412,7 @@ impl webrunner::WebApp for MyApp {
         self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
         self.postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));
         self.postprocess.uniform("planetRadius", tinygl::Uniform::Float(radius));
-        // self.postprocess.uniform("waterLevel", tinygl::Uniform::Float(self.water_level));
+        self.postprocess.uniform("waterSeed", tinygl::Uniform::Float(water_seed));
         self.postprocess.uniform("inScatterFac", tinygl::Uniform::Float(self.atmoshpere_in_scatter));
         atmosphere::prepare_shader(self.postprocess.handle().unwrap(), 4 + self.shadows.num_textures());
 

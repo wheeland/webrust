@@ -62,7 +62,6 @@ pub struct Renderer {
     water_plate_factory: WaterPlateFactory,
     water_depth: u32,
     water_height: f32,
-    water_wavetime: f32,
 
     // errors to be picked up by y'all
     errors_generator: Option<String>,
@@ -74,7 +73,6 @@ fn create_water_program() -> tinygl::Program {
         uniform mat4 mvp;
         uniform float radius;
         uniform float waterHeight;
-        uniform float waterTime;
         uniform float farPlane;
         in vec4 posHeight;
         in float isRibbon;
@@ -443,7 +441,6 @@ impl Renderer {
             water_plate_factory: WaterPlateFactory::new(6, 6, 0),
             water_height: 1.0,
             water_depth: 6,
-            water_wavetime: 0.0,
 
             generator: default_generator(),
             channels,
@@ -747,13 +744,11 @@ impl Renderer {
         // Render water on top of terrain
         //
         let water_plates = planet.rendered_water_plates(&culler, self.water_height);
-        self.water_wavetime = (self.water_wavetime + dt).fract();
         self.program_water.bind();
         self.program_water.uniform("mvp", tinygl::Uniform::Mat4(mvp));
         self.program_water.uniform("farPlane", tinygl::Uniform::Float(self.camera.far()));
         self.program_water.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
         self.program_water.uniform("waterHeight", tinygl::Uniform::Float(self.water_height));
-        self.program_water.uniform("waterTime", tinygl::Uniform::Float(self.water_wavetime));
         self.program_water.uniform("heights", tinygl::Uniform::Signed(0));
         self.program_water.uniform("normals", tinygl::Uniform::Signed(1));
         self.program_water.vertex_attrib_buffer("texCoords", planet.plate_coords(), 2, gl::UNSIGNED_SHORT, true, 4, 0);
