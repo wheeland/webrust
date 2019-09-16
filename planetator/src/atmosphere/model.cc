@@ -374,7 +374,7 @@ class Program {
       PrintProgramLog(program);
     }
     assert(link_status == GL_TRUE);
-    assert(glGetError() == 0);
+    //assert(glGetError() == 0);
   }
 
   static void PrintProgramLog(GLuint program) {
@@ -945,7 +945,7 @@ void Model::Init(unsigned int num_scattering_orders) {
   glDeleteTextures(1, &delta_mie_scattering_texture);
   glDeleteTextures(1, &delta_rayleigh_scattering_texture);
   glDeleteTextures(1, &delta_irradiance_texture);
-  assert(glGetError() == 0);
+  //assert(glGetError() == 0);
 }
 
 /*
