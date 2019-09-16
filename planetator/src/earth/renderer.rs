@@ -76,7 +76,8 @@ fn create_water_program() -> tinygl::Program {
         uniform float waterHeight;
         uniform float waterTime;
         uniform float farPlane;
-        in vec4 sphereCoordsBorder;
+        in vec4 posHeight;
+        in float isRibbon;
         in vec2 texCoords;
         out vec3 pos;
         out vec2 tc;
@@ -84,8 +85,7 @@ fn create_water_program() -> tinygl::Program {
         void main()
         {
             tc = texCoords;
-            float ribbon = 0.01 * sphereCoordsBorder.w * 0.01;
-            pos = sphereCoordsBorder.xyz * (radius + waterHeight - ribbon);
+            pos = posHeight.xyz * (radius + waterHeight - isRibbon);
 
             vec4 cpos = mvp * vec4(pos, 1.0);
             // float C = 1.0;
@@ -96,8 +96,6 @@ fn create_water_program() -> tinygl::Program {
         "
         layout(location = 0) out vec4 outNormalWf;
         layout(location = 1) out vec4 outPositionHeight;
-        uniform float radius;
-        uniform float waterHeight;
         uniform sampler2D heights;
         uniform sampler2D normals;
         in vec3 pos;
@@ -105,8 +103,7 @@ fn create_water_program() -> tinygl::Program {
         void main()
         {
             float terrainHeight = texture(heights, tc).r;
-            vec3 terrainNormal = texture(normals, tc).xyz;
-            outNormalWf = vec4(vec3(0.5) + 0.5 * normalize(pos), 0.0);
+            outNormalWf = vec4(texture(normals, tc).xyz, 0.0);
             outPositionHeight = vec4(pos, terrainHeight);
         }
     ",
@@ -759,16 +756,15 @@ impl Renderer {
         self.program_water.uniform("waterTime", tinygl::Uniform::Float(self.water_wavetime));
         self.program_water.uniform("heights", tinygl::Uniform::Signed(0));
         self.program_water.uniform("normals", tinygl::Uniform::Signed(1));
-        self.program_water.vertex_attrib_buffer("texCoords", self.water_plate_factory.tex_coords(), 2, gl::UNSIGNED_SHORT, true, 4, 0);
-        unsafe { gl::ActiveTexture(gl::TEXTURE0); }
+        self.program_water.vertex_attrib_buffer("texCoords", planet.plate_coords(), 2, gl::UNSIGNED_SHORT, true, 4, 0);
+        self.program_water.vertex_attrib_buffer("isRibbon", self.water_plate_factory.ribbons(), 1, gl::UNSIGNED_BYTE, true, 1, 0);
         let water_idx_count = self.water_plate_factory.indices().count() as _;
         self.water_plate_factory.indices().bind();
         for water_plate in water_plates {
-            let mut water_plate = water_plate.borrow_mut();
+            let water_plate = water_plate.borrow();
             water_plate.bind_height_texture(0);
             water_plate.bind_normal_texture(1);
-            let water_buffer = water_plate.get_water_buffer(&self.water_plate_factory);
-            self.program_water.vertex_attrib_buffer("sphereCoordsBorder", &water_buffer, 4, gl::FLOAT, false, 16, 0);
+            self.program_water.vertex_attrib_buffer("posHeight", water_plate.get_pos_height_buffer(), 4, gl::FLOAT, false, 16, 0);
             unsafe { gl::DrawElements(gl::TRIANGLES, water_idx_count, gl::UNSIGNED_SHORT, std::ptr::null()); }
         }
         self.program_water.disable_all_vertex_attribs();

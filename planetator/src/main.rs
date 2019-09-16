@@ -215,6 +215,20 @@ fn create_postprocess_shader() -> tinygl::Program {
             vec3 actualSurfaceNormal = vec3(-1.0) + 2.0 * normalFromTex.xyz;
 
             //
+            // Incorporate reflectivity for water rendering
+            //
+            float waterSpecularity = 0.0;
+            if (pColorReflectivity.a > 0.0) {
+                // adjust normal
+                actualSurfaceNormal = normalize(pPosHeight.xyz);
+                vec3 reflectedSunlight = reflect(sunDirection, actualSurfaceNormal);
+                float shininess = 100.0;
+                float nf = (shininess + 2.0) / 2.0;
+                vec3 viewDirection = (pPosHeight.xyz - eyePosition) / eyeToTerrainDist;
+                waterSpecularity = nf * pow(max(dot(reflectedSunlight, viewDirection), 0.0), shininess);
+            }
+
+            //
             // Find out if we are shadowed by the terrain, and interpolate between last and curr sun position
             //
             float dotSun = dot(actualSurfaceNormal, sunDirection);
@@ -236,16 +250,9 @@ fn create_postprocess_shader() -> tinygl::Program {
             vec3 irradiance = sun_irradiance * sunVisibility + sky_irradiance * skyVisibility;
             vec3 ground_radiance = pColor * (1.0 / PI) * irradiance;
 
-            //
-            // Incorporate reflectivity
-            //
-            vec3 reflectedSunlight = reflect(sunDirection, actualSurfaceNormal);
-            float shininess = 100.0;
-            float nf = (shininess + 2.0) / 2.0;
-            vec3 viewDirection = (pPosHeight.xyz - eyePosition) / eyeToTerrainDist;
-            float specular = nf * pow(max(dot(reflectedSunlight, viewDirection), 0.0), shininess);
+            // add water reflectivity
             vec3 sunlight = vec3(0.008, 0.008, 0.006);
-            ground_radiance += specular * pColorReflectivity.a * sunlight * (sun_irradiance + sky_irradiance);
+            ground_radiance += waterSpecularity * pColorReflectivity.a * sunlight * (sun_irradiance + sky_irradiance);
 
             // float shadow_length =
             //     max(0.0, min(shadow_out, distance_to_intersection) - shadow_in) *
@@ -475,7 +482,7 @@ impl webrunner::WebApp for MyApp {
                 if ui.slider_int(im_str!("Water Size##platesizeslider"), &mut water_depth, 3, 7)
                         .display_format(im_str!("%.0f ({}x{})", watersz, watersz))
                         .build() {
-                    self.renderer.set_water_depth(water_depth as u32);
+                    self.renderer.set_water_depth(water_depth.min(plate_depth) as u32);
                 }
 
                 let mut delta = self.renderer.texture_delta() as i32;
