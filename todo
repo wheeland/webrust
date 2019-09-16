@@ -39,3 +39,6 @@ rendering tasks
     - add ocean with water waves
     - use atmospheric scattering global illumination maps for terrain coloring (PBR)
     - don't use heights texture, we don't really need it
+    - logarithmic depth -> needs vertical ribbons to work -> need to do one more post-processing step for em ribbons, or one more texture
+
+https://firespark.de/?id=article&article=ProceduralGenerationResources#terrain
