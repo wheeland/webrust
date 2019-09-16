@@ -426,7 +426,7 @@ vec3 _worley_get_cubic_pos(vec3 spherical, inout vec3 mainAxis)
 vec2 worley2(vec3 sphericalPos, int density_i, float maxShift)
 {
     float density = float(density_i);
-    vec3 mainAxis;
+    vec3 mainAxis = vec3(0.0);
     vec3 cubicPos = _worley_get_cubic_pos(sphericalPos, mainAxis);
     vec3 ofs1 = abs(mainAxis.yzx);
     vec3 ofs2 = abs(mainAxis.zxy);
@@ -475,7 +475,7 @@ vec2 worley2(vec3 sphericalPos, int density_i, float maxShift)
 vec2 worley3(vec3 sphericalPos, int density_i, float maxShift)
 {
     float density = float(density_i);
-    vec3 mainAxis;
+    vec3 mainAxis = vec3(0.0);
     vec3 cubicPos = _worley_get_cubic_pos(sphericalPos, mainAxis);
     vec3 absMainAxis = abs(mainAxis);
 
