@@ -579,6 +579,7 @@ impl webrunner::WebApp for MyApp {
                 let mut radius = self.renderer.radius();
                 if ui.slider_float(im_str!("Radius##radiusslider"), &mut radius, 50.0, 1000.0).build() {
                     self.renderer.set_radius(radius);
+                    self.shadows.set_radius(radius);
                 }
 
                 ui.spacing(); ui.separator();
