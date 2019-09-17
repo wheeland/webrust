@@ -111,6 +111,8 @@ impl FlyCamera {
 
         self.neutral_view_dir = dx.cos() * self.neutral_view_dir + dx.sin() * self.right;
         self.vertical_angle += dy;
+        self.vertical_angle = self.vertical_angle.min(std::f32::consts::FRAC_PI_2);
+        self.vertical_angle = self.vertical_angle.max(-std::f32::consts::FRAC_PI_2);
 
         self.update();
     }
