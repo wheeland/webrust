@@ -499,7 +499,13 @@ impl Renderer {
     }
 
     pub fn get_surface_height(&self, position: &Vector3<f32>) -> f32 {
-        self.planet.as_ref().unwrap().get_surface_height(position)
+        let water = position.magnitude() - (self.planet_radius + self.water_height());
+        self.planet.as_ref().unwrap().get_surface_height(position).min(water)
+    }
+
+    pub fn get_camera_surface_height(&self) -> f32 {
+        let eye = self.camera.eye();
+        self.get_surface_height(&eye)
     }
 
     pub fn plate_depth(&self) -> u32 {
