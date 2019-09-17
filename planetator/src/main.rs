@@ -35,6 +35,14 @@ use cgmath::prelude::*;
 const HTML_INPUT_PLANET: &str = "input_loadsavegame";
 const HTML_INPUT_TEXTURE: &str = "input_texupload";
 
+const KEY_LEFT: Keycode = Keycode::Left;
+const KEY_RIGHT: Keycode = Keycode::Right;
+const KEY_UP: Keycode = Keycode::RShift;
+const KEY_DOWN: Keycode = Keycode::RCtrl;
+const KEY_FORWARDS: Keycode = Keycode::Up;
+const KEY_BACKWARDS: Keycode = Keycode::Down;
+const KEY_TOGGLE_FLY: Keycode = Keycode::Return;
+
 struct MyApp {
     windowsize: (u32, u32),
     errors: Vec<String>,
@@ -54,6 +62,10 @@ struct MyApp {
     sun_speed: f32,
     sun_lon: f32,
     sun_lat: f32,
+
+    flying: bool,
+    fly_speed: f32,
+    fall_speed: f32,
 
     shadows: shadowmap::ShadowMap,
 
@@ -87,6 +99,49 @@ impl MyApp {
             }
 
             self.edit_generator.works();
+        }
+    }
+
+    fn advance_camera(&mut self, dt: f32, radius: f32) {
+        let cdx = (if self.pressed(KEY_LEFT) {0.0} else {1.0}) + (if self.pressed(KEY_RIGHT) {0.0} else {-1.0});
+        let cdy = (if self.pressed(KEY_BACKWARDS) {0.0} else {1.0}) + (if self.pressed(KEY_FORWARDS) {0.0} else {-1.0});
+        let cdz = (if self.pressed(KEY_DOWN) {0.0} else {1.0}) + (if self.pressed(KEY_UP) {0.0} else {-1.0});
+
+        if self.flying {
+            self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, cdz, cdy) * dt));
+            let height = self.renderer.camera().eye().magnitude() - radius;
+            self.renderer.camera().set_move_speed(self.fly_speed * height.max(0.01));
+        }
+
+        let eye = self.renderer.camera().eye();
+        let cam_height = self.renderer.get_surface_height(&eye);
+        let min_cam_height = 0.02;
+        let on_ground_threshold = 0.03;
+        let walk_speed = on_ground_threshold * 0.15;
+
+        // walk and/or jump
+        if !self.flying {
+            // add gravity
+            if cam_height > min_cam_height {
+                self.fall_speed -= dt * 0.1;
+            }
+            // fall
+            self.renderer.camera().move_up(self.fall_speed * dt);
+            // move/jump, if on ground
+            if cam_height < on_ground_threshold {
+                self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, 0.0, cdy) * dt * walk_speed));
+                if self.fall_speed <= 0.0 && self.pressed(KEY_UP) {
+                    self.fall_speed += 1.0;
+                }
+            }
+
+            // println!("speed={}, cam_height={}", self.fall_speed, cam_height);
+        }
+
+        // keep above ground
+        if cam_height < min_cam_height {
+            self.renderer.camera().move_up(min_cam_height - cam_height);
+            self.fall_speed = 0.0;
         }
     }
 
@@ -342,6 +397,9 @@ impl webrunner::WebApp for MyApp {
             shadows: shadowmap::ShadowMap::new(100.0),
             postprocess: create_postprocess_shader(),
             fsquad: tinygl::shapes::FullscreenQuad::new(),
+            flying: true,
+            fly_speed: 0.5,
+            fall_speed: 0.0,
         }
     }
 
@@ -359,21 +417,11 @@ impl webrunner::WebApp for MyApp {
         if self.water_time > water_phase { self.water_time -= water_phase; };
         let water_seed = (water_phase - self.water_time * 2.0).abs();
 
-        //
-        // advance camera
-        //
-        let cdx = (if self.pressed(Keycode::A) {0.0} else {1.0}) + (if self.pressed(Keycode::D) {0.0} else {-1.0});
-        let cdy = (if self.pressed(Keycode::S) {0.0} else {1.0}) + (if self.pressed(Keycode::W) {0.0} else {-1.0});
-        let cdz = (if self.pressed(Keycode::LShift) {0.0} else {1.0}) + (if self.pressed(Keycode::Space) {0.0} else {-1.0});
-        let speed = if self.pressed(Keycode::LCtrl) { 0.2 * dt } else { dt };
-        self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, cdz, cdy) * speed));
-        let mvp = self.renderer.camera().mvp(self.windowsize, false);
-        let eye = self.renderer.camera().eye();
-        let look = self.renderer.camera().look();
+        self.advance_camera(dt, radius);
 
-        let camspeed = 2.0;
-        let cam_height = self.renderer.get_surface_height(&eye);
-        self.renderer.camera().set_move_speed(camspeed * cam_height.max(0.01));
+        let eye = self.renderer.camera().eye();
+        let mvp = self.renderer.camera().mvp(self.windowsize, false);
+        let look = self.renderer.camera().look();
 
         //
         // render planet into FBO
@@ -438,6 +486,16 @@ impl webrunner::WebApp for MyApp {
             .position((0.0, 80.0), ImGuiCond::Always)
             .constraints((200.0, 200.0), (1000.0, 1000.0))
             .build(|| {
+                // Movement settings
+                if ui.collapsing_header(im_str!("Movement")).default_open(false).build() {
+                    ui.text("Controls:");
+                    ui.text("Move:       Arrow keys");
+                    ui.text("Up/Down:    Shift/Space");
+                    ui.text("Look:       Left Mouse Btn");
+                    ui.text("Toggle Fly: Return");
+                    ui.text("Fly Speed:  Mouse Wheel");
+                }
+
                 // Triangulation settings
                 if ui.collapsing_header(im_str!("Triangulation")).default_open(false).build() {
                     ui.text(format!("Plates: {}", self.renderer.rendered_plates()));
@@ -723,6 +781,9 @@ impl webrunner::WebApp for MyApp {
 
     fn event(&mut self, event: &Event) {
         match event {
+            Event::MouseWheel{y, ..} => {
+                self.fly_speed = (self.fly_speed * 1.1f32.powi(y.signum())).max(0.1).min(10.0);
+            },
             Event::MouseButtonDown{mouse_btn, x, y, ..} => {
                 if *mouse_btn == MouseButton::Left {
                     self.current_mouse_press = Some((*x, *y));
@@ -743,6 +804,9 @@ impl webrunner::WebApp for MyApp {
             Event::KeyDown{keycode, .. } => {
                 if let Some(keycode) = keycode {
                     self.keyboard.insert(*keycode, true);
+                    if *keycode == KEY_TOGGLE_FLY {
+                        self.flying = !self.flying;
+                    }
                 }
             },
             Event::KeyUp{keycode, .. } => {

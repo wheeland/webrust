@@ -49,6 +49,11 @@ impl FlyCamera {
         self.position = self.position.normalize() * (new_radius + height);
     }
 
+    pub fn move_up(&mut self, amount: f32) {
+        self.position += self.position.normalize() * amount;
+        self.update();
+    }
+
     pub fn look(&self) -> Vector3<f32> {
         self.look
     }
@@ -59,6 +64,10 @@ impl FlyCamera {
 
     pub fn view_matrix(&self) -> Matrix4<f32> {
         self.view_matrix
+    }
+
+    pub fn move_speed(&self) -> f32 {
+        self.speed_move
     }
 
     pub fn set_move_speed(&mut self, value: f32) {
