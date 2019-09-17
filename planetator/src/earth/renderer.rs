@@ -68,7 +68,7 @@ pub struct Renderer {
     errors_colorator: Option<String>,
 }
 
-fn create_water_program() -> tinygl::Program {
+fn create_water_program(channels: &Channels) -> tinygl::Program {
     tinygl::Program::new_versioned("
         uniform mat4 mvp;
         uniform float radius;
@@ -91,9 +91,11 @@ fn create_water_program() -> tinygl::Program {
 
             gl_Position = cpos;
         }",
-        "
+        &(String::from("
         layout(location = 0) out vec4 outNormalWf;
         layout(location = 1) out vec4 outPositionHeight;
+        ") + &channels.glsl_texture_declarations() + "
+        " + &channels.glsl_output_declarations(2) + "
         uniform sampler2D heights;
         uniform sampler2D normals;
         in vec3 pos;
@@ -103,8 +105,9 @@ fn create_water_program() -> tinygl::Program {
             float terrainHeight = texture(heights, tc).r;
             outNormalWf = vec4(texture(normals, tc).xyz, 0.0);
             outPositionHeight = vec4(pos, terrainHeight);
+            " + &channels.glsl_assignments("tc") + "
         }
-    ",
+    "),
     300)
 }
 
@@ -419,7 +422,7 @@ impl Renderer {
             program_scene: Some(create_scene_program(&channels)),
             program_color: None,
             program_color_default: create_color_program(&colorator, &channels, &Vec::new()),
-            program_water: create_water_program(),
+            program_water: create_water_program(&channels),
 
             planet: None,
             plate_depth: 6,
@@ -581,6 +584,7 @@ impl Renderer {
             self.generator = generator.to_string();
             self.channels = Channels::from(channels);
             self.program_scene = Some(create_scene_program(&self.channels));
+            self.program_water = create_water_program(&self.channels);
             self.fbo_scene = None;  // need to re-create channels FBOs
         }
         ret
@@ -616,6 +620,7 @@ impl Renderer {
             self.channels = Channels::from(channels);
             self.recreate_program();
             self.program_scene = Some(create_scene_program(&self.channels));
+            self.program_water = create_water_program(&self.channels);
             self.fbo_scene = None;  // need to re-create channels FBOs
         }
         ret
@@ -755,17 +760,14 @@ impl Renderer {
         self.program_water.uniform("farPlane", tinygl::Uniform::Float(self.camera.far()));
         self.program_water.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
         self.program_water.uniform("waterHeight", tinygl::Uniform::Float(self.water_height));
-        self.program_water.uniform("heights", tinygl::Uniform::Signed(0));
-        self.program_water.uniform("normals", tinygl::Uniform::Signed(1));
+        self.program_water.uniform("normals", tinygl::Uniform::Signed(0));
+        self.program_water.uniform("heights", tinygl::Uniform::Signed(1));
         self.program_water.vertex_attrib_buffer("texCoords", planet.plate_coords(), 2, gl::UNSIGNED_SHORT, true, 4, 0);
         self.program_water.vertex_attrib_buffer("isRibbon", self.water_plate_factory.ribbons(), 1, gl::UNSIGNED_BYTE, true, 1, 0);
         let water_idx_count = self.water_plate_factory.indices().count() as _;
         self.water_plate_factory.indices().bind();
         for water_plate in water_plates {
-            let water_plate = water_plate.borrow();
-            water_plate.bind_height_texture(0);
-            water_plate.bind_normal_texture(1);
-            self.program_water.vertex_attrib_buffer("posHeight", water_plate.get_pos_height_buffer(), 4, gl::FLOAT, false, 16, 0);
+            water_plate.borrow().bind_render_data(&self.program_water, 0);
             unsafe { gl::DrawElements(gl::TRIANGLES, water_idx_count, gl::UNSIGNED_SHORT, std::ptr::null()); }
         }
         self.program_water.disable_all_vertex_attribs();
