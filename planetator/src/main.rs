@@ -65,7 +65,9 @@ struct MyApp {
 
     flying: bool,
     fly_speed: f32,
-    fall_speed: f32,
+    walk_speed: cgmath::Vector3<f32>,
+    vertical_speed: f32,
+    jump_flag: bool,
 
     shadows: shadowmap::ShadowMap,
 
@@ -103,45 +105,69 @@ impl MyApp {
     }
 
     fn advance_camera(&mut self, dt: f32, radius: f32) {
-        let cdx = (if self.pressed(KEY_LEFT) {0.0} else {1.0}) + (if self.pressed(KEY_RIGHT) {0.0} else {-1.0});
-        let cdy = (if self.pressed(KEY_BACKWARDS) {0.0} else {1.0}) + (if self.pressed(KEY_FORWARDS) {0.0} else {-1.0});
-        let cdz = (if self.pressed(KEY_DOWN) {0.0} else {1.0}) + (if self.pressed(KEY_UP) {0.0} else {-1.0});
+        let min_height = 0.02;
+
+        let dir = |neg, pos| {
+            (if neg {-1.0} else {0.0}) + (if pos {1.0} else {0.0})
+        };
+        let cdx = dir(self.pressed(KEY_LEFT), self.pressed(KEY_RIGHT));
+        let cdy = dir(self.pressed(KEY_BACKWARDS), self.pressed(KEY_FORWARDS));
+        let cdz = dir(self.pressed(KEY_DOWN), self.pressed(KEY_UP));
 
         if self.flying {
             self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, cdz, cdy) * dt));
             let height = self.renderer.camera().eye().magnitude() - radius;
             self.renderer.camera().set_move_speed(self.fly_speed * height.max(0.01));
-        }
 
-        let eye = self.renderer.camera().eye();
-        let cam_height = self.renderer.get_surface_height(&eye);
-        let min_cam_height = 0.02;
-        let on_ground_threshold = 0.03;
-        let walk_speed = on_ground_threshold * 0.15;
-
-        // walk and/or jump
-        if !self.flying {
-            // add gravity
-            if cam_height > min_cam_height {
-                self.fall_speed -= dt * 0.1;
+            // keep above ground
+            let cam_height = self.renderer.get_camera_surface_height();
+            if cam_height < min_height {
+                self.renderer.camera().move_up(min_height - cam_height);
             }
-            // fall
-            self.renderer.camera().move_up(self.fall_speed * dt);
-            // move/jump, if on ground
-            if cam_height < on_ground_threshold {
-                self.renderer.camera().translate(&(cgmath::Vector3::new(cdx, 0.0, cdy) * dt * walk_speed));
-                if self.fall_speed <= 0.0 && self.pressed(KEY_UP) {
-                    self.fall_speed += 1.0;
+        }
+        else {
+            let max_walk_speed = min_height * 2.0;
+            let cam_height = self.renderer.get_camera_surface_height();
+
+            let float_height = min_height * 1.1;    // player will float up to this height smoothly
+            let gravity_height = min_height * 1.2;  // gravity kicks in
+            let contact_height = min_height * 1.3;  // player will have contact to floor up to this height
+
+            // set walking speed, if on ground
+            if cam_height < contact_height {
+                let mut walk_direction = cdy * self.renderer.camera().neutral_view_dir() + cdx * self.renderer.camera().right();
+                walk_direction /= walk_direction.magnitude().max(1.0);
+                self.walk_speed = walk_direction * max_walk_speed;
+
+                // they say jump, you say 'how high?'
+                if self.jump_flag {
+                    self.vertical_speed += 0.05;
+                    self.jump_flag = false;
                 }
             }
+            // add gravity otherwise
+            if cam_height > gravity_height {
+                self.vertical_speed -= 0.1 * dt;
+            } else {
+                self.vertical_speed = self.vertical_speed.max(0.0);
+            }
 
-            // println!("speed={}, cam_height={}", self.fall_speed, cam_height);
-        }
+            let normal = self.renderer.camera().eye().normalize();
+            let mut speed = self.walk_speed + normal * self.vertical_speed;
 
-        // keep above ground
-        if cam_height < min_cam_height {
-            self.renderer.camera().move_up(min_cam_height - cam_height);
-            self.fall_speed = 0.0;
+            // add static anti-gravity, if below ground (proportional to below-ness!)
+            if cam_height < float_height {
+                speed += normal * 0.01;
+            }
+
+            // move it!
+            self.renderer.camera().translate_absolute(&(speed * dt));
+
+            // keep above ground!
+            let cam_height = self.renderer.get_camera_surface_height();
+            if cam_height < min_height {
+                self.renderer.camera().move_up(min_height - cam_height);
+            }
         }
     }
 
@@ -399,7 +425,9 @@ impl webrunner::WebApp for MyApp {
             fsquad: tinygl::shapes::FullscreenQuad::new(),
             flying: true,
             fly_speed: 0.5,
-            fall_speed: 0.0,
+            walk_speed: cgmath::Vector3::new(0.0, 0.0, 0.0),
+            vertical_speed: 0.0,
+            jump_flag: false,
         }
     }
 
@@ -805,8 +833,10 @@ impl webrunner::WebApp for MyApp {
             Event::KeyDown{keycode, .. } => {
                 if let Some(keycode) = keycode {
                     self.keyboard.insert(*keycode, true);
-                    if *keycode == KEY_TOGGLE_FLY {
-                        self.flying = !self.flying;
+                    match *keycode {
+                        KEY_TOGGLE_FLY => self.flying = !self.flying,
+                        KEY_UP => self.jump_flag = true,
+                        _ => {}
                     }
                 }
             },
