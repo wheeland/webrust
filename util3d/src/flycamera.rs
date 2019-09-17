@@ -140,7 +140,7 @@ impl FlyCamera {
     }
 
     pub fn near(&self) -> f32 {
-        0.00001 * self.far()
+        0.01
     }
 
     pub fn far(&self) -> f32 {

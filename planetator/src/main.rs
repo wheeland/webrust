@@ -105,7 +105,7 @@ impl MyApp {
     }
 
     fn advance_camera(&mut self, dt: f32, radius: f32) {
-        let min_height = 0.02;
+        let min_height = 0.0003 * self.renderer.radius();
 
         let dir = |neg, pos| {
             (if neg {-1.0} else {0.0}) + (if pos {1.0} else {0.0})
