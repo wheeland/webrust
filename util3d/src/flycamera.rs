@@ -47,6 +47,7 @@ impl FlyCamera {
         let height = self.position.magnitude() - self.radius;
         self.radius = new_radius;
         self.position = self.position.normalize() * (new_radius + height);
+        self.update();
     }
 
     pub fn move_up(&mut self, amount: f32) {
@@ -60,6 +61,14 @@ impl FlyCamera {
 
     pub fn up(&self) -> Vector3<f32> {
         self.up
+    }
+
+    pub fn right(&self) -> Vector3<f32> {
+        self.right
+    }
+
+    pub fn neutral_view_dir(&self) -> Vector3<f32> {
+        self.neutral_view_dir
     }
 
     pub fn view_matrix(&self) -> Matrix4<f32> {
@@ -91,6 +100,18 @@ impl FlyCamera {
                                             self.up);
     }
 
+    pub fn translate_absolute(&mut self, delta: &Vector3<f32>) {
+        self.position += *delta;
+
+        // limit eye to be within maximum distance to planet
+        let len = self.position.magnitude();
+        if len > 5.0 * self.radius {
+            self.position *= 5.0 * self.radius / len;
+        }
+
+        self.update();
+    }
+
     pub fn translate(&mut self, rel: &Vector3<f32>) {
         let nonside_delta = self.speed_move * (self.look * rel.z + self.up * rel.y);
         let delta = nonside_delta + self.speed_move * (self.right * rel.x);
@@ -103,15 +124,7 @@ impl FlyCamera {
             }
         }
 
-        self.position += delta;
-
-        // limit eye to be within maximum distance to planet
-        let len = self.position.magnitude();
-        if len > 5.0 * self.radius {
-            self.position *= 5.0 * self.radius / len;
-        }
-
-        self.update();
+        self.translate_absolute(&delta);
     }
 
     pub fn pan(&mut self, dx: f32, dy: f32) {
