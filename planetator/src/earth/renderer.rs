@@ -156,12 +156,12 @@ impl Renderer {
         }
     }
 
-    pub fn new() -> Self {
+    pub fn new(planet_radius: f32) -> Self {
         let colorator = default_colorator().to_string();
         let channels = Channels::new();
 
         let mut ret = Renderer {
-            camera: FlyCamera::new(100.0),
+            camera: FlyCamera::new(planet_radius),
             program_plates: Some(create_plates_program(&channels)),
             program_color: None,
             program_color_default: create_color_program(&colorator, &channels, &Vec::new()),
@@ -170,7 +170,7 @@ impl Renderer {
             planet: None,
             plate_depth: 6,
             texture_delta: 0,
-            planet_radius: 100.0,
+            planet_radius,
 
             wireframe: false,
             reduce_poly_count: true,
@@ -185,7 +185,7 @@ impl Renderer {
             fbo_color: None,
             fsquad: tinygl::shapes::FullscreenQuad::new(),
             water_plate_factory: WaterPlateFactory::new(6, 6, 0),
-            water_height: 1.0,
+            water_height: 0.0,
             water_depth: 6,
 
             generator: default_generator().to_string(),

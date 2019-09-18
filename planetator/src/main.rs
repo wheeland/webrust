@@ -126,7 +126,7 @@ impl MyApp {
             }
         }
         else {
-            let max_walk_speed = min_height * 2.0;
+            let max_walk_speed = min_height * 3.0;
             let cam_height = self.renderer.get_camera_surface_height();
 
             let float_height = min_height * 1.1;    // player will float up to this height smoothly
@@ -141,13 +141,13 @@ impl MyApp {
 
                 // they say jump, you say 'how high?'
                 if self.jump_flag {
-                    self.vertical_speed += 0.05;
+                    self.vertical_speed += min_height * 4.0;
                     self.jump_flag = false;
                 }
             }
             // add gravity otherwise
             if cam_height > gravity_height {
-                self.vertical_speed -= 0.1 * dt;
+                self.vertical_speed -= min_height * 8.0 * dt;
             } else {
                 self.vertical_speed = self.vertical_speed.max(0.0);
             }
@@ -157,7 +157,7 @@ impl MyApp {
 
             // add static anti-gravity, if below ground (proportional to below-ness!)
             if cam_height < float_height {
-                speed += normal * 0.01;
+                speed += normal * min_height;
             }
 
             // move it!
@@ -228,6 +228,8 @@ impl webrunner::WebApp for MyApp {
         #[cfg(target_os = "emscripten")] fileload::start_upload(HTML_INPUT_PLANET);
         #[cfg(target_os = "emscripten")] fileload::start_upload(HTML_INPUT_TEXTURE);
 
+        let radius = 300.0;
+
         MyApp {
             windowsize,
             errors: Vec::new(),
@@ -243,10 +245,10 @@ impl webrunner::WebApp for MyApp {
             sun_speed: 0.0,
             sun_lon: 0.0,
             sun_lat: 0.0,
-            atmoshpere_in_scatter: 1.0,
+            atmoshpere_in_scatter: 0.6,
             water_time: 0.0,
-            renderer: earth::renderer::Renderer::new(),
-            shadows: shadowmap::ShadowMap::new(100.0),
+            renderer: earth::renderer::Renderer::new(radius),
+            shadows: shadowmap::ShadowMap::new(radius),
             postprocess: create_postprocess_shader(),
             fsquad: tinygl::shapes::FullscreenQuad::new(),
             flying: true,

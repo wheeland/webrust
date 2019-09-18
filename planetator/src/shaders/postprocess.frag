@@ -97,6 +97,7 @@ void main() {
     //
     vec3 sky_irradiance;
     vec3 sun_irradiance = GetSunAndSkyIrradiance(pPosHeight.xyz / planetRadius, normalize(pPosHeight.xyz), sunDirection, sky_irradiance);
+    sky_irradiance = max(sky_irradiance, vec3(0.005, 0.008, 0.01));
     vec3 irradiance = sun_irradiance * sunVisibility + sky_irradiance * skyVisibility;
     vec3 ground_radiance = pColor * (1.0 / PI) * irradiance;
 
