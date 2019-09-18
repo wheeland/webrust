@@ -61,7 +61,8 @@ enum State {
         selected: Option<usize>,
         sort_by_score: bool,
         global: bool,
-    }
+    },
+    About,
 }
 
 struct TetrisApp {
@@ -113,6 +114,26 @@ fn play_sound(tagname: &str) {
 impl TetrisApp {
     fn save(&mut self, game: &tetris::game::Game) {
         self.requests.push(self.server.upload_replay(&self.player.name, game.replay()));
+    }
+
+    fn about_button<'ui>(&self, ui: &'ui imgui::Ui) -> bool {
+        let mut ret = false;
+        let sx = 120.0;
+        let sy = 50.0;
+        ui.window(im_str!("_about_button_window"))
+            .position((self.windowsize.0 - sx * self.ui_scale - 10.0, 10.0), ImGuiCond::Always)
+            .size((sx * self.ui_scale, sy * self.ui_scale), ImGuiCond::Always)
+            .title_bar(false)
+            .movable(false)
+            .resizable(false)
+            .collapsible(false)
+            .font_scale(1.5 * self.ui_scale).build(|| {
+                ui.set_cursor_pos((10.0 * self.ui_scale, 10.0 * self.ui_scale));
+                if ui.button(im_str!("About"), ((sx - 20.0) * self.ui_scale, (sy - 20.0) * self.ui_scale)) {
+                    ret = true;
+                }
+            });
+        ret
     }
 
     fn window<'ui,'p>(&self, ui: &'ui imgui::Ui, name: &'p ImStr, pos: (f32, f32), size: (f32, f32), font_scale: f32) -> Window<'ui, 'p> {
@@ -341,6 +362,7 @@ impl webrunner::WebApp for TetrisApp {
             State::Highscores{selected, sort_by_score, global} => { bg = true; State::Highscores{selected, sort_by_score, global} },
             State::MainMenu => { bg = true; State::MainMenu },
             State::PreGame{keyconfig} => { bg = true; State::PreGame{keyconfig} },
+            State::About => { bg = true; State::About },
         });
 
         let nearfac = 0.1;
@@ -385,6 +407,9 @@ impl webrunner::WebApp for TetrisApp {
                         ret = State::Highscores{selected: None, sort_by_score: true, global: true};
                     }
                 });
+                if self.about_button(ui) {
+                    ret = State::About;
+                }
                 ret
             },
 
@@ -465,6 +490,10 @@ impl webrunner::WebApp for TetrisApp {
                         ui.separator();
                     }
                 });
+
+                if self.about_button(ui) {
+                    ret = Some(State::About);
+                }
 
                 ret.unwrap_or(State::Highscores{selected, sort_by_score, global})
             }
@@ -560,6 +589,10 @@ impl webrunner::WebApp for TetrisApp {
                     }
                 });
 
+                if self.about_button(ui) {
+                    ret = Some(State::About);
+                }
+
                 ret.unwrap_or(State::PreGame{keyconfig})
             }
             State::Game{game, paused, mut finished, dtime} => {
@@ -630,6 +663,38 @@ impl webrunner::WebApp for TetrisApp {
 
                 ret.unwrap_or(State::Replay{replayer})
             },
+            State::About => {
+                let sz = (300.0, 320.0);
+                let mut ret = State::About;
+                self.window(ui, im_str!("about_dialog"), (-0.5 * sz.0, -0.5 * sz.1), sz, 1.25).build(|| {
+                    let lines = vec!(
+                        "Written by Wieland Hagen",
+                        "",
+                        "Built using",
+                        " - Rust",
+                        " - emscripten",
+                        " - WebGL",
+                        " - imgui",
+                        "",
+                        "Info: wielandhagen@web.de",
+                        "",
+                        "Thanks for playing :)",
+                    );
+                    let mut y = 20.0;
+                    for l in &lines {
+                        ui.set_cursor_pos((20.0 * self.ui_scale, y * self.ui_scale));
+                        ui.text(l);
+                        y += 20.0;
+                    }
+
+                    let buttonsz = (150.0, 40.0);
+                    ui.set_cursor_pos((0.5 * self.ui_scale * (sz.0 - buttonsz.0), (sz.1 - buttonsz.1 - 20.0) * self.ui_scale));
+                    if ui.button(im_str!("Cool, dude!"), (buttonsz.0 * self.ui_scale, buttonsz.1 * self.ui_scale)) {
+                        ret = State::MainMenu;
+                    }
+                });
+                ret
+            }
         });
     }
 
