@@ -29,7 +29,7 @@ use util3d::noise;
 ///
 pub struct Renderer {
     camera: FlyCamera,
-    program_scene: Option<tinygl::Program>,
+    program_plates: Option<tinygl::Program>,
     program_water: tinygl::Program,
     program_color: Option<tinygl::Program>,
     program_color_default: tinygl::Program,
@@ -69,317 +69,60 @@ pub struct Renderer {
 }
 
 fn create_water_program(channels: &Channels) -> tinygl::Program {
-    tinygl::Program::new_versioned("
-        uniform mat4 mvp;
-        uniform float radius;
-        uniform float waterHeight;
-        uniform float farPlane;
-        in vec4 posHeight;
-        in float isRibbon;
-        in vec2 texCoords;
-        out vec3 pos;
-        out vec2 tc;
-
-        void main()
-        {
-            tc = texCoords;
-            pos = posHeight.xyz * (radius + waterHeight - isRibbon);
-
-            vec4 cpos = mvp * vec4(pos, 1.0);
-            // float C = 1.0;
-            // cpos.z = (2.0 * log(C * wpos.w + 1.0) / log(C * farPlane + 1.0) - 1.0) * wpos.w;
-
-            gl_Position = cpos;
-        }",
-        &(String::from("
-        layout(location = 0) out vec4 outNormalWf;
-        layout(location = 1) out vec4 outPositionHeight;
-        ") + &channels.glsl_texture_declarations() + "
-        " + &channels.glsl_output_declarations(2) + "
-        uniform sampler2D heights;
-        uniform sampler2D normals;
-        in vec3 pos;
-        in vec2 tc;
-        void main()
-        {
-            float terrainHeight = texture(heights, tc).r;
-            outNormalWf = vec4(texture(normals, tc).xyz, 0.0);
-            outPositionHeight = vec4(pos, terrainHeight);
-            " + &channels.glsl_assignments("tc") + "
-        }
-    "),
-    300)
+    let vert = include_str!("../shaders/render_water.vert");
+    let frag = include_str!("../shaders/render_water.frag");
+    let frag = frag.replace("$CHANNEL_OUTPUTS", &channels.glsl_texture_declarations());
+    let frag = frag.replace("$CHANNEL_TEXTURES", &channels.glsl_output_declarations(2));
+    let frag = frag.replace("$CHANNEL_ASSIGNMENTS", &channels.glsl_assignments("tc"));
+    tinygl::Program::new_versioned(vert, &frag, 300)
 }
 
-fn create_scene_program(channels: &Channels) -> tinygl::Program {
-    tinygl::Program::new_versioned("
-        uniform mat4 mvp;
-        uniform float radius;
-        uniform float wf;
-        uniform float farPlane;
-        in vec4 posHeight;
-        in vec2 plateCoords;
-        out vec2 plateTc;
-        out vec3 pos;
-
-        void main()
-        {
-            plateTc = plateCoords;
-            pos = posHeight.xyz * (posHeight.w + radius + 0.0001 * wf);
-
-            vec4 cpos = mvp * vec4(pos, 1.0);
-            // float C = 1.0;
-            // cpos.z = (2.0 * log(C * wpos.w + 1.0) / log(C * farPlane + 1.0) - 1.0) * wpos.w;
-
-            gl_Position = cpos;
-        }",
-        &(String::from("
-        uniform float wf;
-        uniform float radius;
-        uniform sampler2D tex_normals;
-        uniform sampler2D tex_heights;
-        in vec2 plateTc;
-        in vec3 pos;
-        layout(location = 0) out vec4 outNormalWf;
-        layout(location = 1) out vec4 outPositionHeight;
-        ") + &channels.glsl_texture_declarations() + "
-        " + &channels.glsl_output_declarations(2) + "
-
-        void main()
-        {
-            vec3 normalFromTex = texture(tex_normals, plateTc).xyz;
-            float height = texture(tex_heights, plateTc).r;
-            outNormalWf = vec4(normalFromTex, wf);
-            outPositionHeight = vec4(normalize(pos) * (radius + height), height);
-            " + &channels.glsl_assignments("plateTc") + "
-        }"), 300)
+fn create_plates_program(channels: &Channels) -> tinygl::Program {
+    let vert = include_str!("../shaders/render_plates.vert");
+    let frag = include_str!("../shaders/render_plates.frag");
+    let frag = frag.replace("$CHANNEL_OUTPUTS", &channels.glsl_texture_declarations());
+    let frag = frag.replace("$CHANNEL_TEXTURES", &channels.glsl_output_declarations(2));
+    let frag = frag.replace("$CHANNEL_ASSIGNMENTS", &channels.glsl_assignments("plateTc"));
+    tinygl::Program::new_versioned(vert, &frag, 300)
 }
 
 fn create_color_program(colorator: &str, channels: &Channels, textures: &Vec<(String, tinygl::Texture)>) -> tinygl::Program {
-    let vert_source = "
-        in vec2 vertex;
-        out vec2 tc_screen;
-        void main() {
-            tc_screen = vec2(0.5) + 0.5 * vertex;
-            gl_Position = vec4(vertex, 0.0, 1.0);
-        }";
+    let vert = include_str!("../shaders/render_color.vert");
 
-    let texture_function_definitions = textures
-        .iter()
-        .fold(String::new(), |acc, tex| {
-            let texname = String::from("_texture_") + &tex.0;
-            acc + "uniform sampler2D " + &texname + ";\n" +
-            "vec3 " + &tex.0 + "(float scale, float dropoff) {\n" +
-                // build actual scale factors for this and the two neighbor tiles, based on dropoff factor
-                "vec3 adjustedDists = clamp(uvDists / dropoff, vec3(0.0), vec3(1.0));\n" +
-                "vec2 factors = pow(vec2(1.0) - adjustedDists.xy, vec2(2.0));" +
-                "if (adjustedDists.z > 0.0) factors.y *= factors.x;\n" +
+    // TODO: proper texture filtering + borders for channel textures
 
-                // calculate some arbitrary, but stable gradient, so that texture filtering doesn't screw up
-                "vec2 globalUV = (scenePosition.xy + scenePosition.yz + scenePosition.zx) * scale;\n" +
-                "vec2 dUVdx = dFdx(globalUV);\n" +
-                "vec2 dUVdy = dFdy(globalUV);\n" +
-
-                // calculate how much the prime value is ahead of the others
-                "float primeness = smoothstep(1.2, 1.6, 1.0 / max(0.001, max(factors.x, factors.y)));\n" +
-
-                "vec3 ret = textureGrad(" + &texname + ", uv1 * scale, dUVdx, dUVdy).rgb;\n" +
-                "if (primeness > 0.0) {\n" +
-                    // improve on inigo quilez' algorithm a bit by stretching and invsmoothstep()ing the index
-                    "float r = -0.1 + 1.2 * noise(uv1 * scale);\n" +
-                    "r = (r + (r - (r * r * (3.0 - 2.0 * r))));\n;" +
-                    "float index = 4.0 * clamp(r, 0.0, 1.0);\n;" +
-                    "float i = floor(index);\n" +
-                    "float f = fract(index);\n" +
-                    "vec2 off1 = sin(vec2(3.0,7.0)*(i+0.0));\n" +
-                    "vec2 off2 = sin(vec2(3.0,7.0)*(i+1.0));\n" +
-                    "vec3 jumble1 = textureGrad(" + &texname + ", uv1 * scale + off1, dUVdx, dUVdy).rgb;\n" +
-                    "vec3 jumble2 = textureGrad(" + &texname + ", uv1 * scale + off2, dUVdx, dUVdy).rgb;\n" +
-                    "vec3 jumble = mix(jumble1, jumble2, smoothstep(0.1, 1.0, f));\n" +
-                    "ret = mix(ret, jumble, primeness);\n" +
-                "}\n" +
-                "if (factors.x > 0.0) ret += textureGrad(" + &texname + ", uv23.xy * scale, dUVdx, dUVdy).rgb * factors.x;\n" +
-                "if (factors.y > 0.0) ret += textureGrad(" + &texname + ", uv23.zw * scale, dUVdx, dUVdy).rgb * factors.y;\n" +
-                "return ret / (1.0 + factors.x + factors.y);\n}\n"
-        });
+    let texture_function_definitions = textures.iter().fold(String::new(), |acc, tex| {
+        let texname = String::from("_texture_") + &tex.0;
+        let src = include_str!("../shaders/render_color_texture.glsl");
+        let src = src.replace("$TEXNAME", &texname);
+        let src = src.replace("$FUNCNAME", &tex.0);
+        src
+    });
 
     let channel_variables = channels.glsl_base_declarations().iter().fold(
         String::new(), |acc, chan| acc + chan + ";\n"
     );
 
-    let frag_source = String::from("
-        uniform sampler2D scene_normal;
-        uniform sampler2D scene_position;
-        uniform float waterHeight;
-        in vec2 tc_screen;
-        layout(location = 0) out vec4 outColorReflectivity;
+    let icosahedron = include_str!("../shaders/render_color_icosahedron.glsl");
 
-        vec2 uv1;
-        vec4 uv23;
-        vec3 uvDists;
+    let frag = include_str!("../shaders/render_color.frag");
+    let frag = frag.replace("$CHANNEL_TEXTURES", &channels.glsl_texture_declarations());
+    let frag = frag.replace("$CHANNEL_VARIABLES", &channel_variables);
+    let frag = frag.replace("$CHANNEL_ASSIGNMENTS", &channels.glsl_assignments("tc_screen"));
+    let frag = frag.replace("$NOISE", noise::ShaderNoise::definitions());
+    let frag = frag.replace("$ICOSAHEDRON", icosahedron);
+    let frag = frag.replace("$TEXTURE_FUNCTIONS", &texture_function_definitions);
+    let frag = frag.replace("$COLORATOR", colorator);
 
-        vec3 sceneNormal;
-        vec3 scenePosition;
-
-        ") + &channels.glsl_texture_declarations() + "
-        " + &channel_variables + "
-        " + &noise::ShaderNoise::declarations() + "
-        " + &texture_function_definitions + "
-        \n#line 1\n" + colorator + "
-
-        " + &noise::ShaderNoise::definitions() + "
-        " + &super::icosahedron_defs::DEFS + "
-
-        vec3 _normUnit(vec3 v) {
-            vec3 L = abs(v);
-            return v / (L.x + L.y + L.z);
-        }
-
-        float _maxElem(vec3 v) {
-            return max(v.x, max(v.y, v.z));
-        }
-
-        vec2 _projectIntoUvSpace(vec3 position, vec3 normal) {
-            float x2 = normal.y + normal.z;
-            float y2 = normal.x + normal.z;
-            float z2 = (-normal.x * x2 - normal.y * y2) / normal.z;
-
-            vec3 dir1 = normalize(vec3(x2, y2, z2));
-            vec3 dir2 = cross(dir1, normal);
-
-            // project onto plane
-            vec3 onPlane = position - normal * dot(position, normal);
-
-            float u = dot(onPlane, dir1);
-            float v = dot(onPlane, dir2);
-            return vec2(u, v);
-        }
-
-        void _generateUvMaps(vec3 n, vec3 position)
-        {
-            float d1 = 0.0;
-            float d2 = 0.0;
-            float dp = 0.0;
-            int i1 = 0;
-            int i2 = 0;
-            int ip = 0;
-
-            //
-            // find highest and second-highest scoring hexagon
-            //
-            for (int i = 0; i < 20; ++i) {
-                float d = dot(n, icoNorms[i]);
-                if (d > d1) {
-                    d2 = d1;
-                    i2 = i1;
-                    d1 = d;
-                    i1 = i;
-                } else if (d > d2) {
-                    d2 = d;
-                    i2 = i;
-                }
-            }
-
-            //
-            // find highest-scoring pentagon
-            //
-            for (int i = 0; i < 12; ++i) {
-                float d = dot(n, icoVerts[i]);
-                if (d > dp) {
-                    dp = d;
-                    ip = i;
-                }
-            }
-
-            // normals of this triangle/hexagon, neighbor triangle/hexagon, and pentagon
-            vec3 thisHexNorm = icoNorms[i1];
-            vec3 neighborHexNorm = icoNorms[i2];
-            vec3 pentNorm = icoVerts[ip];
-
-            // barycentric coordinates of N in this and the neighbor hexagon/triangle UVW space
-            vec3 thisUvw = _normUnit(mat3(icoMats1[i1], icoMats2[i1], icoMats3[i1]) * n);
-            vec3 neighborUvw = _normUnit(mat3(icoMats1[i2], icoMats2[i2], icoMats3[i2]) * n);
-
-            // relative distance to the neighbor hexagon border, 0 is the border, 1 is this hexagon's center
-            float neighborDist = 1.4142 * 3.0 * _maxElem(-neighborUvw);
-
-            // UV spaces for the three adjacent surfaces
-            vec2 thisUv = _projectIntoUvSpace(position, thisHexNorm);
-            vec2 neighborUv = _projectIntoUvSpace(position, neighborHexNorm);
-            vec2 pentUv = _projectIntoUvSpace(position, pentNorm);
-
-            if (all(lessThan(thisUvw, vec3(2.0 / 3.0)))) {
-                // relative distance to the pentagon border, 0 is in the border, 1 is this hexagon's center
-                float pentDist = 2.0 - 3.0 * _maxElem(thisUvw);
-
-                float fNeighbor = clamp(0.0, neighborDist, 1.0);
-                float fPentagon = clamp(0.0, pentDist, 1.0);
-
-                uv1 = thisUv;
-                uv23 = vec4(neighborUv, pentUv);
-                uvDists = vec3(fNeighbor, fPentagon, 0.0);
-            }
-            else {
-                // relative distance to the pentagon border, 0 is in the border, 1 is this hexagon's center
-                float mainDist = 3.0 * _maxElem(thisUvw) - 2.0;
-
-                float fNeighbor = clamp(0.0, neighborDist, 1.0);
-                float fMain = clamp(0.0, mainDist, 1.0);
-
-                uv1 = pentUv;
-                uv23 = vec4(thisUv, neighborUv);
-                uvDists = vec3(fMain, fNeighbor, 1.0);
-            }
-        }
-
-        void main()
-        {
-            vec3 normalFromTex = texture(scene_normal, tc_screen).xyz;
-
-            // open sky is encoded as (0,0,0) normal
-            if (normalFromTex == vec3(0.0)) {
-                outColorReflectivity = vec4(0.0);
-                return;
-            }
-
-            vec4 scenePosTex = texture(scene_position, tc_screen);
-
-            sceneNormal = vec3(-1.0) + 2.0 * normalFromTex;
-            scenePosition = scenePosTex.xyz;
-
-            // water can have any color, so long as it's black.
-            if (scenePosTex.w <= waterHeight) {
-                outColorReflectivity = vec4(0.0, 0.0, 0.0, 1.0);
-                return;
-            }
-
-            _generateUvMaps(sceneNormal, scenePosition);
-
-        " + &channels.glsl_assignments("tc_screen") + "
-            vec3 col = color(sceneNormal, scenePosition, scenePosTex.w);
-            outColorReflectivity = vec4(col, 0.0);
-        }";
-
-    tinygl::Program::new(vert_source, &frag_source)
+    tinygl::Program::new(vert, &frag)
 }
 
-pub fn default_generator() -> String {
-    String::from("void generate(vec3 position, int depth)
-{
-    float mountain = smoothstep(-0.5, 1.0, noise(position * 0.2));
-    float base = noise(position * 0.1, 4, 0.5);
-    float detail = noise(position, 6, 0.5);
-    height = 1.4 * base + mountain * (0.5 + 0.5 * detail);
-    height *= 1.0 - smoothstep(0.8, 0.9, abs(normalize(position).y));
-    //height = 0.0;
-}")
+pub fn default_generator() -> & 'static str {
+    include_str!("../shaders/default_generator.glsl")
 }
 
-pub fn default_colorator() -> String {
-String::from("vec3 color(vec3 normal, vec3 position, float height)
-{
-    return vec3(1.0);
-}")
+pub fn default_colorator() -> & 'static str {
+    include_str!("../shaders/default_colorator.glsl")
 }
 
 impl Renderer {
@@ -414,12 +157,12 @@ impl Renderer {
     }
 
     pub fn new() -> Self {
-        let colorator = default_colorator();
+        let colorator = default_colorator().to_string();
         let channels = Channels::new();
 
         let mut ret = Renderer {
             camera: FlyCamera::new(100.0),
-            program_scene: Some(create_scene_program(&channels)),
+            program_plates: Some(create_plates_program(&channels)),
             program_color: None,
             program_color_default: create_color_program(&colorator, &channels, &Vec::new()),
             program_water: create_water_program(&channels),
@@ -445,7 +188,7 @@ impl Renderer {
             water_height: 1.0,
             water_depth: 6,
 
-            generator: default_generator(),
+            generator: default_generator().to_string(),
             channels,
             colorator,
             textures: Vec::new(),
@@ -583,7 +326,7 @@ impl Renderer {
         if ret {
             self.generator = generator.to_string();
             self.channels = Channels::from(channels);
-            self.program_scene = Some(create_scene_program(&self.channels));
+            self.program_plates = Some(create_plates_program(&self.channels));
             self.program_water = create_water_program(&self.channels);
             self.fbo_scene = None;  // need to re-create channels FBOs
         }
@@ -619,7 +362,7 @@ impl Renderer {
             self.generator = generator.to_string();
             self.channels = Channels::from(channels);
             self.recreate_program();
-            self.program_scene = Some(create_scene_program(&self.channels));
+            self.program_plates = Some(create_plates_program(&self.channels));
             self.program_water = create_water_program(&self.channels);
             self.fbo_scene = None;  // need to re-create channels FBOs
         }
@@ -710,14 +453,14 @@ impl Renderer {
         //
         // Prepare scene program
         //
-        let program_scene = self.program_scene.as_ref().unwrap();
-        program_scene.bind();
-        program_scene.uniform("mvp", tinygl::Uniform::Mat4(mvp));
-        program_scene.uniform("farPlane", tinygl::Uniform::Float(self.camera.far()));
-        program_scene.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
-        program_scene.uniform("tex_normals", tinygl::Uniform::Signed(0));
-        program_scene.uniform("tex_heights", tinygl::Uniform::Signed(1));
-        program_scene.vertex_attrib_buffer("plateCoords", planet.plate_coords(), 2, gl::UNSIGNED_SHORT, true, 4, 0);
+        let program_plates = self.program_plates.as_ref().unwrap();
+        program_plates.bind();
+        program_plates.uniform("mvp", tinygl::Uniform::Mat4(mvp));
+        program_plates.uniform("farPlane", tinygl::Uniform::Float(self.camera.far()));
+        program_plates.uniform("radius", tinygl::Uniform::Float(self.planet_radius));
+        program_plates.uniform("tex_normals", tinygl::Uniform::Signed(0));
+        program_plates.uniform("tex_heights", tinygl::Uniform::Signed(1));
+        program_plates.vertex_attrib_buffer("plateCoords", planet.plate_coords(), 2, gl::UNSIGNED_SHORT, true, 4, 0);
 
         self.rendered_triangles = 0;
         let rendered_plates = planet.rendered_plates();
@@ -727,7 +470,7 @@ impl Renderer {
         //
         for plate_ref in &rendered_plates {
             let mut plate = plate_ref.borrow();
-            plate.bind_render_data(program_scene, 0);
+            plate.bind_render_data(program_plates, 0);
 
             // Render Triangles
             self.rendered_triangles += if self.reduce_poly_count {
@@ -738,17 +481,17 @@ impl Renderer {
 
             // Maybe Render Wireframe
             if self.wireframe {
-                program_scene.uniform("wf", tinygl::Uniform::Float(1.0));
+                program_plates.uniform("wf", tinygl::Uniform::Float(1.0));
                 if self.reduce_poly_count {
                     plate.indices().draw(gl::LINES, plate.wireframe_count() as _, 0);
                 } else {
                     planet.triangle_indices().draw_all(gl::LINES);
                 }
-                program_scene.uniform("wf", tinygl::Uniform::Float(0.0));
+                program_plates.uniform("wf", tinygl::Uniform::Float(0.0));
             }
         };
 
-        program_scene.disable_all_vertex_attribs();
+        program_plates.disable_all_vertex_attribs();
         self.rendered_plates = rendered_plates.len();
 
         //

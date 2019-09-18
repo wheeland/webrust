@@ -6,7 +6,6 @@ mod util;
 mod generator;
 mod channels;
 mod plateoptimizer;
-mod icosahedron_defs;
 
 struct Configuration {
     pub size: usize,

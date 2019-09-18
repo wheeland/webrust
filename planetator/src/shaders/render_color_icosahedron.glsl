@@ -1,4 +1,4 @@
-pub static DEFS: &str = "const lowp vec3 icoVerts[12] = vec3[](
+const lowp vec3 icoVerts[12] = vec3[] (
     vec3(-0.59807, -0.25358,  0.76027),
     vec3(-0.52296,  0.73967,  0.42355),
     vec3( 0.52296, -0.73967, -0.42355),
@@ -13,7 +13,7 @@ pub static DEFS: &str = "const lowp vec3 icoVerts[12] = vec3[](
     vec3( 0.33291, -0.71875,  0.61038)
 );
 
-const lowp vec3 icoMats1[20] = vec3[](
+const lowp vec3 icoMats1[20] = vec3[] (
     vec3(-1.09276,  0.51477,  0.59140),
     vec3(-0.72726, -0.59140,  0.88028),
     vec3(-0.18322, -0.88028, -0.04735),
@@ -36,7 +36,7 @@ const lowp vec3 icoMats1[20] = vec3[](
     vec3(-0.77461, -0.43081,  0.99351)
 );
 
-const lowp vec3 icoMats2[20] = vec3[](
+const lowp vec3 icoMats2[20] = vec3[] (
     vec3(-0.16625,  0.81245, -1.00775),
     vec3(-0.78907,  1.00775,  0.18963),
     vec3(-0.67187, -0.18963,  1.12494),
@@ -59,7 +59,7 @@ const lowp vec3 icoMats2[20] = vec3[](
     vec3( 0.33588,  0.29804,  0.60487)
 );
 
-const lowp vec3 icoMats3[20] = vec3[](
+const lowp vec3 icoMats3[20] = vec3[] (
     vec3( 0.40025,  0.67594,  0.12909),
     vec3( 0.48003, -0.12909,  0.75572),
     vec3( 0.94709, -0.75572,  0.33797),
@@ -82,7 +82,7 @@ const lowp vec3 icoMats3[20] = vec3[](
     vec3( 0.81800, -1.05240,  0.17039)
 );
 
-const highp vec3 icoNorms[20] = vec3[](
+const highp vec3 icoNorms[20] = vec3[] (
     vec3( 0.01065, -0.28730,  0.95778),
     vec3(-0.34836,  0.32447,  0.87941),
     vec3(-0.88274,  0.20935,  0.42064),
@@ -103,4 +103,4 @@ const highp vec3 icoNorms[20] = vec3[](
     vec3(-0.09313, -0.80348, -0.58800),
     vec3(-0.67403,  0.18638, -0.71481),
     vec3(-0.16839,  0.98441, -0.05087)
-);";
+);
