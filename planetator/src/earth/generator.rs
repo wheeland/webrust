@@ -179,149 +179,18 @@ impl GeneratorBuffers {
 }
 
 fn passthrough_vert() ->  & 'static str {
-    "in vec2 xy;
-    void main()
-    {
-        gl_Position = vec4(xy, 0.0, 1.0);
-    }"
+    include_str!("../shaders/passthrough.vert")
 }
 
 //
 // Shaders for Vertex + Height (+ Channels) generation
 //
 pub fn compile_generator(generator: &str, channels: &Channels) -> Program {
-    let frag = noise::ShaderNoise::declarations() + "
-        uniform vec2 ofs;
-        uniform float invTargetSize;
-        uniform float targetBorderOffset;
-        uniform float stretch;
-        uniform float stretchAsin;
-        uniform float mul;
-        uniform float radius;
-        uniform int depth;
-        uniform mat3 cubeTransformMatrix;
-
-        layout(location = 0) out vec4 posHeight;
-        layout(location = 1) out float height;
-        "
-        + &channels.glsl_output_declarations(2) + "
-        \n#line 1\n"
-        + generator + "
-
-        void main()
-        {
-            vec2 rel = (gl_FragCoord.xy - vec2(targetBorderOffset)) * invTargetSize;
-            vec2 rawXy = asin(stretch * (ofs + vec2(mul) * rel)) / stretchAsin;
-
-            vec2 xy = clamp(vec2(-1.0), rawXy, vec2(1.0));
-            vec2 diff = abs(rawXy - xy);
-            float dz = max(diff.x, diff.y);
-
-            vec3 cubePos = cubeTransformMatrix * vec3(xy, 1.0 - dz);
-            vec3 position = normalize(cubePos);
-
-            height = 0.0;
-            generate(position * radius, depth);
-
-            posHeight = vec4(position, height);
-        }" + &noise::ShaderNoise::definitions();
-
-    Program::new(passthrough_vert(), &frag)
-}
-
-//
-// Shader for Normals generation
-//
-fn compile_normals_shader() -> Program {
-    let frag = "
-        uniform float invTargetSize;
-        uniform float radius;
-        uniform sampler2D positions;
-
-        layout(location = 0) out vec3 normal;
-
-        vec3 _pos(vec2 pixel) {
-            vec4 heightPos = texture(positions, pixel * invTargetSize);
-            return heightPos.xyz * (radius + heightPos.w);
-        }
-
-        void main()
-        {
-            //
-            // Get coordinates of neighbor vertices and build normal
-            //
-            vec3 xp = _pos(gl_FragCoord.xy + vec2(1.0,  0.0));
-            vec3 xn = _pos(gl_FragCoord.xy + vec2(-1.0, 0.0));
-            vec3 yp = _pos(gl_FragCoord.xy + vec2(0.0,  1.0));
-            vec3 yn = _pos(gl_FragCoord.xy + vec2(0.0, -1.0));
-
-            vec3 norm = normalize(cross(xp - xn, yp - yn));
-            if (dot(norm, xp) < 0.0)
-                norm = -norm;
-
-            normal = vec3(0.5) + 0.5 * norm;
-        }";
-
-    Program::new(passthrough_vert(), &frag)
-}
-
-//
-// Shader for Downscaling and detail computation
-//
-fn compile_postvertex() -> Program {
-    let frag = "
-        uniform float vertexGridSize;
-        uniform float textureDelta;
-        uniform float textureSize;
-        uniform float radius;
-        uniform sampler2D positions;
-        uniform sampler2D parentCoords;
-
-        layout(location = 0) out vec4 posHeight;
-        layout(location = 1) out vec4 detail;
-
-        vec4 getHeightPos(vec2 pixelCenter) {
-            vec2 texPixel = (pixelCenter - vec2(0.5)) * textureDelta + vec2(0.5);
-            return texture(positions, texPixel / textureSize);
-        }
-
-        vec3 _pos(vec2 tc) {
-            vec4 heightPos = getHeightPos(tc);
-            return heightPos.xyz * (radius + heightPos.w);
-        }
-
-        void main()
-        {
-            //
-            // Get coordinates of neighbor vertices
-            //
-            vec4 heightPosCenter = getHeightPos(gl_FragCoord.xy);
-            vec3 pCenter = heightPosCenter.xyz * (radius + heightPosCenter.w);
-
-            // get position of parent vertices within this tile (range: [0..1])
-            vec4 parents = texture(parentCoords, (gl_FragCoord.xy - vec2(1.0)) / (vertexGridSize + 1.0));
-
-            //
-            // calculate interpolated position
-            //
-            float interpolation = 0.0;
-            if (parents.xy != parents.zw) {
-                // read parent world positions
-                vec3 pparent1 = _pos(vec2(1.5) + parents.xy * vertexGridSize);
-                vec3 pparent2 = _pos(vec2(1.5) + parents.zw * vertexGridSize);
-                vec3 mid = mix(pparent1, pparent2, 0.5);
-
-                // calculate relative difference to this position
-                float dParents = length(pparent1 - pparent2);
-                float dMid = length(mid - pCenter);
-                interpolation = 0.5 * dMid / dParents * sqrt(length(parents.xy - parents.zw));
-            }
-
-            posHeight = heightPosCenter;
-            detail = vec4(5.0 * interpolation * sqrt(vertexGridSize));
-        }";
-
-    Program::new(passthrough_vert(), &frag)
+    let src = include_str!("../shaders/generator_vertices.frag");
+    let src = src.replace("$CHANNELS", &channels.glsl_output_declarations(2));
+    let src = src.replace("$NOISE", noise::ShaderNoise::definitions());
+    let src = src.replace("$GENERATOR", generator);
+    Program::new(passthrough_vert(), &src)
 }
 
 //
@@ -423,14 +292,16 @@ impl Generator {
         vertex_generator.uniform("radius", Uniform::Float(radius));
 
         // Set uniforms for normal generator
-        let normals_generator = compile_normals_shader();
+        let gen_normals_shader = include_str!("../shaders/generator_normals.frag");
+        let normals_generator = Program::new(passthrough_vert(), gen_normals_shader);
         normals_generator.bind();
         normals_generator.uniform("invTargetSize", Uniform::Float(1.0 / texture_size as f32));
         normals_generator.uniform("radius", Uniform::Float(radius));
         normals_generator.uniform("positions", Uniform::Signed(0));
 
         // Set uniforms for downscaling and detail computation shader
-        let post_generator = compile_postvertex();
+        let gen_postvertex_shader = include_str!("../shaders/generator_postvertex.frag");
+        let post_generator = Program::new(passthrough_vert(), gen_postvertex_shader);
         post_generator.bind();
         post_generator.uniform("vertexGridSize", Uniform::Float(vertex_size as f32));
         post_generator.uniform("textureDelta", Uniform::Float(2.0f32.powi(texture_delta as _)));
