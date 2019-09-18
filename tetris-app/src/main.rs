@@ -672,17 +672,18 @@ impl webrunner::WebApp for TetrisApp {
                         _ => {}
                     }
                     State::PreGame { ref mut keyconfig } => {
-                        if let Some(num) = keyconfig {
-                            match num {
-                                0 => self.player.left = keycode.unwrap() as i32,
-                                1 => self.player.right = keycode.unwrap() as i32,
-                                2 => self.player.drop = keycode.unwrap() as i32,
-                                3 => self.player.rotl = keycode.unwrap() as i32,
-                                4 => self.player.rotr = keycode.unwrap() as i32,
-                                5 => self.player.pause = keycode.unwrap() as i32,
-                                _ => {}
+                        if keyconfig.is_some() {
+                            if let Some(num) = keyconfig.replace(-1) {
+                                match num {
+                                    0 => self.player.left = keycode.unwrap() as i32,
+                                    1 => self.player.right = keycode.unwrap() as i32,
+                                    2 => self.player.drop = keycode.unwrap() as i32,
+                                    3 => self.player.rotl = keycode.unwrap() as i32,
+                                    4 => self.player.rotr = keycode.unwrap() as i32,
+                                    5 => self.player.pause = keycode.unwrap() as i32,
+                                    _ => {}
+                                }
                             }
-                            *keyconfig = Some(-1);
                         }
 ;                    }
                     _ => {}
