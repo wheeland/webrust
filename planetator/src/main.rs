@@ -59,6 +59,9 @@ struct MyApp {
     texuploads: Vec<(String, i32)>,
     active_textures: Vec<(String, (i32, i32), Vec<u8>)>,
 
+    left_panel_height: f32,
+    right_panel_height: f32,
+
     sun_speed: f32,
     sun_lon: f32,
     sun_lat: f32,
@@ -247,6 +250,8 @@ impl webrunner::WebApp for MyApp {
             sun_lat: 0.0,
             atmoshpere_in_scatter: 0.6,
             water_time: 0.0,
+            left_panel_height: 0.0,
+            right_panel_height: 0.0,
             renderer: earth::renderer::Renderer::new(radius),
             shadows: shadowmap::ShadowMap::new(radius),
             postprocess: create_postprocess_shader(),
@@ -337,8 +342,8 @@ impl webrunner::WebApp for MyApp {
         self.fps.render(ui, (0.0, 0.0), (200.0, 80.0));
 
         ui.window(im_str!("renderstats"))
-            .flags(ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoTitleBar | ImGuiWindowFlags::NoSavedSettings)
-            .size((200.0, 300.0), ImGuiCond::Appearing)
+            .flags(ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoTitleBar | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoResize)
+            .size((200.0, self.left_panel_height), ImGuiCond::Always)
             .position((0.0, 80.0), ImGuiCond::Always)
             .constraints((200.0, 200.0), (1000.0, 1000.0))
             .build(|| {
@@ -398,15 +403,17 @@ impl webrunner::WebApp for MyApp {
                 if ui.collapsing_header(im_str!("Shadow Mapping")).default_open(false).build() {
                     self.shadows.options(ui);
                 }
+
+                self.left_panel_height = ui.get_cursor_pos().1;
             });
 
-        let planet_opt_win_size = (260.0, 300.0);
+        let planet_opt_width = 260.0;
 
         ui.window(im_str!("Planet Options"))
-            .flags(ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar)
-            .size(planet_opt_win_size, ImGuiCond::Appearing)
-            .position((self.windowsize.0 as f32 - planet_opt_win_size.0, 0.0), ImGuiCond::Always)
-            .constraints(planet_opt_win_size, (planet_opt_win_size.0, 1000.0))
+            .flags(ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar | ImGuiWindowFlags::NoResize)
+            .size((planet_opt_width, self.right_panel_height), ImGuiCond::Always)
+            .position((self.windowsize.0 as f32 - planet_opt_width, 0.0), ImGuiCond::Always)
+            // .constraints(planet_opt_win_size, (planet_opt_width, 1000.0))
             .build(|| {
                 //
                 // Slider for Plate Size, Water Plate Size, Texture Delta, and Planet Radius
@@ -443,11 +450,11 @@ impl webrunner::WebApp for MyApp {
                 //
                 // Button for Saving / Restoring
                 //
-                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
+                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
                 if ui.button(im_str!("Save##planet"), (160.0, 20.0)) {
                     #[cfg(target_os = "emscripten")] fileload::download("planet.json", &self.save_state());
                 }
-                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
+                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
                 let curr_pos = ui.get_cursor_screen_pos();
                 #[cfg(target_os = "emscripten")] emscripten_util::set_overlay_position(HTML_INPUT_PLANET, curr_pos, (160.0, 20.0));
                 ui.button(im_str!("Load##planet"), (160.0, 20.0));
@@ -463,16 +470,16 @@ impl webrunner::WebApp for MyApp {
                 //
                 // Button to show/hide Shader Generator Windows
                 //
-                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
+                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
                 self.edit_generator.toggle_button(ui, (160.0, 20.0));
-                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
+                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
                 self.edit_colorator.toggle_button(ui, (160.0, 20.0));
                 ui.spacing(); ui.separator();
 
                 //
                 // Buttons to add/remove channels
                 //
-                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
+                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
                 if ui.button(im_str!("Add Channel"), (120.0, 20.0)) {
                     let len = self.select_channels.len();
                     self.select_channels.push((format!("channel{}", len).to_string(), 0));
@@ -529,7 +536,7 @@ impl webrunner::WebApp for MyApp {
                 //
                 // Add new texture button
                 //
-                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_win_size.0 / 2.0 - 80.0);
+                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
                 #[cfg(target_os = "emscripten")] emscripten_util::set_overlay_position(HTML_INPUT_TEXTURE, ui.get_cursor_screen_pos(), (160.0, 20.0));
                 ui.button(im_str!("Add Texture"), (120.0, 20.0));
                 // start new uploads?
@@ -602,6 +609,8 @@ impl webrunner::WebApp for MyApp {
                         self.renderer.remove_texture(change.0 as _);
                     }
                 }
+
+                self.right_panel_height = ui.get_cursor_pos().1;
             });
 
         #[cfg(target_os = "emscripten")]
