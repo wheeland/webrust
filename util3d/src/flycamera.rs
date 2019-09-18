@@ -8,12 +8,14 @@ pub struct FlyCamera {
     speed_look: f32,
     acceleration_look: f32,
 
+    // input data:
     position : Vector3<f32>,
-    position_normed: Vector3<f32>,
     neutral_view_dir: Vector3<f32>,
     vertical_angle: f32,
 
+    // derived:
     view_matrix: Matrix4<f32>,
+    position_normed: Vector3<f32>,
     look: Vector3<f32>,
     up: Vector3<f32>,
     right: Vector3<f32>
@@ -21,15 +23,24 @@ pub struct FlyCamera {
 
 impl FlyCamera {
     pub fn new(radius: f32) -> Self {
+        Self::from(
+            radius,
+            Vector3::new(0.0, 0.0, 2.0 * radius),
+            Vector3::new(0.0, 1.0, 0.0),
+            -0.4 * PI
+        )
+    }
+
+    pub fn from(radius: f32, position: Vector3<f32>, neutral_view_dir: Vector3<f32>, vertical_angle: f32) -> Self {
         let mut cam = FlyCamera {
             radius,
             speed_move: radius / 2.0,
             speed_look: 25.0,
             acceleration_look: 1.5,
-            position: Vector3::new(0.0, 0.0, 2.0 * radius),
-            position_normed: Vector3::new(0.0, 0.0, 1.0),
-            neutral_view_dir: Vector3::new(0.0, 1.0, 0.0),
-            vertical_angle: -0.4 * PI,
+            position,
+            position_normed: position.normalize(),
+            neutral_view_dir,
+            vertical_angle,
             view_matrix: Matrix4::identity(),
             look: Vector3::new(0.0, 1.0, 0.0),
             up: Vector3::new(0.0, 1.0, 0.0),
@@ -81,6 +92,10 @@ impl FlyCamera {
 
     pub fn set_move_speed(&mut self, value: f32) {
         self.speed_move = value;
+    }
+
+    pub fn vertical_angle(&self) -> f32 {
+        self.vertical_angle
     }
 
     fn update(&mut self) {

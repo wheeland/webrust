@@ -160,16 +160,20 @@ impl Renderer {
         let colorator = default_colorator().to_string();
         let channels = Channels::new();
 
+        let start_pos = Vector3::new(0.6820771, 0.6706339, 0.3431564);
+        let start_view = Vector3::new(-0.46382582, 0.018519923, 0.8857329);
+        let start_angle = -0.29790568;
+
         let mut ret = Renderer {
-            camera: FlyCamera::new(planet_radius),
+            camera: FlyCamera::from(planet_radius, start_pos * planet_radius, start_view, start_angle),
             program_plates: Some(create_plates_program(&channels)),
             program_color: None,
             program_color_default: create_color_program(&colorator, &channels, &Vec::new()),
             program_water: create_water_program(&channels),
 
             planet: None,
-            plate_depth: 6,
-            texture_delta: 0,
+            plate_depth: 5,
+            texture_delta: 1,
             planet_radius,
 
             wireframe: false,
@@ -184,9 +188,9 @@ impl Renderer {
             fbo_scene: None,
             fbo_color: None,
             fsquad: tinygl::shapes::FullscreenQuad::new(),
-            water_plate_factory: WaterPlateFactory::new(6, 6, 0),
+            water_plate_factory: WaterPlateFactory::new(3, 5, 1),
             water_height: 0.0,
-            water_depth: 6,
+            water_depth: 3,
 
             generator: default_generator().to_string(),
             channels,

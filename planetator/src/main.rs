@@ -233,7 +233,7 @@ impl webrunner::WebApp for MyApp {
 
         let radius = 300.0;
 
-        MyApp {
+        let mut app = MyApp {
             windowsize,
             errors: Vec::new(),
             keyboard: HashMap::new(),
@@ -261,7 +261,11 @@ impl webrunner::WebApp for MyApp {
             walk_speed: cgmath::Vector3::new(0.0, 0.0, 0.0),
             vertical_speed: 0.0,
             jump_flag: false,
-        }
+        };
+
+        let planet = include_bytes!("../worley.bin");
+        app.restore_state(&planet.to_vec());
+        app
     }
 
     fn resize(&mut self, size: (u32, u32)) {
@@ -452,7 +456,7 @@ impl webrunner::WebApp for MyApp {
                 //
                 ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
                 if ui.button(im_str!("Save##planet"), (160.0, 20.0)) {
-                    #[cfg(target_os = "emscripten")] fileload::download("planet.json", &self.save_state());
+                    #[cfg(target_os = "emscripten")] fileload::download("planet.bin", &self.save_state());
                 }
                 ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
                 let curr_pos = ui.get_cursor_screen_pos();
