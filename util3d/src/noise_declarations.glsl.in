@@ -1,0 +1,10 @@
+float noise(vec2 v);
+float noise(vec3 v);
+float noise(vec4 v);
+float noise(vec2 v, int levels, float persistence);
+float noise(vec3 v, int levels, float persistence);
+float noise(vec4 v, int levels, float persistence);
+float noise_grad(vec3 v, out vec3 gradient);
+vec2 worley2(vec3 sphericalPos, int density_i, float maxShift);
+vec2 worley3(vec3 sphericalPos, int density_i, float maxShift);
+float cubicPerlinNoise(vec3 cubicPos, mat3 offsets, float density);
