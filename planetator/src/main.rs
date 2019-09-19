@@ -61,6 +61,7 @@ struct MyApp {
 
     left_panel_height: f32,
     right_panel_height: f32,
+    show_fps: bool,
 
     sun_speed: f32,
     sun_lon: f32,
@@ -252,6 +253,7 @@ impl webrunner::WebApp for MyApp {
             water_time: 0.0,
             left_panel_height: 0.0,
             right_panel_height: 0.0,
+            show_fps: true,
             renderer: earth::renderer::Renderer::new(radius),
             shadows: shadowmap::ShadowMap::new(radius),
             postprocess: create_postprocess_shader(),
@@ -343,14 +345,27 @@ impl webrunner::WebApp for MyApp {
     }
 
     fn do_ui(&mut self, ui: &imgui::Ui, keymod: sdl2::keyboard::Mod) {
-        self.fps.render(ui, (0.0, 0.0), (200.0, 80.0));
+        let left_panel_ofs = if self.show_fps {
+            self.fps.render(ui, (0.0, 0.0), (200.0, 80.0));
+            80.0
+        } else {
+            0.0
+        };
 
-        ui.window(im_str!("renderstats"))
-            .flags(ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoTitleBar | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoResize)
+        ui.window(im_str!("Render Options"))
+            .movable(false)
+            .title_bar(true)
+            .save_settings(false)
+            .resizable(false)
+            .scroll_bar(self.left_panel_height + left_panel_ofs > self.windowsize.1 as f32)
             .size((200.0, self.left_panel_height), ImGuiCond::Always)
-            .position((0.0, 80.0), ImGuiCond::Always)
-            .constraints((200.0, 200.0), (1000.0, 1000.0))
+            .position((0.0, left_panel_ofs), ImGuiCond::Always)
             .build(|| {
+                // assorted settings
+                ui.checkbox(im_str!("Show FPS"), &mut self.show_fps);
+                let water_level = guiutil::slider_float(ui, "Water Level", self.renderer.water_height(), (-1.0, 1.0), 1.0);
+                self.renderer.set_water_height(water_level);
+
                 // Movement settings
                 if ui.collapsing_header(im_str!("Movement")).default_open(false).build() {
                     ui.text("Controls:");
@@ -372,9 +387,7 @@ impl webrunner::WebApp for MyApp {
                     ui.checkbox(im_str!("Cull Backside"), &mut self.renderer.hide_backside);
 
                     let detail = guiutil::slider_float(ui, "Vertex Detail:", self.renderer.vertex_detail(), (0.0, 1.0), 1.0);
-                    let water_level = guiutil::slider_float(ui, "Water Level", self.renderer.water_height(), (-1.0, 1.0), 1.0);
                     self.renderer.set_vertex_detail(detail);
-                    self.renderer.set_water_height(water_level);
                 }
 
                 // Atmosphere settings
@@ -414,7 +427,11 @@ impl webrunner::WebApp for MyApp {
         let planet_opt_width = 260.0;
 
         ui.window(im_str!("Planet Options"))
-            .flags(ImGuiWindowFlags::NoMove | ImGuiWindowFlags::NoSavedSettings | ImGuiWindowFlags::NoScrollbar | ImGuiWindowFlags::NoResize)
+            .movable(false)
+            .title_bar(true)
+            .save_settings(false)
+            .resizable(false)
+            .scroll_bar(self.right_panel_height > self.windowsize.1 as f32)
             .size((planet_opt_width, self.right_panel_height), ImGuiCond::Always)
             .position((self.windowsize.0 as f32 - planet_opt_width, 0.0), ImGuiCond::Always)
             // .constraints(planet_opt_win_size, (planet_opt_width, 1000.0))
