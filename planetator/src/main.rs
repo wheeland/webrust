@@ -62,6 +62,7 @@ struct MyApp {
     left_panel_height: f32,
     right_panel_height: f32,
     show_fps: bool,
+    show_about_dialog: bool,
 
     sun_speed: f32,
     sun_lon: f32,
@@ -254,6 +255,7 @@ impl webrunner::WebApp for MyApp {
             left_panel_height: 0.0,
             right_panel_height: 0.0,
             show_fps: true,
+            show_about_dialog: false,
             renderer: earth::renderer::Renderer::new(radius),
             shadows: shadowmap::ShadowMap::new(radius),
             postprocess: create_postprocess_shader(),
@@ -351,6 +353,60 @@ impl webrunner::WebApp for MyApp {
         } else {
             0.0
         };
+
+        // About button
+        ui.window(im_str!("_about_dialog"))
+            .movable(false)
+            .title_bar(false)
+            .save_settings(false)
+            .resizable(false)
+            .scroll_bar(false)
+            .size((66.0, 36.0), ImGuiCond::Always)
+            .position((0.0, self.windowsize.1 as f32 - 36.0), ImGuiCond::Always)
+            .build(|| {
+                if ui.button(im_str!("About"), (50.0, 20.0)) {
+                    self.show_about_dialog = !self.show_about_dialog;
+                }
+            });
+
+        // About dialog
+        if self.show_about_dialog {
+            ui.window(im_str!("About"))
+                .movable(true)
+                .title_bar(true)
+                .save_settings(false)
+                .resizable(false)
+                .scroll_bar(false)
+                .collapsible(false)
+                .inputs(self.show_about_dialog)
+                .opened(&mut self.show_about_dialog)
+                .size((380.0, 320.0), ImGuiCond::Always)
+                .position((0.5 * self.windowsize.0 as f32 - 190.0, 0.5 * self.windowsize.1 as f32 - 160.0), ImGuiCond::FirstUseEver)
+                .build(|| {
+                    let lines = vec!(
+                        "",
+                        "Programmed by Wieland Hagen, 2018/2019",
+                        "",
+                        "Built using",
+                        " - Rust",
+                        " - WebAssembly",
+                        " - WebGL",
+                        " - imgui",
+                        " - Precomputed Atmoshperic Scattering [1]",
+                        "",
+                        "Info: wielandhagen@web.de",
+                        "",
+                        "[1] https://github.com/ebruneton/",
+                        "       precomputed_atmospheric_scattering"
+                    );
+                    let mut y = 20.0;
+                    for l in &lines {
+                        ui.set_cursor_pos((20.0, y));
+                        ui.text(l);
+                        y += 20.0;
+                    }
+                });
+        }
 
         ui.window(im_str!("Render Options"))
             .movable(false)
