@@ -288,7 +288,7 @@ impl ShadowMap {
 
     pub fn new(radius: f32) -> Self {
         let levels = 6;
-        let level_scale = 0.4;
+        let level_scale = 0.35;
 
         let size = 2u32.pow(8);
 

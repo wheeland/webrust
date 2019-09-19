@@ -63,6 +63,7 @@ struct MyApp {
     right_panel_height: f32,
     show_fps: bool,
     show_about_dialog: bool,
+    show_graphics_dialog: bool,
 
     sun_speed: f32,
     sun_lon: f32,
@@ -260,8 +261,8 @@ impl webrunner::WebApp for MyApp {
             select_channels: Vec::new(),
             texuploads: Vec::new(),
             active_textures: Vec::new(),
-            sun_speed: 0.0,
-            sun_lon: 0.0,
+            sun_speed: -1.0,
+            sun_lon: 20.0,
             sun_lat: 0.0,
             atmoshpere_in_scatter: 0.6,
             water_time: 0.0,
@@ -269,7 +270,8 @@ impl webrunner::WebApp for MyApp {
             right_panel_height: 0.0,
             show_fps: true,
             show_about_dialog: false,
-            renderer: earth::renderer::Renderer::new(radius),
+            show_graphics_dialog: true,
+            renderer: earth::renderer::Renderer::new(radius, 4, 1),
             shadows: shadowmap::ShadowMap::new(radius),
             postprocess: create_postprocess_shader(),
             fsquad: tinygl::shapes::FullscreenQuad::new(),
@@ -366,6 +368,35 @@ impl webrunner::WebApp for MyApp {
         } else {
             0.0
         };
+
+        // graphics dialog
+        if self.show_graphics_dialog {
+            let pos = (0.5 * self.windowsize.0 as f32 - 100.0, 0.5 * self.windowsize.1 as f32 - 100.0);
+            window(ui, im_str!("_start_dialog"), false, false, false, (200.0, 160.0), pos)
+            .build(|| {
+                ui.set_cursor_pos((10.0, 10.0));   ui.text(" Choose graphics quality");
+                ui.set_cursor_pos((10.0, 30.0));   ui.text("(can be adjusted anytime)");
+                ui.set_cursor_pos((40.0, 60.0));
+                if ui.button(im_str!("Low"), (120.0, 20.0)) {
+                    self.show_graphics_dialog = false;
+                }
+                ui.set_cursor_pos((40.0, 90.0));
+                if ui.button(im_str!("Medium"), (120.0, 20.0)) {
+                    self.renderer.set_plate_depth(5);
+                    self.shadows.set_size_step(10);
+                    self.shadows.set_blur_radius(2.0);
+                    self.show_graphics_dialog = false;
+                }
+                ui.set_cursor_pos((40.0, 120.0));
+                if ui.button(im_str!("High"), (120.0, 20.0)) {
+                    self.renderer.set_plate_depth(6);
+                    self.renderer.set_texture_delta(2);
+                    self.shadows.set_size_step(12);
+                    self.shadows.set_blur_radius(3.0);
+                    self.show_graphics_dialog = false;
+                }
+            });
+        }
 
         // About button
         window(ui, im_str!("_about_dialog"), false, false, false, (66.0, 36.0), (0.0, self.windowsize.1 as f32 - 36.0))
