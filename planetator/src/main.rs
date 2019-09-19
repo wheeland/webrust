@@ -765,5 +765,5 @@ impl webrunner::WebApp for MyApp {
 }
 
 fn main() {
-    webrunner::AppRunner::<MyApp>::start("foo bar");
+    webrunner::AppRunner::<MyApp>::start("Planetator");
 }
