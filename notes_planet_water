@@ -1,0 +1,14 @@
+approaches
+    1. add water plane for every plate that has water
+        - problem: water plane may lie under low-poly landmass, even for those
+          areas where tex_heights < water_level
+    2. raise vertices to at least water_level
+        - problem: can't look underwater, can't dive (or needs special handling)
+        - problem: when looking from sideways, water may be "above sea level"
+          because the texture says "water" but the low-poly landmass is actually above
+    3. do it all in the postprocessing-shader
+        - same problem as above with low-poly landmasses 
+
+solution for 2./3.: 
+    when looking at a sharp angle, ignore "water upon land" gradually, depending
+    on landmass normal and looking angle

@@ -36,9 +36,9 @@ get this one book
 rendering tasks
     - add texturing via voronoi-blobs
     - add 3d procedural texturing -> work from qt3d derivatives demo
-    - add ocean with water waves
     - use atmospheric scattering global illumination maps for terrain coloring (PBR)
     - don't use heights texture, we don't really need it
+        -> could remove it and just add pre-computed "isWater" texture for water rendering
     - logarithmic depth -> needs vertical ribbons to work -> need to do one more post-processing step for em ribbons, or one more texture
 
 https://firespark.de/?id=article&article=ProceduralGenerationResources#terrain
