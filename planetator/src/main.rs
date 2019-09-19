@@ -84,6 +84,19 @@ struct MyApp {
     fsquad: tinygl::shapes::FullscreenQuad,
 }
 
+fn window<'ui,'p>(ui: &'ui imgui::Ui, name: &'p ImStr, title: bool, movable: bool, collapsible: bool,
+                  size: (f32, f32), pos: (f32, f32)) -> Window<'ui, 'p> {
+    ui.window(name)
+        .movable(movable)
+        .title_bar(title)
+        .save_settings(false)
+        .resizable(false)
+        .scroll_bar(false)
+        .collapsible(collapsible)
+        .size(size, ImGuiCond::Always)
+        .position(pos, if movable { ImGuiCond::FirstUseEver } else { ImGuiCond::Always })
+}
+
 impl MyApp {
     fn pressed(&self, key: Keycode) -> bool {
         *self.keyboard.get(&key).unwrap_or(&false)
@@ -355,14 +368,7 @@ impl webrunner::WebApp for MyApp {
         };
 
         // About button
-        ui.window(im_str!("_about_dialog"))
-            .movable(false)
-            .title_bar(false)
-            .save_settings(false)
-            .resizable(false)
-            .scroll_bar(false)
-            .size((66.0, 36.0), ImGuiCond::Always)
-            .position((0.0, self.windowsize.1 as f32 - 36.0), ImGuiCond::Always)
+        window(ui, im_str!("_about_dialog"), false, false, false, (66.0, 36.0), (0.0, self.windowsize.1 as f32 - 36.0))
             .build(|| {
                 if ui.button(im_str!("About"), (50.0, 20.0)) {
                     self.show_about_dialog = !self.show_about_dialog;
@@ -371,17 +377,9 @@ impl webrunner::WebApp for MyApp {
 
         // About dialog
         if self.show_about_dialog {
-            ui.window(im_str!("About"))
-                .movable(true)
-                .title_bar(true)
-                .save_settings(false)
-                .resizable(false)
-                .scroll_bar(false)
-                .collapsible(false)
-                .inputs(self.show_about_dialog)
+            let pos = (0.5 * self.windowsize.0 as f32 - 190.0, 0.5 * self.windowsize.1 as f32 - 160.0);
+            window(ui, im_str!("About"), true, true, false, (380.0, 320.0), pos)
                 .opened(&mut self.show_about_dialog)
-                .size((380.0, 320.0), ImGuiCond::Always)
-                .position((0.5 * self.windowsize.0 as f32 - 190.0, 0.5 * self.windowsize.1 as f32 - 160.0), ImGuiCond::FirstUseEver)
                 .build(|| {
                     let lines = vec!(
                         "",
@@ -408,14 +406,8 @@ impl webrunner::WebApp for MyApp {
                 });
         }
 
-        ui.window(im_str!("Render Options"))
-            .movable(false)
-            .title_bar(true)
-            .save_settings(false)
-            .resizable(false)
+        window(ui, im_str!("Render Options"), true, false, false, (200.0, self.left_panel_height), (0.0, left_panel_ofs))
             .scroll_bar(self.left_panel_height + left_panel_ofs > self.windowsize.1 as f32)
-            .size((200.0, self.left_panel_height), ImGuiCond::Always)
-            .position((0.0, left_panel_ofs), ImGuiCond::Always)
             .build(|| {
                 // assorted settings
                 ui.checkbox(im_str!("Show FPS"), &mut self.show_fps);
@@ -482,15 +474,8 @@ impl webrunner::WebApp for MyApp {
 
         let planet_opt_width = 260.0;
 
-        ui.window(im_str!("Planet Options"))
-            .movable(false)
-            .title_bar(true)
-            .save_settings(false)
-            .resizable(false)
+        window(ui, im_str!("Planet Options"), true, false, false, (planet_opt_width, self.right_panel_height), (self.windowsize.0 as f32 - planet_opt_width, 0.0))
             .scroll_bar(self.right_panel_height > self.windowsize.1 as f32)
-            .size((planet_opt_width, self.right_panel_height), ImGuiCond::Always)
-            .position((self.windowsize.0 as f32 - planet_opt_width, 0.0), ImGuiCond::Always)
-            // .constraints(planet_opt_win_size, (planet_opt_width, 1000.0))
             .build(|| {
                 //
                 // Slider for Plate Size, Water Plate Size, Texture Delta, and Planet Radius
