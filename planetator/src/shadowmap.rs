@@ -6,7 +6,7 @@ use super::guiutil;
 static MAX_SHADOW_MAPS: usize = 6;
 static MAX_REL_EXTENT: f32 = 1.2;
 
-fn glsl() -> String {
+fn glsl(tex_count: u32) -> String {
     String::from("
     struct ShadowMap {
         highp sampler2D map;
@@ -14,9 +14,8 @@ fn glsl() -> String {
         mat4 mvp;
     };
 
-    #define MAX_SHADOW_MAPS ") + &MAX_SHADOW_MAPS.to_string() + "
+    #define MAX_SHADOW_MAPS ") + &tex_count.to_string() + "
     uniform ShadowMap shadowMapsPrevCurr[2 * MAX_SHADOW_MAPS];
-    uniform int shadowMapCount;
     uniform float shadowMapSize;
     uniform float shadowMapProgress;
     uniform float shadowBlurRadius;
@@ -110,13 +109,13 @@ fn glsl() -> String {
 
     float shadow_getShadowWithOffset(vec3 pos, float dist, float dotSunNormal, int start, out vec3 color) {
         float lit = 0.0;
-        int i = shadowMapCount - 1;
+        int i = MAX_SHADOW_MAPS - 1;
         while (i >= 0) {
             if (shadow_getShadowForLevel(i + start, pos, dist, dotSunNormal, lit))
                 break;
             --i;
         }
-        color = shadow_getDebugColor(float(i) / float(shadowMapCount - 1));
+        color = shadow_getDebugColor(float(i) / float(MAX_SHADOW_MAPS - 1));
         return lit;
     }
 
@@ -282,18 +281,19 @@ pub struct ShadowMap {
 }
 
 impl ShadowMap {
-    pub fn glsl() -> String {
-        glsl()
+    pub fn glsl(&self) -> String {
+        glsl(self.levels as _)
     }
 
     pub fn new(radius: f32) -> Self {
-        let levels = 6;
-        let level_scale = 0.35;
+        let levels = 4;
+        let level_scale = 0.25;
 
-        let size = 2u32.pow(8);
+        let size_step = 10;
+        let size = 2u32.pow(size_step);
 
         let mut ret = ShadowMap {
-            size_step: 8,
+            size_step,
             radius,
             blur_radius: 1.0,
             levels,
@@ -527,7 +527,7 @@ impl ShadowMap {
 
         let sun_rotation = self.curr.as_ref().unwrap().sun_rotation;
         for cascade in self.curr.as_ref().unwrap().cascades.iter().enumerate() {
-            Self::bind_shadow_map(program, cascade.0 + MAX_SHADOW_MAPS, texunit, &sun_rotation, cascade.1);
+            Self::bind_shadow_map(program, cascade.0 + self.levels() as usize, texunit, &sun_rotation, cascade.1);
             texunit += 1;
         }
 
@@ -536,7 +536,6 @@ impl ShadowMap {
 
         let sun_direction = (1.0 - progress) * self.prev.as_ref().unwrap().sun_direction + progress * self.curr.as_ref().unwrap().sun_direction;
         program.uniform("sunDirection", Uniform::Vec3(sun_direction.normalize()));
-        program.uniform("shadowMapCount", Uniform::Signed(self.levels));
         program.uniform("shadowMapSize", Uniform::Float(2u32.pow(self.size_step as _) as f32));
         program.uniform("shadowMapProgress", Uniform::Float(progress));
         program.uniform("shadowBlurRadius", Uniform::Float(self.blur_radius));
@@ -548,7 +547,7 @@ impl ShadowMap {
         self.curr.as_ref().map(|cascades| cascades.cascades.len()).unwrap_or(0)
     }
 
-    pub fn options(&mut self, ui: &imgui::Ui) {
+    pub fn options(&mut self, ui: &imgui::Ui) -> bool {
         let mapsz = guiutil::slider_exp2int(ui, "Shadow Map Size:", self.size_step as _, (8, 12));
         self.set_size_step(mapsz as _);
 
@@ -557,6 +556,7 @@ impl ShadowMap {
         let mut smlscale = self.level_scale();
         ui.slider_int(imgui::im_str!("Count##shadowmaplevels"), &mut smlcount, 2, 6).build();
         ui.slider_float(imgui::im_str!("Scale##shadowmaplevels"), &mut smlscale, 0.2, 0.8).build();
+        let needs_shader_recompile = smlcount != self.levels();
         self.set_levels(smlcount);
         self.set_level_scale(smlscale);
 
@@ -566,5 +566,7 @@ impl ShadowMap {
         self.selfshadow_min = guiutil::slider_float(ui, "Self-Shadowing Min:", self.selfshadow_min, (0.0, 1.0), 1.0);
         self.selfshadow_max = guiutil::slider_float(ui, "Self-Shadowing Max:", self.selfshadow_max, (0.0, 1.0), 1.0);
         self.selfshadow_intensity = guiutil::slider_float(ui, "Self-Shadowing Amount:", self.selfshadow_intensity, (0.0, 1.0), 1.0);
+
+        needs_shader_recompile
     }
 }

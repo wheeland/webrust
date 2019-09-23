@@ -78,7 +78,7 @@ struct MyApp {
     shadows: shadowmap::ShadowMap,
 
     renderer: earth::renderer::Renderer,
-    postprocess: tinygl::Program,
+    postprocess: Option<tinygl::Program>,
     atmoshpere_in_scatter: f32,
     water_time: f32,
 
@@ -230,15 +230,15 @@ impl MyApp {
             self.errors.push(String::from("Couldn't deserialize planet data"));
         }
     }
-}
 
-fn create_postprocess_shader() -> tinygl::Program {
-    let vert = include_str!("shaders/postprocess.vert");
-    let frag = include_str!("shaders/postprocess.frag");
-    let frag = frag.replace("$SHADOWS", &shadowmap::ShadowMap::glsl());
-    let frag = frag.replace("$NOISE", util3d::noise::ShaderNoise::definitions());
-    let frag = frag.replace("$ATMOSPHERE", &atmosphere::shader_source().replace("#version 300 es", ""));
-    tinygl::Program::new_versioned(vert, &frag, 300)
+    fn create_postprocess_shader(&self) -> tinygl::Program {
+        let vert = include_str!("shaders/postprocess.vert");
+        let frag = include_str!("shaders/postprocess.frag");
+        let frag = frag.replace("$SHADOWS", &self.shadows.glsl());
+        let frag = frag.replace("$NOISE", util3d::noise::ShaderNoise::definitions());
+        let frag = frag.replace("$ATMOSPHERE", &atmosphere::shader_source().replace("#version 300 es", ""));
+        tinygl::Program::new_versioned(vert, &frag, 300)
+    }
 }
 
 impl webrunner::WebApp for MyApp {
@@ -273,7 +273,7 @@ impl webrunner::WebApp for MyApp {
             show_graphics_dialog: true,
             renderer: earth::renderer::Renderer::new(radius, 4, 1),
             shadows: shadowmap::ShadowMap::new(radius),
-            postprocess: create_postprocess_shader(),
+            postprocess: None,
             fsquad: tinygl::shapes::FullscreenQuad::new(),
             flying: true,
             fly_speed: 0.5,
@@ -281,6 +281,8 @@ impl webrunner::WebApp for MyApp {
             vertical_speed: 0.0,
             jump_flag: false,
         };
+
+        app.postprocess = Some(app.create_postprocess_shader());
 
         let planet = include_bytes!("../worley.bin");
         app.restore_state(&planet.to_vec());
@@ -334,19 +336,20 @@ impl webrunner::WebApp for MyApp {
         //
         // Setup Post-processing shader
         //
-        self.postprocess.bind();
-        self.shadows.prepare_postprocess(&self.postprocess, 4);
-        self.postprocess.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
-        self.postprocess.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
-        self.postprocess.uniform("angleToHorizon", tinygl::Uniform::Float((radius / eye.magnitude()).min(1.0).asin()));
-        self.postprocess.uniform("terrainMaxHeight", tinygl::Uniform::Float(atmosphere::raleigh_height()));
-        self.postprocess.uniform("planetColor", tinygl::Uniform::Signed(0));
-        self.postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
-        self.postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));
-        self.postprocess.uniform("planetRadius", tinygl::Uniform::Float(radius));
-        self.postprocess.uniform("waterSeed", tinygl::Uniform::Float(water_seed));
-        self.postprocess.uniform("inScatterFac", tinygl::Uniform::Float(self.atmoshpere_in_scatter));
-        atmosphere::prepare_shader(self.postprocess.handle().unwrap(), 4 + self.shadows.num_textures());
+        let postprocess = self.postprocess.as_ref().unwrap();
+        postprocess.bind();
+        self.shadows.prepare_postprocess(&postprocess, 3);
+        postprocess.uniform("eyePosition", tinygl::Uniform::Vec3(eye));
+        postprocess.uniform("inverseViewProjectionMatrix", tinygl::Uniform::Mat4(mvp.invert().unwrap()));
+        postprocess.uniform("angleToHorizon", tinygl::Uniform::Float((radius / eye.magnitude()).min(1.0).asin()));
+        postprocess.uniform("terrainMaxHeight", tinygl::Uniform::Float(atmosphere::raleigh_height()));
+        postprocess.uniform("planetColor", tinygl::Uniform::Signed(0));
+        postprocess.uniform("planetNormal", tinygl::Uniform::Signed(1));
+        postprocess.uniform("planetPosition", tinygl::Uniform::Signed(2));
+        postprocess.uniform("planetRadius", tinygl::Uniform::Float(radius));
+        postprocess.uniform("waterSeed", tinygl::Uniform::Float(water_seed));
+        postprocess.uniform("inScatterFac", tinygl::Uniform::Float(self.atmoshpere_in_scatter));
+        atmosphere::prepare_shader(postprocess.handle().unwrap(), 3 + self.shadows.num_textures());
 
         unsafe {
             gl::Viewport(0, 0, self.windowsize.0 as _, self.windowsize.1 as _);
@@ -358,7 +361,7 @@ impl webrunner::WebApp for MyApp {
         self.renderer.out_normal().bind_at(1);
         self.renderer.out_color().bind_at(0);
 
-        self.fsquad.render(&self.postprocess, "vertex");
+        self.fsquad.render(&postprocess, "vertex");
     }
 
     fn do_ui(&mut self, ui: &imgui::Ui, keymod: sdl2::keyboard::Mod) {
@@ -383,17 +386,23 @@ impl webrunner::WebApp for MyApp {
                 ui.set_cursor_pos((40.0, 90.0));
                 if ui.button(im_str!("Medium"), (120.0, 20.0)) {
                     self.renderer.set_plate_depth(5);
+                    self.shadows.set_levels(6);
+                    self.shadows.set_level_scale(0.35);
                     self.shadows.set_size_step(10);
                     self.shadows.set_blur_radius(2.0);
                     self.show_graphics_dialog = false;
+                    self.postprocess = Some(self.create_postprocess_shader());
                 }
                 ui.set_cursor_pos((40.0, 120.0));
                 if ui.button(im_str!("High"), (120.0, 20.0)) {
                     self.renderer.set_plate_depth(6);
+                    self.shadows.set_levels(6);
+                    self.shadows.set_level_scale(0.35);
                     self.renderer.set_texture_delta(2);
                     self.shadows.set_size_step(12);
                     self.shadows.set_blur_radius(3.0);
                     self.show_graphics_dialog = false;
+                    self.postprocess = Some(self.create_postprocess_shader());
                 }
             });
         }
@@ -484,7 +493,7 @@ impl webrunner::WebApp for MyApp {
 
                     if atmosphere::is_dirty() {
                         atmosphere::recreate();
-                        self.postprocess = create_postprocess_shader();
+                        self.postprocess = Some(self.create_postprocess_shader());
                     }
                 }
 
@@ -497,7 +506,9 @@ impl webrunner::WebApp for MyApp {
 
                 // shadow map settings
                 if ui.collapsing_header(im_str!("Shadow Mapping")).default_open(false).build() {
-                    self.shadows.options(ui);
+                    if self.shadows.options(ui) {
+                        self.postprocess = Some(self.create_postprocess_shader());
+                    }
                 }
 
                 self.left_panel_height = ui.get_cursor_pos().1;
