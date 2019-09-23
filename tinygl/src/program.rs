@@ -161,6 +161,10 @@ impl Program {
             prog_log = Some(ret.1);
 
             if Self::print_compilation_errors() && !prog_log.as_ref().unwrap().is_empty() {
+                println!("Vertex Shader:");
+                Self::print_lines(vsrc);
+                println!("Fragment Shader:");
+                Self::print_lines(fsrc);
                 Self::print_errors("Program Link Log:", prog_log.as_ref().unwrap());
             }
         }
