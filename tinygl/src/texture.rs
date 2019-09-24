@@ -62,6 +62,12 @@ impl Texture {
         self.size = Some(size);
     }
 
+    pub unsafe fn teximage_layer(&mut self, size: (GLsizei, GLsizei), layers: GLsizei, internal: GLenum, format: GLenum, datatype: GLenum, data: *const GLvoid) {
+        self.bind();
+        gl::TexImage3D(self.target, 0, internal as _, size.0, size.1, layers, 0, format, datatype, data);
+        self.size = Some(size);
+    }
+
     pub fn size(&self) -> Option<(GLsizei, GLsizei)> {
         self.size
     }
