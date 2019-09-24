@@ -165,7 +165,7 @@ impl Program {
                 Self::print_lines(vsrc);
                 println!("Fragment Shader:");
                 Self::print_lines(fsrc);
-                Self::print_errors("Program Link Log:", prog_log.as_ref().unwrap());
+                Self::print_errors(&format!("Link={}, Program Link Log:", prog.is_some()), prog_log.as_ref().unwrap());
             }
         }
 
