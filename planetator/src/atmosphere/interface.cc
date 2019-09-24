@@ -95,6 +95,15 @@ extern "C" void AtmosphereInit()
     printf("GL_VERSION: %s\n", glGetString(GL_VERSION));
     printf("GL_SHADING_LANGUAGE_VERSION: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
+    // print OpenGL extensions
+    GLint kExtensions;
+    printf("GL_EXTENSIONS:\n");
+    glGetIntegerv(GL_NUM_EXTENSIONS, &kExtensions);
+    for (int i = 0; i < kExtensions; ++i) {
+        const char *extension = (const char*) glGetStringi(GL_EXTENSIONS, i);
+        printf("  %s\n", extension);
+    }
+
     AtmosphereInitModel();
 }
 
