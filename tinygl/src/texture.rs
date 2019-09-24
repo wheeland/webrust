@@ -1,5 +1,9 @@
 use gl::types::*;
 
+const NUM_TEX_TARGETS: usize = 128;
+static mut CURRENT_TEXTURE_UNIT: usize = 0;
+static mut BOUND_TEX_TARGETS: [GLenum; NUM_TEX_TARGETS] = [0; NUM_TEX_TARGETS];
+
 pub struct Texture {
     tex: GLuint,
     target: GLenum,
@@ -30,13 +34,30 @@ impl Texture {
         self.tex
     }
 
+    fn new_texture_unit_binding(&self) {
+        // keep track of old binding to that unit and maybe un-bind
+        let curr_unit = unsafe { CURRENT_TEXTURE_UNIT };
+        if curr_unit < NUM_TEX_TARGETS {
+            let bound = unsafe { BOUND_TEX_TARGETS[curr_unit] };
+            if bound != self.target {
+                if bound != 0 {
+                    unsafe { gl::BindTexture(bound, 0); }
+                }
+                unsafe { BOUND_TEX_TARGETS[curr_unit] = self.target; }
+            }
+        }
+    }
+
     fn bind(&self) {
+        self.new_texture_unit_binding();
         unsafe { gl::BindTexture(self.target, self.tex); }
     }
 
     pub fn bind_at(&self, unit: u32) {
         unsafe {
             gl::ActiveTexture(gl::TEXTURE0 + unit);
+            unsafe { CURRENT_TEXTURE_UNIT = unit as _; }
+            self.new_texture_unit_binding();
             gl::BindTexture(self.target, self.tex);
         }
     }
