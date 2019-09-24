@@ -39,11 +39,18 @@ impl FrameBufferOutput {
     }
 }
 
+// #[derive(PartialEq)]
+enum DepthAttachment {
+    None,
+    RenderBuffer ( GLuint ),
+    Texture ( super::texture::Texture ),
+    ExternalTexture ( GLuint ),
+}
+
 pub struct FrameBufferObject {
     size: (GLsizei, GLsizei),
     fbo: GLuint,
-    depth_rb: Option<GLuint>,
-    depth_tex: Option<Texture>,
+    depth: DepthAttachment,
     textures: HashMap<String, FrameBufferOutput>
 }
 
@@ -55,8 +62,7 @@ impl FrameBufferObject {
         FrameBufferObject {
             size,
             fbo,
-            depth_rb: None,
-            depth_tex: None,
+            depth: DepthAttachment::None,
             textures: HashMap::new()
         }
     }
@@ -83,7 +89,7 @@ impl FrameBufferObject {
     }
 
     pub fn add_depth_renderbuffer(&mut self) {
-        if self.depth_rb.is_none() && self.depth_tex.is_none() {
+        if let DepthAttachment::None = self.depth {
             unsafe {
                 let mut depth = 0;
                 gl::GenRenderbuffers(1, &mut depth);
@@ -93,13 +99,13 @@ impl FrameBufferObject {
                 gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, gl::RENDERBUFFER, depth);
                 gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
 
-                self.depth_rb = Some(depth);
+                self.depth = DepthAttachment::RenderBuffer(depth);
             }
         }
     }
 
     pub fn add_depth_texture(&mut self) {
-        if self.depth_rb.is_none() && self.depth_tex.is_none() {
+        if let DepthAttachment::None = self.depth {
             let mut texture = Texture::new(gl::TEXTURE_2D);
             texture.bind_at(0);
             texture.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
@@ -114,16 +120,38 @@ impl FrameBufferObject {
                 gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
             }
 
-            self.depth_tex = Some(texture);
+            self.depth = DepthAttachment::Texture(texture);
+        }
+    }
+
+    pub fn attach_depth_texture(&mut self, texture: &Texture, layer: Option<u32>) {
+        if let DepthAttachment::None = self.depth {
+            unsafe {
+                gl::BindFramebuffer(gl::FRAMEBUFFER, self.fbo);
+                if let Some(layer) = layer {
+                    gl::FramebufferTextureLayer(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, texture.handle(), 0, layer as _);
+                } else {
+                    gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, gl::TEXTURE_2D, texture.handle(), 0);
+                }
+                gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            }
+
+            self.depth = DepthAttachment::ExternalTexture(texture.handle());
         }
     }
 
     pub fn depth_texture(&self) -> Option<&Texture> {
-        self.depth_tex.as_ref()
+        match &self.depth {
+            DepthAttachment::Texture(ref texture) => Some(texture),
+            _ => None,
+        }
     }
 
     pub fn depth_texture_mut(&mut self) -> Option<&mut Texture> {
-        self.depth_tex.as_mut()
+        match &mut self.depth {
+            DepthAttachment::Texture(ref mut texture) => Some(texture),
+            _ => None,
+        }
     }
 
     pub fn bind(&self) {
@@ -178,8 +206,8 @@ impl Drop for FrameBufferObject {
     fn drop(&mut self) {
         unsafe {
             gl::DeleteFramebuffers(1, &mut self.fbo);
-            if let Some(depth) = self.depth_rb.take() {
-                gl::DeleteRenderbuffers(1, &depth);
+            if let DepthAttachment::RenderBuffer(rb) = self.depth {
+                gl::DeleteRenderbuffers(1, &rb);
             }
         }
     }
