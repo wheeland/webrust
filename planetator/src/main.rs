@@ -349,7 +349,7 @@ impl webrunner::WebApp for MyApp {
         postprocess.uniform("planetRadius", tinygl::Uniform::Float(radius));
         postprocess.uniform("waterSeed", tinygl::Uniform::Float(water_seed));
         postprocess.uniform("inScatterFac", tinygl::Uniform::Float(self.atmoshpere_in_scatter));
-        atmosphere::prepare_shader(postprocess.handle().unwrap(), 3 + self.shadows.num_textures());
+        atmosphere::prepare_shader(postprocess.handle().unwrap(), 4);
 
         unsafe {
             gl::Viewport(0, 0, self.windowsize.0 as _, self.windowsize.1 as _);

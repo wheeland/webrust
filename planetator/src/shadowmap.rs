@@ -3,18 +3,19 @@ use cgmath::*;
 use tinygl::{Program, Texture, Uniform, FrameBufferObject};
 use super::guiutil;
 
-static MAX_SHADOW_MAPS: usize = 6;
 static MAX_REL_EXTENT: f32 = 1.2;
 
 fn glsl(tex_count: u32) -> String {
     String::from("
     struct ShadowMap {
-        highp sampler2D map;
         float depth;
         mat4 mvp;
     };
 
     #define MAX_SHADOW_MAPS ") + &tex_count.to_string() + "
+    uniform int shadowMapsPrevLayer;
+    uniform int shadowMapsCurrLayer;
+    uniform highp sampler2DArray shadowMaps;
     uniform ShadowMap shadowMapsPrevCurr[2 * MAX_SHADOW_MAPS];
     uniform float shadowMapSize;
     uniform float shadowMapProgress;
@@ -28,8 +29,8 @@ fn glsl(tex_count: u32) -> String {
         return mix(vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), f - 2.0);
     }
 
-    float shadow_compare(sampler2D depths, vec2 uv, vec2 compare) {
-        float depth = texture(depths, uv).r;
+    float shadow_compare(int layer, vec2 uv, vec2 compare) {
+        float depth = texture(shadowMaps, vec3(uv, float(layer))).r;
         return smoothstep(compare.x, compare.y, depth);
     }
 
@@ -50,7 +51,7 @@ fn glsl(tex_count: u32) -> String {
     mechanism that does this _consistently_, meaning that it approximates a stable kernel filter function, e.g. by only
     sampling every texel mod (4,4). this would give it stability w.r.t. movement
     */
-    float shadow_blur(sampler2D depths, vec2 uv, vec2 compare, float radius) {
+    float shadow_blur(int layer, vec2 uv, vec2 compare, float radius) {
         vec2 texelSize = vec2(1.0 / shadowMapSize);
         vec2 f = fract(uv * shadowMapSize + 0.5);
         vec2 centroidUV = floor(uv * shadowMapSize + 0.5) / shadowMapSize;
@@ -63,7 +64,7 @@ fn glsl(tex_count: u32) -> String {
             float dx = max(1.0 - abs(float(i) - f.x) / radius, 0.0);
 
             for (int j = -bound; j < 2 + bound; ++j) {
-                float shadowSample = shadow_compare(depths, centroidUV + texelSize * vec2(float(i), float(j)), compare);
+                float shadowSample = shadow_compare(layer, centroidUV + texelSize * vec2(float(i), float(j)), compare);
                 float dy = max(1.0 - abs(float(j) - f.y) / radius, 0.0);
                 total += dx * dy;
                 sum += shadowSample * dx * dy;
@@ -73,48 +74,54 @@ fn glsl(tex_count: u32) -> String {
         return sum / total;
     }
 
-    float shadow_lerp(sampler2D depths, vec2 uv, vec2 compare) {
+    float shadow_lerp(int layer, vec2 uv, vec2 compare) {
         vec2 texelSize = vec2(1.0 / shadowMapSize);
         vec2 f = fract(uv * shadowMapSize + 0.5);
         vec2 centroidUV = floor(uv * shadowMapSize + 0.5) / shadowMapSize;
 
-        float lb = shadow_compare(depths, centroidUV + texelSize * vec2(0.0, 0.0), compare);
-        float lt = shadow_compare(depths, centroidUV + texelSize * vec2(0.0, 1.0), compare);
-        float rb = shadow_compare(depths, centroidUV + texelSize * vec2(1.0, 0.0), compare);
-        float rt = shadow_compare(depths, centroidUV + texelSize * vec2(1.0, 1.0), compare);
+        float lb = shadow_compare(layer, centroidUV + texelSize * vec2(0.0, 0.0), compare);
+        float lt = shadow_compare(layer, centroidUV + texelSize * vec2(0.0, 1.0), compare);
+        float rb = shadow_compare(layer, centroidUV + texelSize * vec2(1.0, 0.0), compare);
+        float rt = shadow_compare(layer, centroidUV + texelSize * vec2(1.0, 1.0), compare);
         float a = mix(lb, lt, f.y);
         float b = mix(rb, rt, f.y);
         float c = mix(a, b, f.x);
         return c;
     }
 
-    bool shadow_getShadowForLevel(int level, vec3 pos, float dist, float dotSunNormal, out float lit) {
-        vec4 posInSunSpace = shadowMapsPrevCurr[level].mvp * vec4(pos, 1.0);
-        posInSunSpace /= posInSunSpace.w;
-        posInSunSpace = 0.5 * posInSunSpace + vec4(0.5);
+    float shadow_getShadowWithOffset(vec3 pos, float dist, float dotSunNormal, int startIdx, int startLayer, out vec3 color) {
+        int layer = 0;
+        vec2 uv = vec2(0.0);
+        vec2 compare = vec2(0.0);
 
-        vec2 compare = vec2(posInSunSpace.z - 0.1 * dist / shadowMapsPrevCurr[level].depth, posInSunSpace.z);
-
-        if (all(greaterThan(posInSunSpace.xy, vec2(0.05))) && all(lessThan(posInSunSpace.xy, vec2(0.95)))) {
-            if (shadowBlurRadius <= 1.0)
-                lit = shadow_lerp(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare);
-            else
-                lit = shadow_blur(shadowMapsPrevCurr[level].map, posInSunSpace.xy, compare, shadowBlurRadius);
-
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    float shadow_getShadowWithOffset(vec3 pos, float dist, float dotSunNormal, int start, out vec3 color) {
-        float lit = 0.0;
         int i = MAX_SHADOW_MAPS - 1;
+
+        // find out which level within the shadow cascade is the most-detailed one and
+        // calculate texture UV coords, comparison thresholds, and layer index
         while (i >= 0) {
-            if (shadow_getShadowForLevel(i + start, pos, dist, dotSunNormal, lit))
+            int level = startIdx + i;
+
+            vec4 posInSunSpace = shadowMapsPrevCurr[level].mvp * vec4(pos, 1.0);
+            posInSunSpace /= posInSunSpace.w;
+            posInSunSpace = 0.5 * posInSunSpace + vec4(0.5);
+
+            vec2 cmp = vec2(posInSunSpace.z - 0.1 * dist / shadowMapsPrevCurr[level].depth, posInSunSpace.z);
+
+            if (all(greaterThan(posInSunSpace.xy, vec2(0.05))) && all(lessThan(posInSunSpace.xy, vec2(0.95)))) {
+                uv = posInSunSpace.xy;
+                compare = cmp;
+                layer = startLayer + i;
                 break;
+            }
             --i;
         }
+
+        float lit = 0.0;
+        if (shadowBlurRadius <= 1.0)
+            lit = shadow_lerp(layer, uv, compare);
+        else
+            lit = shadow_blur(layer, uv, compare, shadowBlurRadius);
+
         color = shadow_getDebugColor(float(i) / float(MAX_SHADOW_MAPS - 1));
         return lit;
     }
@@ -126,17 +133,17 @@ fn glsl(tex_count: u32) -> String {
 
         vec3 shadowMapDebugPrev, shadowMapDebugCurr;
 
-        float litPrev = shadow_getShadowWithOffset(pos, dist, dotSunNormal, 0, shadowMapDebugPrev);
-        float litNext = shadow_getShadowWithOffset(pos, dist, dotSunNormal, MAX_SHADOW_MAPS, shadowMapDebugCurr);
+        float litPrev = shadow_getShadowWithOffset(pos, dist, dotSunNormal, 0,               shadowMapsPrevLayer, shadowMapDebugPrev);
+        float litNext = shadow_getShadowWithOffset(pos, dist, dotSunNormal, MAX_SHADOW_MAPS, shadowMapsCurrLayer, shadowMapDebugCurr);
 
         debugColor = mix(shadowMapDebugPrev, shadowMapDebugCurr, shadowMapProgress);
         float shadow = mix(litPrev, litNext, shadowMapProgress);
 
-        float sunCutOff = 0.2;
-        if (dotSunNormal < sunCutOff)
-            shadow *= max(dotSunNormal / sunCutOff, 0.0);
+        // float sunCutOff = 0.2;
+        // if (dotSunNormal < sunCutOff)
+            // shadow *= max(dotSunNormal / sunCutOff, 0.0);
 
-        shadow *= mix(1.0, smoothstep(selfshadow.x, selfshadow.y, dotSunNormal), selfshadow.z);
+        // shadow *= mix(1.0, smoothstep(selfshadow.x, selfshadow.y, dotSunNormal), selfshadow.z);
 
         return shadow;
     }
@@ -157,21 +164,18 @@ struct ShadowCascade {
 }
 
 impl ShadowCascade {
-    fn new(size: u32, level: i32, extent: f32) -> Self {
+    fn new(size: u32, level: i32, extent: f32, depth_texture: &Texture, depth_layer: u32) -> Self {
         // Create FBO
         let mut fbo = FrameBufferObject::new((size as _, size as _));
-        fbo.add_depth_texture();
+        // fbo.add_depth_texture();
+        fbo.attach_depth_texture(depth_texture, Some(depth_layer));
         // fbo.add("depth", gl::R32F, gl::RED, gl::FLOAT);
         {
             // let tex = fbo.texture_mut("depth").unwrap();
-            let tex = fbo.depth_texture_mut().unwrap();
-            tex.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
-            tex.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
+            // tex.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
+            // tex.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
             // tex.filter(gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
             // tex.filter(gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
-            unsafe { gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_COMPARE_MODE, gl::NONE as _) }
-            tex.filter(gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
-            tex.filter(gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
         }
 
         let mut ret = ShadowCascade {
@@ -214,19 +218,21 @@ impl ShadowCascade {
 struct SunPositionCascades {
     sun_direction: Vector3<f32>,
     sun_rotation: Matrix4<f32>,
+    start_layer: u32,
     cascades: Vec<ShadowCascade>,
     filled: usize,
 }
 
 impl SunPositionCascades {
-    fn new(size: u32, radius: f32, levels: i32) -> Self {
+    fn new(size: u32, radius: f32, levels: i32, depth_texture: &Texture, start_layer: u32) -> Self {
         let mut cascades = Vec::new();
         for i in 0..levels {
-            cascades.push(ShadowCascade::new(size, i, radius * MAX_REL_EXTENT));
+            cascades.push(ShadowCascade::new(size, i, radius * MAX_REL_EXTENT, depth_texture, start_layer + i as u32));
         }
 
         SunPositionCascades {
             cascades,
+            start_layer,
             sun_direction: Vector3::new(0.0, 0.0, 1.0),
             sun_rotation: Matrix4::from_scale(1.0),
             filled: 0,
@@ -246,6 +252,10 @@ impl SunPositionCascades {
 
     fn is_complete(&self) -> bool {
         self.filled == self.cascades.len()
+    }
+
+    fn start_layer(&self) -> u32 {
+        self.start_layer
     }
 }
 
@@ -270,6 +280,8 @@ pub struct ShadowMap {
     blur_radius: f32,
     program: Program,
 
+    depth_texture: Texture,
+
     selfshadow_min: f32,
     selfshadow_max: f32,
     selfshadow_intensity: f32,
@@ -281,6 +293,22 @@ pub struct ShadowMap {
 }
 
 impl ShadowMap {
+    fn create_depth_texture(size: u32, levels: i32) -> Texture {
+        let mut depth_tex = Texture::new(gl::TEXTURE_2D_ARRAY);
+        depth_tex.bind_at(0);
+        unsafe {
+            depth_tex.teximage_layer((size as _, size as _), (3 * levels) as _, gl::DEPTH_COMPONENT24, gl::DEPTH_COMPONENT, gl::UNSIGNED_INT, std::ptr::null());
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_COMPARE_MODE, gl::COMPARE_REF_TO_TEXTURE as _);
+            // gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_COMPARE_MODE, gl::NONE as _);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_COMPARE_FUNC, gl::LEQUAL as _);
+        }
+        depth_tex.filter(gl::TEXTURE_MIN_FILTER, gl::NEAREST as _);
+        depth_tex.filter(gl::TEXTURE_MAG_FILTER, gl::NEAREST as _);
+        depth_tex.wrap(gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE);
+        depth_tex.wrap(gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE);
+        depth_tex
+    }
+
     pub fn glsl(&self) -> String {
         glsl(self.levels as _)
     }
@@ -292,9 +320,15 @@ impl ShadowMap {
         let size_step = 10;
         let size = 2u32.pow(size_step);
 
+        let depth_tex = Self::create_depth_texture(size, levels);
+        let prev = SunPositionCascades::new(size, radius, levels, &depth_tex, 0);
+        let curr = SunPositionCascades::new(size, radius, levels, &depth_tex, levels as _);
+        let next = SunPositionCascades::new(size, radius, levels, &depth_tex, (2 * levels) as _);
+
         let mut ret = ShadowMap {
             size_step,
             radius,
+            depth_texture: depth_tex,
             blur_radius: 1.0,
             levels,
             level_scale,
@@ -317,9 +351,9 @@ impl ShadowMap {
             selfshadow_min: 0.0,
             selfshadow_max: 1.0,
             selfshadow_intensity: 0.5,
-            prev: Some(SunPositionCascades::new(size, radius, levels)),
-            curr: Some(SunPositionCascades::new(size, radius, levels)),
-            next: Some(SunPositionCascades::new(size, radius, levels)),
+            prev: Some(prev),
+            curr: Some(curr),
+            next: Some(next),
             next_sun_direction: Vector3::new(0.0, 0.0, 1.0),
         };
 
@@ -339,9 +373,10 @@ impl ShadowMap {
 
     fn create_cascades(&mut self) {
         let size = 2u32.pow(self.size_step as _);
-        self.prev = Some(SunPositionCascades::new(size, self.radius, self.levels));
-        self.curr = Some(SunPositionCascades::new(size, self.radius, self.levels));
-        self.next = Some(SunPositionCascades::new(size, self.radius, self.levels));
+        self.depth_texture = Self::create_depth_texture(size, self.levels);
+        self.prev = Some(SunPositionCascades::new(size, self.radius, self.levels, &self.depth_texture, 0));
+        self.curr = Some(SunPositionCascades::new(size, self.radius, self.levels, &self.depth_texture, self.levels as u32));
+        self.next = Some(SunPositionCascades::new(size, self.radius, self.levels, &self.depth_texture, 2 * self.levels as u32));
     }
 
     pub fn size_step(&self) -> u32 {
@@ -351,7 +386,6 @@ impl ShadowMap {
     pub fn set_size_step(&mut self, size: u32) {
         if self.size_step != size {
             self.size_step = size;
-            let size = 2u32.pow(self.size_step as _);
             self.create_cascades();
             self.scale_cascades();
         }
@@ -509,26 +543,26 @@ impl ShadowMap {
         tinygl::FrameBufferObject::unbind();
     }
 
-    fn bind_shadow_map(program: &Program, index: usize, texunit: u32, sun_rotation: &Matrix4<f32>, cascade: &ShadowCascade) {
-        cascade.depth_texture().bind_at(texunit);
-        program.uniform(&format!("shadowMapsPrevCurr[{}].map", index),   Uniform::Signed(texunit as i32));
+    fn bind_shadow_map(program: &Program, index: usize, sun_rotation: &Matrix4<f32>, cascade: &ShadowCascade) {
         program.uniform(&format!("shadowMapsPrevCurr[{}].depth", index), Uniform::Float(cascade.orthogonal_depth));
         program.uniform(&format!("shadowMapsPrevCurr[{}].mvp", index),   Uniform::Mat4(cascade.projection * *sun_rotation));
     }
 
-    pub fn prepare_postprocess(&self, program: &Program, texunit_start: u32) {
-        let mut texunit = texunit_start;
+    pub fn prepare_postprocess(&self, program: &Program, texunit: u32) {
+        self.depth_texture.bind_at(texunit);
+
+        program.uniform("shadowMaps", Uniform::Signed(texunit as i32));
+        program.uniform("shadowMapsPrevLayer", Uniform::Signed(self.prev.as_ref().unwrap().start_layer() as i32));
+        program.uniform("shadowMapsCurrLayer", Uniform::Signed(self.curr.as_ref().unwrap().start_layer() as i32));
 
         let sun_rotation = self.prev.as_ref().unwrap().sun_rotation;
         for cascade in self.prev.as_ref().unwrap().cascades.iter().enumerate() {
-            Self::bind_shadow_map(program, cascade.0, texunit, &sun_rotation, cascade.1);
-            texunit += 1;
+            Self::bind_shadow_map(program, cascade.0, &sun_rotation, cascade.1);
         }
 
         let sun_rotation = self.curr.as_ref().unwrap().sun_rotation;
         for cascade in self.curr.as_ref().unwrap().cascades.iter().enumerate() {
-            Self::bind_shadow_map(program, cascade.0 + self.levels() as usize, texunit, &sun_rotation, cascade.1);
-            texunit += 1;
+            Self::bind_shadow_map(program, cascade.0 + self.levels() as usize, &sun_rotation, cascade.1);
         }
 
         let filled = self.next.as_ref().unwrap().filled;
