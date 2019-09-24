@@ -139,11 +139,11 @@ fn glsl(tex_count: u32) -> String {
         debugColor = mix(shadowMapDebugPrev, shadowMapDebugCurr, shadowMapProgress);
         float shadow = mix(litPrev, litNext, shadowMapProgress);
 
-        // float sunCutOff = 0.2;
-        // if (dotSunNormal < sunCutOff)
-            // shadow *= max(dotSunNormal / sunCutOff, 0.0);
+        float sunCutOff = 0.2;
+        if (dotSunNormal < sunCutOff)
+            shadow *= max(dotSunNormal / sunCutOff, 0.0);
 
-        // shadow *= mix(1.0, smoothstep(selfshadow.x, selfshadow.y, dotSunNormal), selfshadow.z);
+        shadow *= mix(1.0, smoothstep(selfshadow.x, selfshadow.y, dotSunNormal), selfshadow.z);
 
         return shadow;
     }
