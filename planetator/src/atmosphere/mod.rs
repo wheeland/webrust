@@ -45,6 +45,18 @@ pub fn set_half_precision(half: bool) {
     }
 }
 
+pub fn combined_textures() -> bool {
+    unsafe { AtmosphereUseCombinedTextures != 0 }
+}
+pub fn set_combined_textures(combined: bool) {
+    unsafe {
+        if combined_textures() != combined {
+            AtmosphereUseCombinedTextures = if combined { 1 } else { 0 };
+            dirty = true;
+        }
+    }
+}
+
 pub fn shader_radius() -> f32 {
     unsafe { AtmosphereShaderRadius }
 }

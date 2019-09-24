@@ -219,7 +219,7 @@ extern "C" void AtmosphereInitModel() {
             {mie_layer}, mie_scattering, mie_extinction, kMiePhaseFunctionG,
             ozone_density, absorption_extinction, ground_albedo, max_sun_zenith_angle,
             kLengthUnitInMeters, use_luminance_ == PRECOMPUTED ? 15 : 3,
-            AtmosphereUseCombinedTextures, AtmosphereUseHalfPrecision
+            (AtmosphereUseCombinedTextures != 0), (AtmosphereUseHalfPrecision != 0)
         )
     );
     model_->Init();

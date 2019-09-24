@@ -976,11 +976,12 @@ void Model::SetProgramUniforms(
   glUniform1i(glGetUniformLocation(program, "irradiance_texture"),
       irradiance_texture_unit);
 
+  glUniform1i(glGetUniformLocation(program, "single_mie_scattering_texture"),
+      single_mie_scattering_texture_unit);
+
   if (optional_single_mie_scattering_texture_ != 0) {
     glActiveTexture(GL_TEXTURE0 + single_mie_scattering_texture_unit);
     glBindTexture(GL_TEXTURE_3D, optional_single_mie_scattering_texture_);
-    glUniform1i(glGetUniformLocation(program, "single_mie_scattering_texture"),
-        single_mie_scattering_texture_unit);
   }
 }
 

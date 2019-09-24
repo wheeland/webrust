@@ -487,9 +487,14 @@ impl webrunner::WebApp for MyApp {
                     atmosphere::set_mie_scattering(guiutil::slider_float(ui, "Mie Scattering", atmosphere::mie_scattering(), (0.1, 10.0), 2.0));
                     atmosphere::set_mie_height(guiutil::slider_float(ui, "Mie Height", atmosphere::mie_height(), (0.0, 10.0), 2.0));
                     self.atmoshpere_in_scatter = guiutil::slider_float(ui, "In-Scattering", self.atmoshpere_in_scatter, (0.0, 2.0), 1.0);
+
                     let mut half_precision = atmosphere::half_precision();
                     ui.checkbox(im_str!("Half-Precision"), &mut half_precision);
                     atmosphere::set_half_precision(half_precision);
+
+                    let mut combined_textures = atmosphere::combined_textures();
+                    ui.checkbox(im_str!("Combined Textures"), &mut combined_textures);
+                    atmosphere::set_combined_textures(combined_textures);
 
                     if atmosphere::is_dirty() {
                         atmosphere::recreate();
