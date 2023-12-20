@@ -20,8 +20,8 @@ base64 = "0.10.0"
 bincode = "~1.0.0"
 cgmath = "^0"
 gl = "0.10.0"
-imgui = { version = "0.0.20", path = "../imgui-rs" }
-imgui-sys = { version = "0.0.20", path = "../imgui-rs/imgui-sys" }
+imgui = { version = "0.11.0", path = "../imgui-rs/imgui" }
+imgui-sys = { version = "0.11.0", path = "../imgui-rs/imgui-sys" }
 lru-cache = "0.1.1"
 rand = "^0.6"
 sdl2 = "^0"

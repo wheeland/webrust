@@ -26,7 +26,7 @@ pub struct AppRunner<T> {
     last_frame: Option<std::time::SystemTime>,
     private: Option<T>,
 
-    imgui: imgui::ImGui,
+    imgui: imgui::Context,
     imgui_sdl2: imgui_sdl2::ImguiSdl2,
     imgui_renderer: Renderer
 }
@@ -60,9 +60,9 @@ impl<T: WebApp> AppRunner<T> {
 
         let events = ctx.event_pump().unwrap();
 
-        let mut imgui = imgui::ImGui::init();
+        let mut imgui = imgui::Context::create();
         imgui.set_ini_filename(None);
-        let imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui);
+        let imgui_sdl2 = imgui_sdl2::ImguiSdl2::new(&mut imgui, &window);
         let imgui_renderer = Renderer::new(&mut imgui);
 
         let mut runner = Rc::new(AppRunner::<T> {
@@ -88,7 +88,7 @@ impl<T: WebApp> AppRunner<T> {
         };
     }
 
-    fn push_event(private: &mut T, imgui: &mut imgui::ImGui, imgui_sdl2: &mut imgui_sdl2::ImguiSdl2, event: &sdl2::event::Event) {
+    fn push_event(private: &mut T, imgui: &mut imgui::Context, imgui_sdl2: &mut imgui_sdl2::ImguiSdl2, event: &sdl2::event::Event) {
         if !imgui_sdl2.ignore_event(event) {
             private.event(event);
         }
@@ -138,11 +138,11 @@ impl<T: WebApp> AppRunner<T> {
                         private.resize((w as u32, h as u32));
                     }
                 }
-                sdl2::event::Event::MouseWheel{timestamp, window_id, which, x, y, direction} => {
+                sdl2::event::Event::MouseWheel{timestamp, window_id, which, x, y, direction, precise_x, precise_y} => {
                     let sgn = |x| if x > 0 { 1 } else if x < 0 { -1 } else { 0 };
-                    let xx = sgn(x);
-                    let yy = sgn(y);
-                    let normalized_wheel_event = sdl2::event::Event::MouseWheel{timestamp, window_id, which, x: xx, y: yy, direction};
+                    let x = sgn(x);
+                    let y = sgn(y);
+                    let normalized_wheel_event = sdl2::event::Event::MouseWheel{timestamp, window_id, which, x, y, direction, precise_x, precise_y};
                     Self::push_event(private, &mut self.imgui, &mut self.imgui_sdl2, &normalized_wheel_event);
                 }
                 _ => {
@@ -154,10 +154,12 @@ impl<T: WebApp> AppRunner<T> {
         // Render app
         private.render(dt);
 
+        
+
         // Render imgui UI
-        let ui = self.imgui_sdl2.frame(&self.window, &mut self.imgui, &self.events, dt);
-        private.do_ui(&ui, self.keymod);
-        self.imgui_renderer.render(ui);
+        self.imgui_sdl2.prepare_frame(self.imgui.io_mut(), &self.window, &self.events.mouse_state());
+        private.do_ui(self.imgui.frame(), self.keymod);
+        self.imgui_renderer.render(&mut self.imgui);
 
         self.window.gl_swap_window();
     }

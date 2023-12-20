@@ -2,7 +2,7 @@ extern crate imgui;
 extern crate gl;
 extern crate cgmath;
 
-use imgui::{ImGui,Ui};
+use imgui::{Context,Ui, DrawVert, DrawIdx, DrawCmd};
 use std::mem;
 use gl::types::*;
 
@@ -16,7 +16,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(imgui: &mut ImGui) -> Self {
+    pub fn new(imgui: &mut Context) -> Self {
         let vert_source = "
             uniform mat4 ProjMtx;
             attribute vec2 Position;
@@ -54,13 +54,13 @@ impl Renderer {
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
 
-            imgui.prepare_texture(|handle| {
-                gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as _, handle.width as _, handle.height as _, 0, gl::RGBA, gl::UNSIGNED_BYTE, handle.pixels.as_ptr() as _);
-            });
+            // imgui.prepare_texture(|handle| {
+            //     gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as _, handle.width as _, handle.height as _, 0, gl::RGBA, gl::UNSIGNED_BYTE, handle.pixels.as_ptr() as _);
+            // });
 
             gl::BindTexture(gl::TEXTURE_2D, current_texture as _);
 
-            imgui.set_texture_id(font_texture as usize);
+            // imgui.set_texture_id(font_texture as usize);
 
             Self{
                 program: prog1,
@@ -71,9 +71,7 @@ impl Renderer {
         }
     }
 
-    pub fn render<'ui>(&mut self, ui: Ui<'ui>) {
-        use imgui::{ImDrawVert,ImDrawIdx};
-
+    pub fn render(&mut self, imgui: &mut Context) {
         unsafe {
             gl::Enable(gl::BLEND);
             gl::Enable(gl::SCISSOR_TEST);
@@ -82,10 +80,12 @@ impl Renderer {
             gl::Disable(gl::CULL_FACE);
             gl::Disable(gl::DEPTH_TEST);
             gl::ActiveTexture(gl::TEXTURE0);
+            
+            let draw_data = imgui.render();
 
-            let (width, height) = ui.imgui().display_size();
-            let fb_width = width * ui.imgui().display_framebuffer_scale().0;
-            let fb_height = height * ui.imgui().display_framebuffer_scale().1;
+            let [width, height] = draw_data.display_size;
+            let fb_width = width * draw_data.framebuffer_scale[0];
+            let fb_height = height * draw_data.framebuffer_scale[1];
 
             gl::Viewport(0, 0, fb_width as _, fb_height as _);
             let matrix = cgmath::Matrix4::new(
@@ -105,38 +105,36 @@ impl Renderer {
             gl::EnableVertexAttribArray(puv);
             gl::EnableVertexAttribArray(pcolor);
 
-            ui.render::<_, ()>(|ui, mut draw_data| {
-                draw_data.scale_clip_rects(ui.imgui().display_framebuffer_scale());
+            // draw_data.scale_clip_rects(draw_data.framebuffer_scale.into());
 
-                for draw_list in &draw_data {
-                    gl::BindBuffer(gl::ARRAY_BUFFER, self.vbo);
-                    gl::BufferData(gl::ARRAY_BUFFER, (draw_list.vtx_buffer.len() * mem::size_of::<ImDrawVert>()) as _, draw_list.vtx_buffer.as_ptr() as _, gl::STREAM_DRAW);
+            for draw_list in draw_data.draw_lists() {
+                gl::BindBuffer(gl::ARRAY_BUFFER, self.vbo);
+                gl::BufferData(gl::ARRAY_BUFFER, (draw_list.vtx_buffer().len() * mem::size_of::<DrawVert>()) as _, draw_list.vtx_buffer().as_ptr() as _, gl::STREAM_DRAW);
 
-                    gl::VertexAttribPointer(ploc,   2, gl::FLOAT,         gl::FALSE, mem::size_of::<ImDrawVert>() as _, field_offset::<ImDrawVert, _, _>(|v| &v.pos) as _);
-                    gl::VertexAttribPointer(puv,    2, gl::FLOAT,         gl::FALSE, mem::size_of::<ImDrawVert>() as _, field_offset::<ImDrawVert, _, _>(|v| &v.uv) as _);
-                    gl::VertexAttribPointer(pcolor, 4, gl::UNSIGNED_BYTE, gl::TRUE,  mem::size_of::<ImDrawVert>() as _, field_offset::<ImDrawVert, _, _>(|v| &v.col) as _);
+                gl::VertexAttribPointer(ploc,   2, gl::FLOAT,         gl::FALSE, mem::size_of::<DrawVert>() as _, field_offset::<DrawVert, _, _>(|v| &v.pos) as _);
+                gl::VertexAttribPointer(puv,    2, gl::FLOAT,         gl::FALSE, mem::size_of::<DrawVert>() as _, field_offset::<DrawVert, _, _>(|v| &v.uv) as _);
+                gl::VertexAttribPointer(pcolor, 4, gl::UNSIGNED_BYTE, gl::TRUE,  mem::size_of::<DrawVert>() as _, field_offset::<DrawVert, _, _>(|v| &v.col) as _);
 
-                    gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, self.ebo);
-                    gl::BufferData(gl::ELEMENT_ARRAY_BUFFER, (draw_list.idx_buffer.len() * mem::size_of::<ImDrawIdx>()) as _, draw_list.idx_buffer.as_ptr() as _, gl::STREAM_DRAW);
+                gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, self.ebo);
+                gl::BufferData(gl::ELEMENT_ARRAY_BUFFER, (draw_list.idx_buffer().len() * mem::size_of::<DrawIdx>()) as _, draw_list.idx_buffer().as_ptr() as _, gl::STREAM_DRAW);
 
-                    let mut idx_start = 0;
-                    for cmd in draw_list.cmd_buffer {
-                        if let Some(_callback) = cmd.user_callback {
-                            unimplemented!("Haven't implemented user callbacks yet");
-                        } else {
-                            gl::Scissor(cmd.clip_rect.x as GLint,
-                                        (fb_height - cmd.clip_rect.w) as GLint,
-                                        (cmd.clip_rect.z - cmd.clip_rect.x) as GLint,
-                                        (cmd.clip_rect.w - cmd.clip_rect.y) as GLint);
-                            gl::BindTexture(gl::TEXTURE_2D, cmd.texture_id as _);
-                            gl::DrawElements(gl::TRIANGLES, cmd.elem_count as _, if mem::size_of::<ImDrawIdx>() == 2 { gl::UNSIGNED_SHORT } else { gl::UNSIGNED_INT }, idx_start as _);
-                        }
-                        idx_start += cmd.elem_count * mem::size_of::<ImDrawIdx>() as u32;
+                let mut idx_start = 0;
+                for cmd in draw_list.commands() {
+                    match cmd {
+                        DrawCmd::Elements { count, cmd_params } => {
+                            gl::Scissor(cmd_params.clip_rect[0] as GLint,
+                                        (fb_height - cmd_params.clip_rect[3]) as GLint,
+                                        (cmd_params.clip_rect[2] - cmd_params.clip_rect[0]) as GLint,
+                                        (cmd_params.clip_rect[3] - cmd_params.clip_rect[1]) as GLint);
+                            gl::BindTexture(gl::TEXTURE_2D, cmd_params.texture_id.id() as _);
+                            gl::DrawElements(gl::TRIANGLES, count as _, if mem::size_of::<DrawIdx>() == 2 { gl::UNSIGNED_SHORT } else { gl::UNSIGNED_INT }, idx_start as _);
+                            idx_start += count * mem::size_of::<DrawIdx>();
+                        },
+                        DrawCmd::ResetRenderState => unimplemented!("Haven't implemented user callbacks yet"),
+                        DrawCmd::RawCallback { .. } => unimplemented!("Haven't implemented user callbacks yet"),
                     }
                 }
-
-                Ok(())
-            });
+            }
 
             gl::DisableVertexAttribArray(ploc);
             gl::DisableVertexAttribArray(puv);
@@ -172,8 +170,8 @@ fn field_offset<T, U, F: for<'a> FnOnce(&'a T) -> &'a U>(f: F) -> usize {
     }
 }
 
-fn return_param<T, F>(f: F) -> T where F: FnOnce(&mut T) {
-    let mut val = unsafe{ mem::uninitialized() };
+fn return_param<T, F>(f: F) -> T where F: FnOnce(&mut T), T: Default {
+    let mut val = T::default();
     f(&mut val);
     val
 }
