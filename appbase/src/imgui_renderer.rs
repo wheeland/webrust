@@ -123,7 +123,12 @@ impl Renderer {
                                         (fb_height - cmd_params.clip_rect[3]) as GLint,
                                         (cmd_params.clip_rect[2] - cmd_params.clip_rect[0]) as GLint,
                                         (cmd_params.clip_rect[3] - cmd_params.clip_rect[1]) as GLint);
-                            gl::BindTexture(gl::TEXTURE_2D, cmd_params.texture_id.id() as _);
+                            let texture = if cmd_params.texture_id.id() == 0 {
+                                self.font_texture
+                            } else {
+                                unimplemented!("no support for custom textures yet")
+                            };
+                            gl::BindTexture(gl::TEXTURE_2D, texture as _);
                             gl::DrawElements(gl::TRIANGLES, count as _, if mem::size_of::<DrawIdx>() == 2 { gl::UNSIGNED_SHORT } else { gl::UNSIGNED_INT }, idx_start as _);
                             idx_start += count * mem::size_of::<DrawIdx>();
                         },

@@ -448,7 +448,8 @@ impl Renderer {
         staticwindow(ui, "scores",
                      (offset.0 + self.pos_info.x * scale, offset.1 + self.pos_info.y * scale),
                      (self.pos_info.w * scale, self.pos_info.h * scale),
-                     1.5 * scale, (0.0, 0.0, 0.0, 0.0), || {
+                     (0.0, 0.0, 0.0, 0.0), || {
+                ui.set_window_font_scale(1.5 * scale);
                 ui.text(format!(" Level: {}", state.level()));
                 ui.text(format!(" Score: {}", state.score()));
                 ui.text(format!(" Lines: {}", state.lines()));
@@ -474,14 +475,16 @@ impl Renderer {
             staticwindow(ui, &format!("droughtstats#window{}", i),
                          (offset.0 + self.pos_stats.x * scale, offset.1 + y * scale),
                          (40.0 * scale, 60.0 * scale),
-                         1.5 * scale, (0.0, 0.0, 0.0, 0.0), || {
+                         (0.0, 0.0, 0.0, 0.0), || {
+                    ui.set_window_font_scale(1.5 * scale);
                     ui.text_colored(col, format!("{}", stats.1));
                 });
 
             staticwindow(ui, &format!("countstats#window{}", i),
                          (offset.0 + (self.pos_stats.x + 140.0) * scale, offset.1 + y * scale),
                          (40.0 * scale, 60.0 * scale),
-                         1.5 * scale, (0.0, 0.0, 0.0, 0.0), || {
+                         (0.0, 0.0, 0.0, 0.0), || {
+                    ui.set_window_font_scale(1.5 * scale);
                     ui.text(format!("{}", stats.0));
                 });
         }
