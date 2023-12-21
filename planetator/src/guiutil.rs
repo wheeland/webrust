@@ -14,11 +14,11 @@ pub fn slider_exp2int(ui: &imgui::Ui, id: &str, value: i32, minmax: (i32, i32)) 
     let pow2 = 2i32.pow(value as _);
 
     ui.text(id);
-    ui.push_item_width(-1.0);
-    ui.slider_int(im_str!("##{}slider", id), &mut value, minmax.0, minmax.1)
-            .display_format(im_str!("%.0f ({}x{})", pow2, pow2))
-            .build();
-    ui.pop_item_width();
+    let item_width = ui.push_item_width(-1.0);
+    ui.slider_config(format!("##{}slider", id), minmax.0, minmax.1)
+            .display_format(format!("%.0f ({}x{})", pow2, pow2))
+            .build(&mut value);
+    item_width.end();
     value
 }
 
@@ -26,31 +26,27 @@ pub fn slider_int(ui: &imgui::Ui, id: &str, value: i32, minmax: (i32, i32)) -> i
     let mut value = value;
 
     ui.text(id);
-    ui.push_item_width(-1.0);
-    ui.slider_int(im_str!("##{}slider", id), &mut value, minmax.0, minmax.1).build();
-    ui.pop_item_width();
+    let item_width = ui.push_item_width(-1.0);
+    ui.slider(format!("##{}slider", id), minmax.0, minmax.1, &mut value);
     value
 }
 
 pub fn slider_float(ui: &imgui::Ui, text: &str, value: f32, minmax: (f32, f32), power: f32) -> f32 {
     let mut value = value;
     ui.text(text);
-    ui.push_item_width(-1.0);
-    ui.slider_float(im_str!("##{}slider", text), &mut value, minmax.0, minmax.1).power(power).build();
-    ui.pop_item_width();
+    let item_width = ui.push_item_width(-1.0);
+    ui.slider(format!("##{}slider", text), minmax.0, minmax.1, &mut value);
     value
 }
 
 pub fn textinput(ui: &imgui::Ui, id: &str, value: &mut String, capacity: usize, fullwidth: bool) -> bool {
-    let mut entry = ImString::with_capacity(capacity);
+    let mut entry = String::with_capacity(capacity);
     entry.push_str(&value);
 
-    if fullwidth { ui.push_item_width(-1.0) }
-    let ret = ui.input_text(im_str!("{}", id), &mut entry).build();
-    if fullwidth { ui.pop_item_width() }
+    let item_width = if fullwidth { Some(ui.push_item_width(-1.0)) } else { None };
+    let ret = ui.input_text(format!("{}", id), &mut entry).build();
     if ret {
-        value.clear();
-        value.push_str(entry.to_str());
+        *value = entry;
     }
     ret
 }
@@ -59,28 +55,24 @@ pub fn error_popup(ui: &imgui::Ui, message: &str, windowsize: (u32, u32)) -> boo
     let sx = 240.0;
     let sy = 120.0;
 
-    let mut imstring = ImString::with_capacity(message.len() * 4);
-    imstring.push_str(message);
-
+    let mut string = message.to_string();
     let mut ret = false;
 
-    ui.window(im_str!("##errorwindow"))
+    ui.window(format!("##errorwindow"))
         .title_bar(false)
         .resizable(false)
         .movable(false)
         .save_settings(false)
         .scroll_bar(false)
-        .size((sx, sy), ImGuiCond::Always)
-        .position((0.5 * (windowsize.0 as f32 - sx), 0.5 * (windowsize.1 as f32 - sy)), ImGuiCond::Always)
+        .size([sx, sy], Condition::Always)
+        .position([0.5 * (windowsize.0 as f32 - sx), 0.5 * (windowsize.1 as f32 - sy)], Condition::Always)
         .build(|| {
-            ui.set_cursor_pos((10.0, 10.0));
-            ui.input_text_multiline(im_str!("##errorwindowtext"), &mut imstring, (sx - 20.0, sy - 50.0 ))
+            ui.set_cursor_pos([10.0, 10.0]);
+            ui.input_text_multiline(format!("##errorwindowtext"), &mut string, [sx - 20.0, sy - 50.0])
                 .read_only(true)
                 .build();
-            ui.set_cursor_pos((0.5 * sx - 50.0, sy - 30.0));
-            if ui.button(im_str!("Okay.."), (100.0, 20.0)) {
-                ret = true;
-            }
+            ui.set_cursor_pos([0.5 * sx - 50.0, sy - 30.0]);
+            ret = ui.button_with_size(format!("Okay.."), [100.0, 20.0]);
         });
 
     ret
@@ -105,7 +97,7 @@ pub struct ShaderEditData {
     size: (f32, f32),
 
     working_source: String,             // code that is actually used
-    source: ImString,                   // code in the window
+    source: String,                   // code in the window
     callback_data: ShaderEditCallbackData,
 }
 
@@ -116,7 +108,7 @@ impl ShaderEditData {
         position: (f32, f32),
         size: (f32, f32)
     ) -> Self {
-        let mut source = ImString::with_capacity(64 * 1024);
+        let mut source = String::with_capacity(64 * 1024);
         source.push_str(src);
         ShaderEditData {
             window_title: window_title.to_string(),
@@ -158,7 +150,7 @@ impl ShaderEditData {
     }
 
     pub fn to_str(&self) -> String {
-        self.source.to_str().to_string()
+        self.source.clone()
     }
 
     pub fn get_working(&self) -> String {
@@ -170,11 +162,9 @@ impl ShaderEditData {
     }
 
     pub fn toggle_button(&mut self, ui: &imgui::Ui, size: (f32, f32)) {
-        if ui.button(im_str!("{} {}##edit_window",
-                             if self.window_open { "Close" } else {"Open" },
-                             self.window_title),
-                     size
-        ) {
+        let action = if self.window_open { "Close" } else {"Open" };
+        let label = format!("{} {}##edit_window", action, self.window_title);
+        if ui.button_with_size(label, [size.0, size.1]) {
             self.toggle();
         }
     }
@@ -188,9 +178,9 @@ impl ShaderEditData {
             return false;
         }
 
-        let is_esc_pressed = ui.imgui().is_key_pressed(sdl2::keyboard::Scancode::Escape as usize);
+        let is_esc_pressed = ui.is_key_pressed(Key::Escape);
         let is_ctrl_pressed = keymod.intersects(sdl2::keyboard::Mod::RCTRLMOD | keymod & sdl2::keyboard::Mod::LCTRLMOD);
-        let is_ctrl_return_pressed = ui.imgui().is_key_pressed(sdl2::keyboard::Scancode::Return as usize) && is_ctrl_pressed;
+        let is_ctrl_return_pressed = ui.is_key_pressed(Key::Enter) && is_ctrl_pressed;
 
         let mut accepted = self.window_active && is_ctrl_return_pressed;
         let mut window_open = self.window_open;
@@ -209,84 +199,88 @@ impl ShaderEditData {
 
         self.callback_data.keymod = keymod;
 
-        ui.set_next_window_pos(self.position);
+        // ui.set_next_window_pos(self.position);
 
-        ui.with_style_var(imgui::StyleVar::Alpha(alpha * alpha), || {
-            ui.window(im_str!("{}", self.window_title))
-                .collapsible(false)
-                .save_settings(false)
-                .scroll_bar(false)
-                .movable(true)
-                .inputs(self.window_open)
-                .size(
-                    (self.size.0 + ofs, self.size.1 + ofs),
-                    ImGuiCond::Always
-                )
-                .position(
-                    (self.position.0 - 0.5 * ofs, self.position.1 - 0.5 * ofs),
-                    if self.window_fade <= 0.0 { ImGuiCond::Appearing } else { ImGuiCond::Always }
-                )
-                .opened(&mut window_open)
-                .build(|| {
-                    let has_error = errors.is_some();
-                    let errorsz = if has_error { 150.0 } else { 0.0 };
-                    let winsz = ui.get_window_size();
+        let style = ui.push_style_var(imgui::StyleVar::Alpha(alpha * alpha));
+        let mut window = ui.window(format!("{}", self.window_title))
+            .collapsible(false)
+            .save_settings(false)
+            .scroll_bar(false)
+            .movable(true)
+            .position([self.position.0, self.position.1], Condition::Always);
+            
+        if !self.window_open {
+            window = window.no_inputs();
+        }
 
-                    // if Ctrl+Return was pressed, the focus was taken away from this item, but this is not what we want, so GIVE IT BACK ALREADY!
-                    if accepted {
-                        unsafe { imgui::sys::igSetKeyboardFocusHere(0); }
-                    }
+        window
+            .size(
+                [self.size.0 + ofs, self.size.1 + ofs],
+                Condition::Always
+            )
+            .position(
+                [self.position.0 - 0.5 * ofs, self.position.1 - 0.5 * ofs],
+                if self.window_fade <= 0.0 { Condition::Appearing } else { Condition::Always }
+            )
+            .opened(&mut window_open)
+            .build(|| {
+                let has_error = errors.is_some();
+                let errorsz = if has_error { 150.0 } else { 0.0 };
+                let winsz = ui.window_size();
 
-                    ui.input_text_multiline(im_str!("##shadertextinput"), &mut self.source, (winsz.0 - 20.0, winsz.1 - 50.0 - errorsz))
-                        .callback_completion(true)
-                        .callback_char_filter(true)
-                        .callback_always(true)
-                        .read_only(!self.window_open)
-                        .callback(Some(callback), &mut self.callback_data as _)
+                // if Ctrl+Return was pressed, the focus was taken away from this item, but this is not what we want, so GIVE IT BACK ALREADY!
+                if accepted {
+                    unsafe { imgui::sys::igSetKeyboardFocusHere(0); }
+                }
+
+                ui.input_text_multiline(format!("##shadertextinput"), &mut self.source, [winsz[0] - 20.0, winsz[1] - 50.0 - errorsz])
+                    // TODO:
+                    // port C-style callback to new shiny imgui-rs trait
+                    .build();
+                self.window_active = ui.is_item_active();
+
+                if has_error {
+                    let mut error_str = errors.unwrap_or(&String::new()).clone();
+                    ui.input_text_multiline(format!("##shadertexterror"), &mut error_str, [winsz[0] - 20.0, errorsz])
+                        .flags(InputTextFlags::READ_ONLY)
                         .build();
-                    self.window_active = ui.is_item_active();
+                }
 
-                    if has_error {
-                        let mut error_str = ImString::new(errors.unwrap().to_string());
-                        ui.input_text_multiline(im_str!("##shadertexterror"), &mut error_str, (winsz.0 - 20.0, errorsz))
-                            .flags(ImGuiInputTextFlags::ReadOnly)
-                            .build();
-                    }
+                ui.new_line();
+                ui.same_line_with_pos(50.0);
+                if ui.button_with_size(format!("Apply (Ctrl+Return)"), [140.0, 20.0]) {
+                    accepted = true;
+                }
 
-                    ui.new_line();
-                    ui.same_line(50.0);
-                    if ui.button(im_str!("Apply (Ctrl+Return)"), (140.0, 20.0)) {
-                        accepted = true;
-                    }
+                ui.same_line_with_pos(winsz[0] / 2.0 - 50.0);
+                if ui.button_with_size(format!("Reset##shaderedit"), [100.0, 20.0]) {
+                    self.reset();
+                }
 
-                    ui.same_line(winsz.0 / 2.0 - 50.0);
-                    if ui.button(im_str!("Reset##shaderedit"), (100.0, 20.0)) {
-                        self.reset();
-                    }
+                ui.same_line_with_pos(winsz[0] - 150.0);
+                if ui.button_with_size(format!("Close (Esc)"), [140.0, 20.0]) {
+                    do_close_window = true;
+                }
 
-                    ui.same_line(winsz.0 - 150.0);
-                    if ui.button(im_str!("Close (Esc)"), (140.0, 20.0)) {
-                        do_close_window = true;
-                    }
-
-                    if self.window_fade <= 0.0 {
-                        self.size = ui.get_window_size();
-                        self.position = ui.get_window_position();
-                    }
-                });
-        });
+                if self.window_fade <= 0.0 {
+                    let size = ui.window_size();
+                    let position = ui.window_pos();
+                    self.size = (size[0], size[1]);
+                    self.position = (position[0], position[1]);
+                }
+            });
 
         self.window_open = window_open && !do_close_window;
         accepted
     }
 }
 
-extern "C" fn callback(data: *mut imgui::sys::ImGuiTextEditCallbackData) -> std::os::raw::c_int {
+extern "C" fn callback(data: *mut imgui::sys::ImGuiInputTextCallbackData) -> std::os::raw::c_int {
     let mut ret = 0;
 
     unsafe {
         let cbdata = &*data;
-        let shaderdata = &mut *(cbdata.user_data as *mut ShaderEditCallbackData);
+        let shaderdata = &mut *(cbdata.UserData as *mut ShaderEditCallbackData);
 
         // tab -> insert 1-4 spaces
         // return -> insert \n and N spaces
@@ -295,8 +289,8 @@ extern "C" fn callback(data: *mut imgui::sys::ImGuiTextEditCallbackData) -> std:
         //
         // if we have access to the buffer, find out current line/cursor + number of leading spaces
         //
-        if cbdata.buf != 0 as _ {
-            let buf = CStr::from_ptr(cbdata.buf);
+        if cbdata.Buf != 0 as _ {
+            let buf = CStr::from_ptr(cbdata.Buf);
             let mut lineno = 0;
             let mut cursor = 0;
             let mut spaces_leading = 0;
@@ -306,7 +300,7 @@ extern "C" fn callback(data: *mut imgui::sys::ImGuiTextEditCallbackData) -> std:
                 let idx = ch.0;
                 let ch = *ch.1;
 
-                if idx == cbdata.cursor_pos as usize {
+                if idx == cbdata.CursorPos as usize {
                     shaderdata.pos_char = cursor;
                     shaderdata.pos_line = lineno;
                     shaderdata.spaces_curr = spaces_curr;
@@ -335,7 +329,7 @@ extern "C" fn callback(data: *mut imgui::sys::ImGuiTextEditCallbackData) -> std:
                     cursor += 1;
                 }
             }
-            if cbdata.cursor_pos == buf.to_bytes().len() as i32 {
+            if cbdata.CursorPos == buf.to_bytes().len() as i32 {
                 shaderdata.pos_char = cursor;
                 shaderdata.pos_line = lineno;
                 shaderdata.spaces_curr = spaces_curr;
@@ -348,24 +342,24 @@ extern "C" fn callback(data: *mut imgui::sys::ImGuiTextEditCallbackData) -> std:
 //        println!("line {}, pos {}: lead={}, curr={}", shaderdata.pos_line, shaderdata.pos_char, shaderdata.spaces_leading, shaderdata.spaces_curr);
 
         // Tab?
-        if cbdata.event_flag.contains(imgui::ImGuiInputTextFlags::CallbackCompletion) {
+        if cbdata.EventFlag & imgui::sys::ImGuiInputTextFlags_CallbackCompletion as i32 != 0 {
             let shift = shaderdata.keymod.intersects(sdl2::keyboard::Mod::LSHIFTMOD | sdl2::keyboard::Mod::RSHIFTMOD);
 
             // Shift+Tab -> remove spaces before cursor
             if shift && shaderdata.spaces_curr > 0 {
                 let remove: std::os::raw::c_int = shaderdata.spaces_curr.min((shaderdata.pos_char + 3) % 4 + 1) as _;
-                imgui::sys::ImGuiTextEditCallbackData_DeleteChars(data, cbdata.cursor_pos - remove, remove as _);
+                imgui::sys::ImGuiInputTextCallbackData_DeleteChars(data, cbdata.CursorPos - remove, remove as _);
             }
             // Shift -> insert 1-4 spaces
             if !shift {
                 let spaces = 4 - shaderdata.pos_char % 4;
                 let insert = &CString::new(String::from(" ").repeat(spaces).as_str().as_bytes()).unwrap();
-                imgui::sys::ImGuiTextEditCallbackData_InsertChars(data, cbdata.cursor_pos, insert.as_ptr(), insert.as_ptr().offset(spaces as _));
+                imgui::sys::ImGuiInputTextCallbackData_InsertChars(data, cbdata.CursorPos, insert.as_ptr(), insert.as_ptr().offset(spaces as _));
             }
         }
         // Return?
-        else if cbdata.event_flag.contains(imgui::ImGuiInputTextFlags::CallbackCharFilter) {
-            if cbdata.event_char == '\n' as imgui::sys::ImWchar {
+        else if cbdata.EventFlag & imgui::sys::ImGuiInputTextFlags_CallbackCharFilter as i32 != 0 {
+            if cbdata.EventChar == '\n' as imgui::sys::ImWchar {
                 shaderdata.insert = Some(String::from("\n") + String::from(" ").repeat(shaderdata.spaces_leading).as_str());
                 ret = 1;
             }
@@ -373,7 +367,7 @@ extern "C" fn callback(data: *mut imgui::sys::ImGuiTextEditCallbackData) -> std:
         // Have to insert new-line leading spaces from last iteration? (Jesus....)
         else if let Some(insert) = shaderdata.insert.take() {
             let cstr = &CString::new(insert.as_bytes()).unwrap();
-            imgui::sys::ImGuiTextEditCallbackData_InsertChars(data, cbdata.cursor_pos, cstr.as_ptr(), cstr.as_ptr().offset(insert.len() as _));
+            imgui::sys::ImGuiInputTextCallbackData_InsertChars(data, cbdata.CursorPos, cstr.as_ptr(), cstr.as_ptr().offset(insert.len() as _));
         }
     }
 

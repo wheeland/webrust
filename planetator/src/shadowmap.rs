@@ -588,8 +588,8 @@ impl ShadowMap {
         ui.text("Shadow Map Levels:");
         let mut smlcount = self.levels();
         let mut smlscale = self.level_scale();
-        ui.slider_int(imgui::im_str!("Count##shadowmaplevels"), &mut smlcount, 2, 6).build();
-        ui.slider_float(imgui::im_str!("Scale##shadowmaplevels"), &mut smlscale, 0.2, 0.8).build();
+        ui.slider("Count##shadowmaplevels", 2, 6, &mut smlcount);
+        ui.slider("Scale##shadowmaplevels", 0.2, 0.8,  &mut smlscale);
         let needs_shader_recompile = smlcount != self.levels();
         self.set_levels(smlcount);
         self.set_level_scale(smlscale);

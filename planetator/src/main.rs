@@ -3,7 +3,6 @@ extern crate tinygl;
 extern crate util3d;
 extern crate sdl2;
 extern crate imgui;
-extern crate imgui_sys;
 extern crate cgmath;
 extern crate lru_cache;
 extern crate appbase;
@@ -55,7 +54,7 @@ struct MyApp {
     edit_generator: guiutil::ShaderEditData,
     edit_colorator: guiutil::ShaderEditData,
     edit_js: guiutil::ShaderEditData,
-    select_channels: Vec<(String, i32)>,
+    select_channels: Vec<(String, usize)>,
     texuploads: Vec<(String, i32)>,
     active_textures: Vec<(String, (i32, i32), Vec<u8>)>,
 
@@ -85,8 +84,8 @@ struct MyApp {
     fsquad: tinygl::shapes::FullscreenQuad,
 }
 
-fn window<'ui,'p>(ui: &'ui imgui::Ui, name: &'p ImStr, title: bool, movable: bool, collapsible: bool,
-                  size: (f32, f32), pos: (f32, f32)) -> Window<'ui, 'p> {
+fn window<'ui,'p>(ui: &'ui imgui::Ui, name: &'static str, title: bool, movable: bool, collapsible: bool,
+                  size: (f32, f32), pos: (f32, f32)) -> Window<'ui, 'p, &'static str> where 'ui: 'p  {
     ui.window(name)
         .movable(movable)
         .title_bar(title)
@@ -94,8 +93,8 @@ fn window<'ui,'p>(ui: &'ui imgui::Ui, name: &'p ImStr, title: bool, movable: boo
         .resizable(false)
         .scroll_bar(false)
         .collapsible(collapsible)
-        .size(size, ImGuiCond::Always)
-        .position(pos, if movable { ImGuiCond::FirstUseEver } else { ImGuiCond::Always })
+        .size([size.0, size.1], Condition::Always)
+        .position([pos.0, pos.1], if movable { Condition::FirstUseEver } else { Condition::Always })
 }
 
 impl MyApp {
@@ -375,16 +374,16 @@ impl webrunner::WebApp for MyApp {
         // graphics dialog
         if self.show_graphics_dialog {
             let pos = (0.5 * self.windowsize.0 as f32 - 100.0, 0.5 * self.windowsize.1 as f32 - 100.0);
-            window(ui, im_str!("_start_dialog"), false, false, false, (200.0, 160.0), pos)
+            window(ui, "_start_dialog", false, false, false, (200.0, 160.0), pos)
             .build(|| {
-                ui.set_cursor_pos((10.0, 10.0));   ui.text(" Choose graphics quality");
-                ui.set_cursor_pos((10.0, 30.0));   ui.text("(can be adjusted anytime)");
-                ui.set_cursor_pos((40.0, 60.0));
-                if ui.button(im_str!("Low"), (120.0, 20.0)) {
+                ui.set_cursor_pos([10.0, 10.0]);   ui.text(" Choose graphics quality");
+                ui.set_cursor_pos([10.0, 30.0]);   ui.text("(can be adjusted anytime)");
+                ui.set_cursor_pos([40.0, 60.0]);
+                if ui.button_with_size("Low", [120.0, 20.0]) {
                     self.show_graphics_dialog = false;
                 }
-                ui.set_cursor_pos((40.0, 90.0));
-                if ui.button(im_str!("Medium"), (120.0, 20.0)) {
+                ui.set_cursor_pos([40.0, 90.0]);
+                if ui.button_with_size("Medium", [120.0, 20.0]) {
                     self.renderer.set_plate_depth(5);
                     self.shadows.set_levels(6);
                     self.shadows.set_level_scale(0.35);
@@ -393,8 +392,8 @@ impl webrunner::WebApp for MyApp {
                     self.show_graphics_dialog = false;
                     self.postprocess = Some(self.create_postprocess_shader());
                 }
-                ui.set_cursor_pos((40.0, 120.0));
-                if ui.button(im_str!("High"), (120.0, 20.0)) {
+                ui.set_cursor_pos([40.0, 120.0]);
+                if ui.button_with_size("High", [120.0, 20.0]) {
                     self.renderer.set_plate_depth(6);
                     self.shadows.set_levels(6);
                     self.shadows.set_level_scale(0.35);
@@ -408,9 +407,9 @@ impl webrunner::WebApp for MyApp {
         }
 
         // About button
-        window(ui, im_str!("_about_dialog"), false, false, false, (66.0, 36.0), (0.0, self.windowsize.1 as f32 - 36.0))
+        window(ui, "_about_dialog", false, false, false, (66.0, 36.0), (0.0, self.windowsize.1 as f32 - 36.0))
             .build(|| {
-                if ui.button(im_str!("About"), (50.0, 20.0)) {
+                if ui.button_with_size("About", [50.0, 20.0]) {
                     self.show_about_dialog = !self.show_about_dialog;
                 }
             });
@@ -418,7 +417,7 @@ impl webrunner::WebApp for MyApp {
         // About dialog
         if self.show_about_dialog {
             let pos = (0.5 * self.windowsize.0 as f32 - 190.0, 0.5 * self.windowsize.1 as f32 - 160.0);
-            window(ui, im_str!("About"), true, true, false, (380.0, 320.0), pos)
+            window(ui, "About", true, true, false, (380.0, 320.0), pos)
                 .opened(&mut self.show_about_dialog)
                 .build(|| {
                     let lines = vec!(
@@ -439,23 +438,23 @@ impl webrunner::WebApp for MyApp {
                     );
                     let mut y = 20.0;
                     for l in &lines {
-                        ui.set_cursor_pos((20.0, y));
+                        ui.set_cursor_pos([20.0, y]);
                         ui.text(l);
                         y += 20.0;
                     }
                 });
         }
 
-        window(ui, im_str!("Render Options"), true, false, false, (200.0, self.left_panel_height), (0.0, left_panel_ofs))
+        window(ui, "Render Options", true, false, false, (200.0, self.left_panel_height), (0.0, left_panel_ofs))
             .scroll_bar(self.left_panel_height + left_panel_ofs > self.windowsize.1 as f32)
             .build(|| {
                 // assorted settings
-                ui.checkbox(im_str!("Show FPS"), &mut self.show_fps);
+                ui.checkbox("Show FPS", &mut self.show_fps);
                 let water_level = guiutil::slider_float(ui, "Water Level", self.renderer.water_height(), (-1.0, 1.0), 1.0);
                 self.renderer.set_water_height(water_level);
 
                 // Movement settings
-                if ui.collapsing_header(im_str!("Movement")).default_open(false).build() {
+                if ui.collapsing_header("Movement", TreeNodeFlags::empty()) {
                     ui.text("Controls:");
                     ui.text("Move:       Arrow keys");
                     ui.text("Up/Down:    Shift/Space");
@@ -465,21 +464,21 @@ impl webrunner::WebApp for MyApp {
                 }
 
                 // Triangulation settings
-                if ui.collapsing_header(im_str!("Triangulation")).default_open(false).build() {
+                if ui.collapsing_header("Triangulation", TreeNodeFlags::empty()) {
                     ui.text(format!("Plates: {}", self.renderer.rendered_plates()));
                     ui.text(format!("Triangles: {}", guiutil::format_number( self.renderer.rendered_triangles() as _)));
                     ui.separator();
 
-                    ui.checkbox(im_str!("Wireframe"), &mut self.renderer.wireframe);
-                    ui.checkbox(im_str!("No Update"), &mut self.renderer.no_update_plates);
-                    ui.checkbox(im_str!("Cull Backside"), &mut self.renderer.hide_backside);
+                    ui.checkbox(format!("Wireframe"), &mut self.renderer.wireframe);
+                    ui.checkbox(format!("No Update"), &mut self.renderer.no_update_plates);
+                    ui.checkbox(format!("Cull Backside"), &mut self.renderer.hide_backside);
 
                     let detail = guiutil::slider_float(ui, "Vertex Detail:", self.renderer.vertex_detail(), (0.0, 1.0), 1.0);
                     self.renderer.set_vertex_detail(detail);
                 }
 
                 // Atmosphere settings
-                if ui.collapsing_header(im_str!("Atmosphere")).default_open(false).build() {
+                if ui.collapsing_header("Atmosphere", TreeNodeFlags::empty()) {
                     atmosphere::set_shader_radius(guiutil::slider_float(ui, "Shader Radius", atmosphere::shader_radius(), (1.0, 1.2), 1.0));
                     atmosphere::set_generator_radius(guiutil::slider_float(ui, "Generator Radius", atmosphere::generator_radius(), (1.0, 1.2), 1.0));
                     atmosphere::set_raleigh_scattering(guiutil::slider_float(ui, "Raleigh Scattering", atmosphere::raleigh_scattering(), (0.1, 10.0), 2.0));
@@ -489,11 +488,11 @@ impl webrunner::WebApp for MyApp {
                     self.atmoshpere_in_scatter = guiutil::slider_float(ui, "In-Scattering", self.atmoshpere_in_scatter, (0.0, 2.0), 1.0);
 
                     let mut half_precision = atmosphere::half_precision();
-                    ui.checkbox(im_str!("Half-Precision"), &mut half_precision);
+                    ui.checkbox(format!("Half-Precision"), &mut half_precision);
                     atmosphere::set_half_precision(half_precision);
 
                     let mut combined_textures = atmosphere::combined_textures();
-                    ui.checkbox(im_str!("Combined Textures"), &mut combined_textures);
+                    ui.checkbox(format!("Combined Textures"), &mut combined_textures);
                     atmosphere::set_combined_textures(combined_textures);
 
                     if atmosphere::is_dirty() {
@@ -503,25 +502,25 @@ impl webrunner::WebApp for MyApp {
                 }
 
                 // Sun Settings
-                if ui.collapsing_header(im_str!("Sun")).default_open(false).build() {
+                if ui.collapsing_header("Sun", TreeNodeFlags::empty()) {
                     self.sun_speed = guiutil::slider_float(ui, "Rotation:", self.sun_speed, (-90.0, 90.0), 2.0);
                     self.sun_lon = guiutil::slider_float(ui, "Longitude:", self.sun_lon, (0.0, 360.0), 1.0);
                     self.sun_lat = guiutil::slider_float(ui, "Latitude:", self.sun_lat, (-45.0, 45.0), 1.0);
                 }
 
                 // shadow map settings
-                if ui.collapsing_header(im_str!("Shadow Mapping")).default_open(false).build() {
+                if ui.collapsing_header("Shadow Mapping", TreeNodeFlags::empty()) {
                     if self.shadows.options(ui) {
                         self.postprocess = Some(self.create_postprocess_shader());
                     }
                 }
 
-                self.left_panel_height = ui.get_cursor_pos().1;
+                self.left_panel_height = ui.cursor_pos()[1];
             });
 
         let planet_opt_width = 260.0;
 
-        window(ui, im_str!("Planet Options"), true, false, false, (planet_opt_width, self.right_panel_height), (self.windowsize.0 as f32 - planet_opt_width, 0.0))
+        window(ui, "Planet Options", true, false, false, (planet_opt_width, self.right_panel_height), (self.windowsize.0 as f32 - planet_opt_width, 0.0))
             .scroll_bar(self.right_panel_height > self.windowsize.1 as f32)
             .build(|| {
                 //
@@ -529,27 +528,27 @@ impl webrunner::WebApp for MyApp {
                 //
                 let mut plate_depth = self.renderer.plate_depth() as i32;
                 let platesz = 2i32.pow(self.renderer.plate_depth());
-                if ui.slider_int(im_str!("Plate Size##platesizeslider"), &mut plate_depth, 3, 7)
-                        .display_format(im_str!("%.0f ({}x{})", platesz, platesz))
-                        .build() {
+                if ui.slider_config("Plate Size##platesizeslider", 3, 7)
+                        .display_format(format!("%.0f ({}x{})", platesz, platesz))
+                        .build(&mut plate_depth) {
                     self.renderer.set_plate_depth(plate_depth as u32);
                 }
 
                 let mut water_depth = self.renderer.water_depth() as i32;
                 let watersz = 2i32.pow(self.renderer.water_depth());
-                if ui.slider_int(im_str!("Water Size##platesizeslider"), &mut water_depth, 3, 7)
-                        .display_format(im_str!("%.0f ({}x{})", watersz, watersz))
-                        .build() {
+                if ui.slider_config("Water Size##platesizeslider", 3, 7)
+                        .display_format(format!("%.0f ({}x{})", watersz, watersz))
+                        .build(&mut water_depth) {
                     self.renderer.set_water_depth(water_depth.min(plate_depth) as u32);
                 }
 
                 let mut delta = self.renderer.texture_delta() as i32;
-                if ui.slider_int(im_str!("Texture Delta##texturedeltaslider"), &mut delta, 0, 4).build() {
+                if ui.slider("Texture Delta##texturedeltaslider", 0, 4, &mut delta) {
                     self.renderer.set_texture_delta(delta as u32);
                 }
 
                 let mut radius = self.renderer.radius();
-                if ui.slider_float(im_str!("Radius##radiusslider"), &mut radius, 50.0, 1000.0).build() {
+                if ui.slider("Radius##radiusslider", 50.0, 1000.0, &mut radius) {
                     self.renderer.set_radius(radius);
                     self.shadows.set_radius(radius);
                 }
@@ -559,14 +558,14 @@ impl webrunner::WebApp for MyApp {
                 //
                 // Button for Saving / Restoring
                 //
-                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
-                if ui.button(im_str!("Save##planet"), (160.0, 20.0)) {
+                ui.spacing(); ui.spacing(); ui.same_line_with_pos(planet_opt_width / 2.0 - 80.0);
+                if ui.button_with_size(format!("Save##planet"), [160.0, 20.0]) {
                     #[cfg(target_os = "emscripten")] fileload::download("planet.bin", &self.save_state());
                 }
-                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
-                let curr_pos = ui.get_cursor_screen_pos();
+                ui.spacing(); ui.spacing(); ui.same_line_with_pos(planet_opt_width / 2.0 - 80.0);
+                let curr_pos = ui.cursor_screen_pos();
                 #[cfg(target_os = "emscripten")] emscripten_util::set_overlay_position(HTML_INPUT_PLANET, curr_pos, (160.0, 20.0));
-                ui.button(im_str!("Load##planet"), (160.0, 20.0));
+                ui.button_with_size(format!("Load##planet"), [160.0, 20.0]);
                 ui.spacing(); ui.separator();
 
                 // check for uploads
@@ -579,17 +578,17 @@ impl webrunner::WebApp for MyApp {
                 //
                 // Button to show/hide Shader Generator Windows
                 //
-                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
+                ui.spacing(); ui.spacing(); ui.same_line_with_pos(planet_opt_width / 2.0 - 80.0);
                 self.edit_generator.toggle_button(ui, (160.0, 20.0));
-                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
+                ui.spacing(); ui.spacing(); ui.same_line_with_pos(planet_opt_width / 2.0 - 80.0);
                 self.edit_colorator.toggle_button(ui, (160.0, 20.0));
                 ui.spacing(); ui.separator();
 
                 //
                 // Buttons to add/remove channels
                 //
-                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
-                if ui.button(im_str!("Add Channel"), (120.0, 20.0)) {
+                ui.spacing(); ui.spacing(); ui.same_line_with_pos(planet_opt_width / 2.0 - 80.0);
+                if ui.button_with_size("Add Channel", [120.0, 20.0]) {
                     let len = self.select_channels.len();
                     self.select_channels.push((format!("channel{}", len).to_string(), 0));
                     self.channels_changed();
@@ -599,7 +598,7 @@ impl webrunner::WebApp for MyApp {
                 //
                 // List of channels
                 //
-                ui.columns(3, im_str!("Channels"), true);
+                ui.columns(3, format!("Channels"), true);
                 ui.set_column_width(0, 125.0);
                 ui.set_column_width(1, 90.0);
                 ui.set_column_width(2, 25.0);
@@ -617,15 +616,15 @@ impl webrunner::WebApp for MyApp {
                     }
                     ui.next_column();
 
-                    let items = vec!(im_str!("1"), im_str!("2"), im_str!("3"), im_str!("4"));
-                    ui.push_item_width(-1.0);
-                    if ui.combo(im_str!("##chantype{}", chan.0), &mut (chan.1).1, &items[..], 4) {
+                    let items = vec!(format!("1"), format!("2"), format!("3"), format!("4"));
+                    let item_width = ui.push_item_width(-1.0);
+                    if ui.combo_simple_string(format!("##chantype{}", chan.0), &mut (chan.1).1, &items[..]) {
                         changed = true;
                     }
-                    ui.pop_item_width();
+                    item_width.end();
                     ui.next_column();
 
-                    if ui.button(im_str!("X##chandelete{}", chan.0), (20.0, 20.0)) {
+                    if ui.button_with_size(format!("X##chandelete{}", chan.0), [20.0, 20.0]) {
                         remove = Some(chan.0);
                     }
                     ui.next_column();
@@ -639,15 +638,15 @@ impl webrunner::WebApp for MyApp {
                     self.select_channels.remove(remove);
                     self.channels_changed();
                 }
-                ui.columns(1, im_str!("Channels"), true);
+                ui.columns(1, format!("Channels"), true);
                 ui.separator();
 
                 //
                 // Add new texture button
                 //
-                ui.spacing(); ui.spacing(); ui.same_line(planet_opt_width / 2.0 - 80.0);
+                ui.spacing(); ui.spacing(); ui.same_line_with_pos(planet_opt_width / 2.0 - 80.0);
                 #[cfg(target_os = "emscripten")] emscripten_util::set_overlay_position(HTML_INPUT_TEXTURE, ui.get_cursor_screen_pos(), (160.0, 20.0));
-                ui.button(im_str!("Add Texture"), (120.0, 20.0));
+                ui.button_with_size(format!("Add Texture"), [120.0, 20.0]);
                 // start new uploads?
                 #[cfg(target_os = "emscripten")] {
                     if let Some(tex_data) =  fileload::get_result(HTML_INPUT_TEXTURE) {
@@ -672,7 +671,7 @@ impl webrunner::WebApp for MyApp {
                 // List of textures
                 //
                 ui.spacing();
-                ui.columns(3, im_str!("Textures"), true);
+                ui.columns(3, format!("Textures"), true);
                 // 1: image, 2: name, nextline: size, 3: X
                 let maximgsz = 100.0;
                 ui.set_column_width(0, 110.0);
@@ -687,23 +686,24 @@ impl webrunner::WebApp for MyApp {
                         let maxsz = sz.0.max(sz.1) as f32;
                         let imgsz = (maximgsz * sz.0 as f32 / maxsz, maximgsz * sz.1 as f32 / maxsz);
 
-                        ui.image((tex.1).1.handle() as _, imgsz);
+                        // TODO: implement in new imgui-rs
+                        // ui.image((tex.1).1.handle() as _, imgsz);
                         ui.next_column();
 
                         let ofs = (0.5 * (imgsz.1 - 50.0)).max(0.0);
-                        ui.dummy((1.0, ofs));
+                        ui.dummy([1.0, ofs]);
                         let mut texname = (tex.1).0.clone();
                         if guiutil::textinput(ui, &format!("##texname{}", tex.0), &mut texname, 16, true) {
                             change = Some((tex.0, Some(texname)));
                         }
-                        ui.dummy((1.0, 2.0));
+                        ui.dummy([1.0, 2.0]);
                         let szstr = format!("{}x{}", sz.0, sz.1);
                         ui.text(szstr);
                         ui.next_column();
 
                         let ofs = (0.5 * (imgsz.1 - 15.0)).max(0.0);
-                        ui.dummy((1.0, ofs));
-                        if ui.button(im_str!("X##texdelete{}", tex.0), (20.0, 20.0)) {
+                        ui.dummy([1.0, ofs]);
+                        if ui.button_with_size(format!("X##texdelete{}", tex.0), [20.0, 20.0]) {
                             change = Some((tex.0, None));
                         }
                         ui.next_column();
@@ -719,7 +719,7 @@ impl webrunner::WebApp for MyApp {
                     }
                 }
 
-                self.right_panel_height = ui.get_cursor_pos().1;
+                self.right_panel_height = ui.cursor_pos()[1];
             });
 
         #[cfg(target_os = "emscripten")]
