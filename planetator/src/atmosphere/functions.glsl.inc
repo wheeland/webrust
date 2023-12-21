@@ -1,4 +1,4 @@
-const char functions_glsl[] = R"***(
+const char functions_glsl1[] = R"***(
 Number ClampCosine(Number mu) {
   return clamp(mu, Number(-1.0), Number(1.0));
 }
@@ -317,6 +317,8 @@ void GetRMuMuSNuFromScatteringTextureUvwz(IN(AtmosphereParameters) atmosphere,
      ClampCosine((H * H - d * d) / (2.0 * atmosphere.bottom_radius * d));
   nu = ClampCosine(uvwz.x * 2.0 - 1.0);
 }
+)***";
+const char functions_glsl2[] = R"***(
 void GetRMuMuSNuFromScatteringTextureFragCoord(
     IN(AtmosphereParameters) atmosphere, IN(vec3) frag_coord,
     OUT(Length) r, OUT(Number) mu, OUT(Number) mu_s, OUT(Number) nu,
@@ -650,6 +652,8 @@ vec3 GetExtrapolatedSingleMieScattering(
 	    (atmosphere.mie_scattering / atmosphere.rayleigh_scattering);
 }
 #endif
+)***";
+const char functions_glsl3[] = R"***(
 IrradianceSpectrum GetCombinedScattering(
     IN(AtmosphereParameters) atmosphere,
     IN(ReducedScatteringTexture) scattering_texture,

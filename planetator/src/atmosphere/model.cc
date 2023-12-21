@@ -717,7 +717,7 @@ Model::Model(
           std::to_string(sun_k_r) + "," +
           std::to_string(sun_k_g) + "," +
           std::to_string(sun_k_b) + ");\n" +
-      functions_glsl;
+      functions_glsl1 + functions_glsl2 + functions_glsl3;
   };
 
   // Allocate the precomputed textures, but don't precompute them yet.
