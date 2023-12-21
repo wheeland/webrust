@@ -120,31 +120,33 @@ impl TetrisApp {
         let mut ret = false;
         let sx = 120.0;
         let sy = 50.0;
-        ui.window(im_str!("_about_button_window"))
-            .position((self.windowsize.0 - sx * self.ui_scale - 10.0, 10.0), ImGuiCond::Always)
-            .size((sx * self.ui_scale, sy * self.ui_scale), ImGuiCond::Always)
+        ui.window("_about_button_window")
+            .position([self.windowsize.0 - sx * self.ui_scale - 10.0, 10.0], Condition::Always)
+            .size([sx * self.ui_scale, sy * self.ui_scale], Condition::Always)
             .title_bar(false)
             .movable(false)
             .resizable(false)
             .collapsible(false)
-            .font_scale(1.5 * self.ui_scale).build(|| {
-                ui.set_cursor_pos((10.0 * self.ui_scale, 10.0 * self.ui_scale));
-                if ui.button(im_str!("About"), ((sx - 20.0) * self.ui_scale, (sy - 20.0) * self.ui_scale)) {
-                    ret = true;
-                }
-            });
+            // .font_scale(1.5 * self.ui_scale].build(|| {
+            //     ui.set_cursor_pos([10.0 * self.ui_scale, 10.0 * self.ui_scale]);
+            //     if ui.button_with_size("About",[(sx - 20.0) * self.ui_scale, (sy - 20.0) * self.ui_scale]) {
+            //         ret = true;
+            //     }
+            // });
+            ;
         ret
     }
 
-    fn window<'ui,'p>(&self, ui: &'ui imgui::Ui, name: &'p ImStr, pos: (f32, f32), size: (f32, f32), font_scale: f32) -> Window<'ui, 'p> {
+    fn window<'ui,'p>(&self, ui: &'ui imgui::Ui, name: &'static str, pos: (f32, f32), size: (f32, f32), font_scale: f32) -> Window<'ui, 'p, &'static str> 
+    where 'ui: 'p {
         ui.window(name)
-            .position((self.ui_center.0 + pos.0 * self.ui_scale, self.ui_center.1 + pos.1 * self.ui_scale), ImGuiCond::Always)
-            .size((size.0 * self.ui_scale, size.1 * self.ui_scale), ImGuiCond::Always)
+            .position([self.ui_center.0 + pos.0 * self.ui_scale, self.ui_center.1 + pos.1 * self.ui_scale], Condition::Always)
+            .size([size.0 * self.ui_scale, size.1 * self.ui_scale], Condition::Always)
             .title_bar(false)
             .movable(false)
             .resizable(false)
             .collapsible(false)
-            .font_scale(font_scale * self.ui_scale)
+            //.font_scale(font_scale * self.ui_scale]
     }
 
     fn process_finished_requests(&mut self) {
@@ -394,16 +396,16 @@ impl webrunner::WebApp for TetrisApp {
         self.ui = Some(match self.ui.take().unwrap() {
             State::MainMenu => {
                 let mut ret = State::MainMenu;
-                self.window(ui, im_str!("mainmenu_start"), (mb1x, mby), (mbw, mbh), 2.0).build(|| {
-                    ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
-                    if ui.button(im_str!("Start Game"), ((mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
+                self.window(ui, "mainmenu_start", (mb1x, mby), (mbw, mbh), 2.0).build(|| {
+                    ui.set_cursor_pos([20.0 * self.ui_scale, 20.0 * self.ui_scale]);
+                    if ui.button_with_size("Start Game", [(mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale]) {
                         self.check_player_data();
                         ret = State::PreGame{keyconfig: None};
                     }
                 });
-                self.window(ui, im_str!("mainmenu_highscores"), (mb2x, mby), (mbw, mbh), 2.0).build(|| {
-                    ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
-                    if ui.button(im_str!("Highscores"), ((mbw - 40.0) * self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
+                self.window(ui, "mainmenu_highscores", (mb2x, mby), (mbw, mbh), 2.0).build(|| {
+                    ui.set_cursor_pos([20.0 * self.ui_scale, 20.0 * self.ui_scale]);
+                    if ui.button_with_size("Highscores", [(mbw - 40.0) * self.ui_scale, (mbh - 40.0) * self.ui_scale]) {
                         ret = State::Highscores{selected: None, sort_by_score: true, global: true};
                     }
                 });
@@ -416,14 +418,14 @@ impl webrunner::WebApp for TetrisApp {
             State::Highscores{mut selected, mut sort_by_score, mut global} => {
                 let mut ret = None;
 
-                self.window(ui, im_str!("highscores_back"), (mb2x, mby), (mbw, mbh), 2.0).build(|| {
-                    ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
-                    if ui.button(im_str!("Back"), ((mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
+                self.window(ui, "highscores_back", (mb2x, mby), (mbw, mbh), 2.0).build(|| {
+                    ui.set_cursor_pos([20.0 * self.ui_scale, 20.0 * self.ui_scale]);
+                    if ui.button_with_size("Back", [(mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale]) {
                         ret = Some(State::MainMenu);
                     }
                 });
 
-                self.window(ui, im_str!("highscores_list"), (mb1x, mby - 150.0), (mb2x - mb1x, mbh + 300.0), 1.2).build(|| {
+                self.window(ui, "highscores_list", (mb1x, mby - 150.0), (mb2x - mb1x, mbh + 300.0), 1.2).build(|| {
                     // get high-score list
                     let scores = if global {
                         if sort_by_score { &self.scores_global } else { &self.last_global }
@@ -431,19 +433,19 @@ impl webrunner::WebApp for TetrisApp {
                         if sort_by_score { &self.scores_local } else { &self.last_local }
                     };
 
-                    ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
+                    ui.set_cursor_pos([20.0 * self.ui_scale, 20.0 * self.ui_scale]);
                     let btn = if sort_by_score { "By Score##highscores" } else { "By Date##highscores" };
-                    if ui.button(im_str!("{}", btn), (100.0 * self.ui_scale, 30.0 * self.ui_scale)) {
+                    if ui.button_with_size(btn, [100.0 * self.ui_scale, 30.0 * self.ui_scale]) {
                         sort_by_score = !sort_by_score;
                     }
 
                     if let Some(idx) = selected {
                         if idx < scores.len() {
-                            ui.same_line(0.5 * (mb2x - mb1x - 100.0) * self.ui_scale);
+                            ui.same_line_with_pos(0.5 * (mb2x - mb1x - 100.0) * self.ui_scale);
                             let replay_id = scores[idx].replay();
                             let replay = self.replays.get(&replay_id);
                             let btn = if replay.is_some() { "Replay##highscores" } else { "Downloading...##nighscores" };
-                            if ui.button(im_str!("{}", btn), (100.0 * self.ui_scale, 30.0 * self.ui_scale)) {
+                            if ui.button_with_size(btn, [100.0 * self.ui_scale, 30.0 * self.ui_scale]) {
                                 if let Some(replay) = replay {
                                     ret = Some(State::Replay {
                                         replayer: tetris::replay::Replayer::new(replay)
@@ -453,13 +455,13 @@ impl webrunner::WebApp for TetrisApp {
                         }
                     }
 
-                    ui.same_line((mb2x - mb1x - 120.0) * self.ui_scale);
+                    ui.same_line_with_pos((mb2x - mb1x - 120.0) * self.ui_scale);
                     let btn = if global { "Global##highscores" } else { "Local##highscores" };
-                    if ui.button(im_str!("{}", btn), (100.0 * self.ui_scale, 30.0 * self.ui_scale)) {
+                    if ui.button_with_size(btn, [100.0 * self.ui_scale, 30.0 * self.ui_scale]) {
                         global = !global;
                     }
 
-                    ui.columns(5, im_str!("High-Scores List"), true);
+                    ui.columns(5, "High-Scores List", true);
                     ui.separator();
 
                     ui.text("Score"); ui.next_column();
@@ -470,10 +472,14 @@ impl webrunner::WebApp for TetrisApp {
                     ui.separator();
 
                     for score in scores.iter().enumerate() {
-                        if ui.selectable(im_str!("{}##entry{}", score.1.score().to_string(), score.0),
-                                         selected.map_or(false, |s| s == score.0),
-                                         imgui::ImGuiSelectableFlags::SpanAllColumns,
-                                         (0.0, 0.0)) {
+                        let label = format!("{}##entry{}", score.1.score().to_string(), score.0);
+                        let was_selected = selected.map_or(false, |s| s == score.0);
+                        let is_selected = ui.selectable_config(label)
+                            .selected(was_selected)
+                            .span_all_columns(true)
+                            .size([0.0, 0.0])
+                            .build();
+                        if is_selected {
                             selected = Some(score.0);
 
                             // start to download replay, if it isn't available yet
@@ -500,9 +506,9 @@ impl webrunner::WebApp for TetrisApp {
             State::PreGame{mut keyconfig} => {
                 let mut ret = None;
 
-                self.window(ui, im_str!("pregame_start"), (mb1x, mby), (mbw, mbh), 2.0).build(|| {
-                    ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
-                    if ui.button(im_str!("Start"), ((mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
+                self.window(ui, "pregame_start", (mb1x, mby), (mbw, mbh), 2.0).build(|| {
+                    ui.set_cursor_pos([20.0 * self.ui_scale, 20.0 * self.ui_scale]);
+                    if ui.button_with_size("Start", [(mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale]) {
                         self.renderer.gen_new_colors();
                         self.save_player_data();
                         ret = Some(State::Game {
@@ -514,56 +520,52 @@ impl webrunner::WebApp for TetrisApp {
                     }
                 });
 
-                self.window(ui, im_str!("pregame_back"), (mb2x, mby), (mbw, mbh), 2.0).build(|| {
-                    ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
-                    if ui.button(im_str!("Back"), ((mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale)) {
+                self.window(ui, "pregame_back", (mb2x, mby), (mbw, mbh), 2.0).build(|| {
+                    ui.set_cursor_pos([20.0 * self.ui_scale, 20.0 * self.ui_scale]);
+                    if ui.button_with_size("Back", [(mbw - 40.0)* self.ui_scale, (mbh - 40.0) * self.ui_scale]) {
                         self.save_player_data();
                         ret = Some(State::MainMenu);
                     }
                 });
 
                 let optionswin = ((mb1x + mbw, mby - 120.0), (mb2x - mb1x - mbw, mbh + 240.0));
-                self.window(ui, im_str!("pregame_options"), optionswin.0, optionswin.1, 1.5).build(|| {
+                self.window(ui, "pregame_options", optionswin.0, optionswin.1, 1.5).build(|| {
                     if keyconfig.is_none() {
-                        ui.set_cursor_pos((20.0 * self.ui_scale, 20.0 * self.ui_scale));
+                        ui.set_cursor_pos([20.0 * self.ui_scale, 20.0 * self.ui_scale]);
                         ui.text("Starting Level");
 
-                        ui.set_cursor_pos((20.0 * self.ui_scale, 45.0 * self.ui_scale));
+                        ui.set_cursor_pos([20.0 * self.ui_scale, 45.0 * self.ui_scale]);
                         ui.push_item_width(mb2x - mb1x - mbw);
-                        ui.slider_int(im_str!("##pregamestartlevel"), &mut self.config.level, 0, 20)
-                            .build();
+                        ui.slider("##pregamestartlevel", 0, 20, &mut self.config.level);
                         self.player.level = self.config.level;
 
-                        ui.set_cursor_pos((20.0 * self.ui_scale, 85.0 * self.ui_scale));
+                        ui.set_cursor_pos([20.0 * self.ui_scale, 85.0 * self.ui_scale]);
                         ui.text("Player Name");
 
-                        ui.set_cursor_pos((20.0 * self.ui_scale, 110.0 * self.ui_scale));
+                        ui.set_cursor_pos([20.0 * self.ui_scale, 110.0 * self.ui_scale]);
                         ui.push_item_width(mb2x - mb1x - mbw);
-                        let mut pname = ImString::with_capacity(1024);
-                        pname.push_str(&self.player.name);
-                        ui.input_text(im_str!("##pregame_playername"), &mut pname).build();
-                        self.player.name = pname.to_str().to_string();
+                        ui.input_text("##pregame_playername", &mut self.player.name).build();
 
-                        ui.set_cursor_pos((20.0 * self.ui_scale, 165.0 * self.ui_scale));
-                        ui.checkbox(im_str!("Ghost Piece"), &mut self.renderer.ghost_piece);
+                        ui.set_cursor_pos([20.0 * self.ui_scale, 165.0 * self.ui_scale]);
+                        ui.checkbox("Ghost Piece", &mut self.renderer.ghost_piece);
                         self.player.ghost = self.renderer.ghost_piece;
 
-                        ui.set_cursor_pos((20.0 * self.ui_scale, 210.0 * self.ui_scale));
-                        ui.checkbox(im_str!("3D Pieces"), &mut self.renderer.threed);
+                        ui.set_cursor_pos([20.0 * self.ui_scale, 210.0 * self.ui_scale]);
+                        ui.checkbox("3D Pieces", &mut self.renderer.threed);
                         self.player.render3d = self.renderer.threed;
 
-                        ui.set_cursor_pos((20.0 * self.ui_scale, 255.0 * self.ui_scale));
-                        ui.checkbox(im_str!("Play Sounds"), &mut self.player.sound);
+                        ui.set_cursor_pos([20.0 * self.ui_scale, 255.0 * self.ui_scale]);
+                        ui.checkbox("Play Sounds", &mut self.player.sound);
                     } else {
                         let mut keynum = *keyconfig.as_ref().unwrap();
 
                         {
                             let mut keychoice = |y, name, key: &mut i32, index, scale| {
-                                ui.set_cursor_pos((30.0 * scale, y * scale));
+                                ui.set_cursor_pos([30.0 * scale, y * scale]);
                                 ui.text(name);
-                                ui.set_cursor_pos((170.0 * scale, y * scale - 10.0));
+                                ui.set_cursor_pos([170.0 * scale, y * scale - 10.0]);
                                 let buttonstr = if keynum == index { String::from("...") } else { format!("{:?}", Keycode::from_i32(*key).unwrap_or(Keycode::Escape)) };
-                                if ui.button(im_str!("{}", buttonstr), (100.0 * scale, 30.0 * scale)) {
+                                if ui.button_with_size(format!("{}", buttonstr), [100.0 * scale, 30.0 * scale]) {
                                     keynum = if keynum == index { -1 } else { index };
                                 }
                             };
@@ -580,8 +582,8 @@ impl webrunner::WebApp for TetrisApp {
 
                     let buttonstr = if keyconfig.is_some() { "Game Settings" } else { "Controls" };
                     let buttonw = 200.0;
-                    ui.set_cursor_pos((0.5 * self.ui_scale * ((optionswin.1).0 - buttonw), 295.0 * self.ui_scale));
-                    if ui.button(im_str!("{}", buttonstr), (buttonw * self.ui_scale, 40.0 * self.ui_scale)) {
+                    ui.set_cursor_pos([0.5 * self.ui_scale * ((optionswin.1).0 - buttonw), 295.0 * self.ui_scale]);
+                    if ui.button_with_size(format!("{}", buttonstr), [buttonw * self.ui_scale, 40.0 * self.ui_scale]) {
                         keyconfig = match keyconfig {
                             None => Some(-1),
                             Some(n) => None,
@@ -599,31 +601,31 @@ impl webrunner::WebApp for TetrisApp {
                 self.renderer.do_ui(ui, self.ui_center, self.ui_scale);
                 let mut ret = None;
 
-                ui.with_color_var(imgui::ImGuiCol::WindowBg, (0.0, 0.0, 0.0, 0.0), || {
-                    self.window(ui, im_str!("Playing Game UI#window"), (200.0, 150.0), (200.0, 200.0), 1.5).build(|| {
+                // ui.with_color_var(imgui::ImGuiCol::WindowBg, (0.0, 0.0, 0.0, 0.0), || {
+                    self.window(ui, "Playing Game UI#window", (200.0, 150.0), (200.0, 200.0), 1.5).build(|| {
                         if !finished {
-                            if ui.button(im_str!("Give up!##playing"), (140.0 * self.ui_scale, 40.0 * self.ui_scale)) && !paused {
+                            if ui.button_with_size("Give up!##playing", [140.0 * self.ui_scale, 40.0 * self.ui_scale]) && !paused {
                                 self.save(&game);
                                 finished = true;
                             }
                         } else {
-                            if ui.button(im_str!("Back##fromgametomain"), (140.0 * self.ui_scale, 40.0 * self.ui_scale)) {
+                            if ui.button_with_size("Back##fromgametomain", [140.0 * self.ui_scale, 40.0 * self.ui_scale]) {
                                 ret = Some(State::MainMenu)
                             }
                         }
 
                         ui.new_line();
 
-                        if finished && ui.button(im_str!("Watch Replay##aftergamefinished"), (140.0 * self.ui_scale, 40.0 * self.ui_scale)) {
+                        if finished && ui.button_with_size("Watch Replay##aftergamefinished", [140.0 * self.ui_scale, 40.0 * self.ui_scale]) {
                             ret = Some(State::Replay {
                                 replayer: tetris::replay::Replayer::new(game.replay())
                             });
                         }
                     });
-                });
+                // });
 
                 if paused {
-                    self.window(ui, im_str!("pausedplayinggame"), (-100.0, -50.0), (200.0, 100.0), 2.5).build(|| {
+                    self.window(ui, "pausedplayinggame", (-100.0, -50.0), (200.0, 100.0), 2.5).build(|| {
                         ui.new_line(); ui.text("  Paused")
                     });
                 }
@@ -634,29 +636,25 @@ impl webrunner::WebApp for TetrisApp {
                 self.renderer.do_ui(ui, self.ui_center, self.ui_scale);
                 let mut ret = None;
 
-                self.window(ui, im_str!("Replayer UI#window"), (200.0, 100.0), (200.0, 200.0), 1.2).build(|| {
+                self.window(ui, "Replayer UI#window", (200.0, 100.0), (200.0, 200.0), 1.2).build(|| {
                     ui.text("Speed");
-                    ui.slider_float(im_str!("##replayspeedslider"), &mut replayer.speed, -20.0, 20.0)
-                        .power(2.0)
-                        .build();
-
+                    ui.slider("##replayspeedslider", -20.0, 20.0, &mut replayer.speed);
                     ui.new_line();
 
                     ui.text("Time");
                     let mut curr = replayer.frame();
-                    ui.slider_float(im_str!("##replaytimeslider"), &mut curr, 0.0, replayer.length())
-                        .build();
+                    ui.slider("##replaytimeslider", 0.0, replayer.length(), &mut curr);
                     replayer.jump(curr);
 
                     ui.new_line();
 
-                    if ui.button(im_str!("Back##tomainmenu"), (140.0 * self.ui_scale, 40.0 * self.ui_scale)) {
+                    if ui.button_with_size("Back##tomainmenu", [140.0 * self.ui_scale, 40.0 * self.ui_scale]) {
                         ret = Some(State::MainMenu);
                     }
                 });
 
                 if replayer.paused {
-                    self.window(ui, im_str!("pausedplayinggame"), (-100.0, -50.0), (200.0, 100.0), 2.5).build(|| {
+                    self.window(ui, "pausedplayinggame", (-100.0, -50.0), (200.0, 100.0), 2.5).build(|| {
                         ui.new_line(); ui.text("  Paused")
                     });
                 }
@@ -666,7 +664,7 @@ impl webrunner::WebApp for TetrisApp {
             State::About => {
                 let sz = (300.0, 320.0);
                 let mut ret = State::About;
-                self.window(ui, im_str!("about_dialog"), (-0.5 * sz.0, -0.5 * sz.1), sz, 1.25).build(|| {
+                self.window(ui, "about_dialog", (-0.5 * sz.0, -0.5 * sz.1), sz, 1.25).build(|| {
                     let lines = vec!(
                         "Written by Wieland Hagen",
                         "",
@@ -682,14 +680,14 @@ impl webrunner::WebApp for TetrisApp {
                     );
                     let mut y = 20.0;
                     for l in &lines {
-                        ui.set_cursor_pos((20.0 * self.ui_scale, y * self.ui_scale));
+                        ui.set_cursor_pos([20.0 * self.ui_scale, y * self.ui_scale]);
                         ui.text(l);
                         y += 20.0;
                     }
 
                     let buttonsz = (150.0, 40.0);
-                    ui.set_cursor_pos((0.5 * self.ui_scale * (sz.0 - buttonsz.0), (sz.1 - buttonsz.1 - 20.0) * self.ui_scale));
-                    if ui.button(im_str!("Cool, dude!"), (buttonsz.0 * self.ui_scale, buttonsz.1 * self.ui_scale)) {
+                    ui.set_cursor_pos([0.5 * self.ui_scale * (sz.0 - buttonsz.0), (sz.1 - buttonsz.1 - 20.0) * self.ui_scale]);
+                    if ui.button_with_size("Cool, dude!", [buttonsz.0 * self.ui_scale, buttonsz.1 * self.ui_scale]) {
                         ret = State::MainMenu;
                     }
                 });
@@ -704,7 +702,7 @@ impl webrunner::WebApp for TetrisApp {
                 let ctrl = keymod.intersects(Mod::LCTRLMOD | Mod::RCTRLMOD);
 
                 fn adjust_speed(value: &mut f32, delta: f32) {
-                    let v = (value.signum() * value.abs().sqrt() + delta);
+                    let v = value.signum() * value.abs().sqrt() + delta;
                     *value = v.signum() * v.powi(2).min(20.0);
                 }
 

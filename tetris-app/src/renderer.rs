@@ -445,7 +445,7 @@ impl Renderer {
 
         let state = self.state.as_ref().unwrap();
 
-        staticwindow(ui, im_str!("scores"),
+        staticwindow(ui, "scores",
                      (offset.0 + self.pos_info.x * scale, offset.1 + self.pos_info.y * scale),
                      (self.pos_info.w * scale, self.pos_info.h * scale),
                      1.5 * scale, (0.0, 0.0, 0.0, 0.0), || {
@@ -462,23 +462,23 @@ impl Renderer {
             // choose color
             let step = 10;
             let col = if stats.1 < step {
-                imgui::ImVec4::new(1.0, 1.0, 1.0, stats.1 as f32 / step as f32)
+                [1.0, 1.0, 1.0, stats.1 as f32 / step as f32]
             } else if stats.1 < 2*step {
-                imgui::ImVec4::new(1.0, 1.0, 2.0 - stats.1 as f32 / step as f32, 1.0)
+                [1.0, 1.0, 2.0 - stats.1 as f32 / step as f32, 1.0]
             } else if stats.1 < 3*step {
-                imgui::ImVec4::new(1.0, 3.0 - stats.1 as f32 / step as f32, 0.0, 1.0)
+                [1.0, 3.0 - stats.1 as f32 / step as f32, 0.0, 1.0]
             } else {
-                imgui::ImVec4::new(1.0, 0.0, 0.0, 1.0)
+                [1.0, 0.0, 0.0, 1.0]
             };
 
-            staticwindow(ui, im_str!("droughtstats#window{}", i),
+            staticwindow(ui, &format!("droughtstats#window{}", i),
                          (offset.0 + self.pos_stats.x * scale, offset.1 + y * scale),
                          (40.0 * scale, 60.0 * scale),
                          1.5 * scale, (0.0, 0.0, 0.0, 0.0), || {
-                    ui.text_colored(col, im_str!("{}", stats.1));
+                    ui.text_colored(col, format!("{}", stats.1));
                 });
 
-            staticwindow(ui, im_str!("countstats#window{}", i),
+            staticwindow(ui, &format!("countstats#window{}", i),
                          (offset.0 + (self.pos_stats.x + 140.0) * scale, offset.1 + y * scale),
                          (40.0 * scale, 60.0 * scale),
                          1.5 * scale, (0.0, 0.0, 0.0, 0.0), || {

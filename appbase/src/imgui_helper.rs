@@ -1,6 +1,6 @@
-pub fn staticwindow<'ui, 'p, F: FnOnce()> (
+pub fn staticwindow<'ui, F: FnOnce()> (
     ui: &'ui imgui::Ui,
-    name: &'p imgui::ImStr,
+    name: &str,
     pos: (f32, f32),
     size: (f32, f32),
     font_scale: f32,

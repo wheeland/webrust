@@ -40,7 +40,7 @@ impl Renderer {
                 gl_FragColor = Frag_Color * texture2D(Texture, Frag_UV.st);
             }";
 
-        let prog1 = Program::new_versioned(vert_source, frag_source, 100);
+        let program = Program::new_versioned(vert_source, frag_source, 100);
 
         unsafe {
             let vbo = return_param(|x| gl::GenBuffers(1, x) );
@@ -53,17 +53,14 @@ impl Renderer {
             gl::BindTexture(gl::TEXTURE_2D, font_texture);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as _);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as _);
-
-            // imgui.prepare_texture(|handle| {
-            //     gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as _, handle.width as _, handle.height as _, 0, gl::RGBA, gl::UNSIGNED_BYTE, handle.pixels.as_ptr() as _);
-            // });
+            
+            let font_data = imgui.fonts().build_rgba32_texture();
+            gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as _, font_data.width as _, font_data.height as _, 0, gl::RGBA, gl::UNSIGNED_BYTE, font_data.data.as_ptr() as _);
 
             gl::BindTexture(gl::TEXTURE_2D, current_texture as _);
 
-            // imgui.set_texture_id(font_texture as usize);
-
-            Self{
-                program: prog1,
+            Self {
+                program,
                 vbo,
                 ebo,
                 font_texture,
